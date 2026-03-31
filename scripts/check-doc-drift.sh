@@ -80,8 +80,8 @@ require_contains "$API_DOC" "relationshipHistory.totalObservations"
 
 echo "[drift-check] validating operations docs stay config-driven and safe"
 require_contains "$DEPLOYMENT_DOC" "Node.js 20+"
-require_contains "$DEPLOYMENT_DOC" "Mode A: Root Minimal Compose"
-require_contains "$DEPLOYMENT_DOC" "Mode B: Full Orchestrator Stack Compose"
+require_contains "$DEPLOYMENT_DOC" "Mode A: Official Public Docker Demo"
+require_contains "$DEPLOYMENT_DOC" "Mode B: Advanced Observability Compose"
 require_contains "$DEPLOYMENT_DOC" "STATE_FILE=\$(jq -r '.stateFile' orchestrator_config.json)"
 require_contains "$BACKUP_DOC" "STATE_FILE=\$(jq -r '.stateFile' orchestrator_config.json)"
 
