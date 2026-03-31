@@ -28,22 +28,43 @@ jobs:
           node-version: 22.x
           cache: npm
 
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
-
       - name: Install dependencies
         run: npm ci
 
       - name: Run canonical protected-branch verification
         run: npm run verify:main
 
+      - name: Upload private docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: private-docs-site
+          path: site/.vitepress/dist
+
+      - name: Setup Pages
+        if: vars.ENABLE_GITHUB_PAGES == 'true'
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Upload Pages artifact
+        if: vars.ENABLE_GITHUB_PAGES == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site/.vitepress/dist
 
+      - name: Explain docs publish mode
+        run: |
+          if [ "${{ vars.ENABLE_GITHUB_PAGES }}" = "true" ]; then
+            echo "GitHub Pages deploy is enabled for this repo." >> "$GITHUB_STEP_SUMMARY"
+            echo "Docs were uploaded as both a Pages artifact and a private build artifact." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "GitHub Pages deploy is disabled for this repo." >> "$GITHUB_STEP_SUMMARY"
+            echo "Docs were built and uploaded as the private-docs-site artifact so the private repo stays in sync without failing on unsupported Pages hosting." >> "$GITHUB_STEP_SUMMARY"
+            echo "If this repo moves to a plan that supports private Pages, enable Pages in repo settings and set the ENABLE_GITHUB_PAGES repository variable to true." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   deploy:
-    if: github.repository == 'AyobamiH/openclaw-operator'
+    if: github.repository == 'AyobamiH/openclaw-operator' && vars.ENABLE_GITHUB_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
     environment:
