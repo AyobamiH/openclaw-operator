@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import OverviewPage from "@/pages/OverviewPage";
 import AgentsPage from "@/pages/AgentsPage";
+import ApprovalsPage from "@/pages/ApprovalsPage";
 import IncidentsPage from "@/pages/IncidentsPage";
 import KnowledgePage from "@/pages/KnowledgePage";
 import PublicProofPage from "@/pages/PublicProofPage";
@@ -21,6 +22,7 @@ const acknowledgeMutate = vi.fn();
 const ownerMutate = vi.fn();
 const remediateMutate = vi.fn();
 const triggerTaskMutate = vi.fn();
+const approvalDecisionMutate = vi.fn();
 
 function buildTaskRun(type: string, overrides: Record<string, unknown> = {}) {
   return {
@@ -170,6 +172,11 @@ describe("operator contract surfaces", () => {
       mutate: triggerTaskMutate,
       isPending: false,
     } as unknown as ReturnType<typeof consoleHooks.useTriggerTask>);
+
+    vi.mocked(consoleHooks.useApprovalDecision).mockReturnValue({
+      mutate: approvalDecisionMutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof consoleHooks.useApprovalDecision>);
 
     vi.mocked(consoleHooks.useTaskCatalog).mockReturnValue({
       data: { generatedAt: "2026-03-11T10:00:00.000Z", tasks: [] },
@@ -1521,7 +1528,7 @@ describe("operator contract surfaces", () => {
     ).toBeGreaterThan(0);
   });
 
-  it("renders incidents as the dedicated remediation command deck", () => {
+  it("prioritizes the approval inbox by live operator triage pressure", () => {
     vi.mocked(consoleHooks.useHealth).mockReturnValue({
       data: {
         status: "healthy",
@@ -1551,6 +1558,59 @@ describe("operator contract surfaces", () => {
       isError: false,
     } as unknown as ReturnType<typeof consoleHooks.usePersistenceSummary>);
 
+    vi.mocked(consoleHooks.usePendingApprovals).mockReturnValue({
+      data: {
+        count: 2,
+        pending: [
+          {
+            taskId: "approval-build-refactor",
+            type: "build-refactor",
+            requestedAt: "2026-03-11T09:00:00.000Z",
+            status: "pending-review",
+            payload: { scope: "operator console", files: ["src/pages/OverviewPage.tsx"] },
+            impact: {
+              riskLevel: "high",
+              dependencyClass: "external",
+              publicTriggerable: true,
+              internalOnly: false,
+              approvalReason: "Requires explicit code-change approval.",
+            },
+            payloadPreview: { keyCount: 2, internalKeyCount: 1 },
+          },
+          {
+            taskId: "approval-doc-sync",
+            type: "doc-sync",
+            requestedAt: "2026-03-11T10:00:00.000Z",
+            status: "pending-review",
+            payload: { reason: "refresh docs" },
+            impact: {
+              riskLevel: "low",
+              dependencyClass: "worker",
+              publicTriggerable: false,
+              internalOnly: true,
+            },
+            payloadPreview: { keyCount: 1, internalKeyCount: 0 },
+          },
+        ],
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof consoleHooks.usePendingApprovals>);
+
+    render(
+      <MemoryRouter>
+        <ApprovalsPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Approval Inbox")).toBeInTheDocument();
+    expect(screen.getByText("Operator Focus")).toBeInTheDocument();
+    expect(screen.getByText("Immediate Attention")).toBeInTheDocument();
+    expect(screen.getByText("Oldest Waiting")).toBeInTheDocument();
+    expect(screen.getByText(/Current triage reason: high risk/i)).toBeInTheDocument();
+    expect(screen.getByText(/build-refactor is surfaced first because it carries high risk/i)).toBeInTheDocument();
+  });
+
+  it("surfaces incident triage pressure before remediation detail", () => {
     vi.mocked(consoleHooks.useExtendedHealth).mockReturnValue({
       data: {
         status: "warning",
@@ -1601,6 +1661,7 @@ describe("operator contract surfaces", () => {
           {
             id: "inc-1",
             title: "Demand summary degraded",
+            classification: "proof-delivery",
             severity: "warning",
             status: "active",
             truthLayer: "public",
@@ -1608,6 +1669,12 @@ describe("operator contract surfaces", () => {
             owner: null,
             acknowledgedAt: null,
             lastSeenAt: "2026-03-11T10:15:00.000Z",
+            verification: { required: true, status: "pending" },
+            remediationTasks: [
+              {
+                remediationId: "rem-1",
+              },
+            ],
             remediation: { status: "ready" },
           },
         ],
@@ -1620,6 +1687,7 @@ describe("operator contract surfaces", () => {
         incident: {
           id: "inc-1",
           title: "Demand summary degraded",
+          classification: "proof-delivery",
           severity: "warning",
           status: "active",
           truthLayer: "public",
@@ -1651,6 +1719,11 @@ describe("operator contract surfaces", () => {
             status: "ready",
             nextAction: "Queue a remediation task.",
             blockers: ["transport retry backlog"],
+          },
+          verification: {
+            required: true,
+            status: "pending",
+            summary: "Verification still required.",
           },
           history: [{ eventId: "h-1", type: "detected", summary: "Detected", detail: "Incident created." }],
           acknowledgements: [],
@@ -1684,8 +1757,12 @@ describe("operator contract surfaces", () => {
 
     expect(screen.getByText("Incident Posture")).toBeInTheDocument();
     expect(screen.getByText("Incident Command Deck")).toBeInTheDocument();
+    expect(screen.getByText("Operator Focus")).toBeInTheDocument();
+    expect(screen.getByText("Needs Verification")).toBeInTheDocument();
     expect(screen.getAllByText("Demand summary degraded").length).toBeGreaterThan(0);
     expect(screen.getByText("Inspect demand delivery ledger")).toBeInTheDocument();
+    expect(screen.getAllByText(/ack pending/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Current triage reason:/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Runtime health check completed; waiting for proof retry outcome\./i),
     ).toBeInTheDocument();

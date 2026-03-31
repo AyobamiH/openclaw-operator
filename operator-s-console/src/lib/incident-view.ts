@@ -14,6 +14,7 @@ export interface IncidentSummaryVM {
 export interface IncidentListItemVM {
   id: string;
   title: string;
+  classification: string;
   severity: string;
   status: string;
   truthLayer: string;
@@ -21,6 +22,11 @@ export interface IncidentListItemVM {
   owner: string | null;
   acknowledgedAt: string | null;
   lastSeenAt: string | null;
+  escalationStatus: string;
+  escalationDueAt: string | null;
+  verificationRequired: boolean;
+  verificationStatus: string;
+  hasRemediationTask: boolean;
   remediationStatus: string;
 }
 
@@ -140,6 +146,7 @@ export function buildIncidentRow(item: any): IncidentListItemVM {
   return {
     id: str(item?.id, ""),
     title: str(item?.title, "Untitled incident"),
+    classification: str(item?.classification, "runtime-mode"),
     severity: str(item?.severity, "warning"),
     status: str(item?.status, "active"),
     truthLayer: str(item?.truthLayer, "observed"),
@@ -147,6 +154,11 @@ export function buildIncidentRow(item: any): IncidentListItemVM {
     owner: toNullableString(item?.owner),
     acknowledgedAt: toNullableString(item?.acknowledgedAt),
     lastSeenAt: toNullableString(item?.lastSeenAt),
+    escalationStatus: str(item?.escalation?.status, "tracking"),
+    escalationDueAt: toNullableString(item?.escalation?.dueAt),
+    verificationRequired: item?.verification?.required === true,
+    verificationStatus: str(item?.verification?.status, "not-required"),
+    hasRemediationTask: toArray(item?.remediationTasks).length > 0,
     remediationStatus: str(item?.remediation?.status, "watching"),
   };
 }

@@ -57,6 +57,10 @@ The console does not need every route. It needs the right route families.
 - Phase 2 landed: `Tasks` now reads as a category-led launcher, `Runs` now
   reads as an execution ledger with cost and budget posture, and `Approvals`
   now reads as a decision inbox with a separate action box.
+- Phase 3 landed: `Overview`, `Runs`, `Approvals`, and `Incidents` now surface
+  operator-focus triage signals first, including queue pressure, repeated
+  activity grouping, approval age/lane clustering, and incident ownership /
+  verification / remediation pressure before drill-down.
 
 ### Private Operator Truth
 

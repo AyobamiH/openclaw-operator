@@ -3,10 +3,11 @@ import { usePendingApprovals, useApprovalDecision } from "@/hooks/use-console-ap
 import { useAuth } from "@/contexts/AuthContext";
 import { SummaryCard } from "@/components/console/SummaryCard";
 import { StatusBadge } from "@/components/console/StatusBadge";
+import { GuidancePanel } from "@/components/console/GuidancePanel";
 import { SmartValue } from "@/components/console/JsonRenderer";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ShieldCheck, CheckCircle2, XCircle, Inbox, Loader2, PanelRightOpen } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Inbox, Loader2, PanelRightOpen, ShieldCheck, XCircle } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { num, str, toArray } from "@/lib/safe-render";
@@ -16,6 +17,7 @@ interface ApprovalRowVM {
   type: string;
   status: string;
   requestedAt: string;
+  requestedAtMs: number | null;
   payload: Record<string, unknown> | null;
   payloadKeys: string[];
   impact: Record<string, unknown> | null;
@@ -24,23 +26,102 @@ interface ApprovalRowVM {
   dependencyClass: string;
   internalOnly: boolean;
   publicTriggerable: boolean;
+  approvalReason: string | null;
+  purpose: string | null;
+  priorityScore: number;
+}
+
+function parseTimestamp(value: string): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function buildApprovalPriorityScore(item: ApprovalRowVM): number {
+  let score = 0;
+
+  if (item.riskLevel === "high") score += 300;
+  else if (item.riskLevel === "medium") score += 180;
+  else score += 90;
+
+  if (item.dependencyClass === "external") score += 90;
+  if (item.publicTriggerable) score += 35;
+  if (!item.internalOnly) score += 20;
+
+  if (item.requestedAtMs) {
+    const ageMinutes = Math.max(0, Math.floor((Date.now() - item.requestedAtMs) / 60000));
+    score += Math.min(ageMinutes / 15, 45);
+  }
+
+  return score;
+}
+
+function formatApprovalAge(value: string | null | undefined, withSuffix = false): string {
+  if (!value) return "—";
+  try {
+    return formatDistanceToNow(new Date(value), withSuffix ? { addSuffix: true } : undefined);
+  } catch {
+    return value;
+  }
 }
 
 function buildApprovalRows(data: any): ApprovalRowVM[] {
-  return toArray(data?.pending).map((item: any) => ({
-    taskId: str(item?.taskId, "—"),
-    type: str(item?.type, "unknown"),
-    status: str(item?.status, "pending"),
-    requestedAt: str(item?.requestedAt ?? item?.requested_at, ""),
-    payload: item?.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload : null,
-    payloadKeys: Object.keys(item?.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload : {}).filter((key) => key !== "__raw"),
-    impact: item?.impact && typeof item.impact === "object" ? item.impact : null,
-    payloadPreview: item?.payloadPreview && typeof item.payloadPreview === "object" ? item.payloadPreview : null,
-    riskLevel: str(item?.impact?.riskLevel, "medium"),
-    dependencyClass: str(item?.impact?.dependencyClass, "worker"),
-    internalOnly: item?.impact?.internalOnly === true,
-    publicTriggerable: item?.impact?.publicTriggerable === true,
-  }));
+  return toArray(data?.pending)
+    .map((item: any) => {
+      const requestedAt = str(item?.requestedAt ?? item?.requested_at, "");
+      const payload =
+        item?.payload && typeof item.payload === "object" && !Array.isArray(item.payload) ? item.payload : null;
+
+      const row: ApprovalRowVM = {
+        taskId: str(item?.taskId, "—"),
+        type: str(item?.type, "unknown"),
+        status: str(item?.status, "pending"),
+        requestedAt,
+        requestedAtMs: parseTimestamp(requestedAt),
+        payload,
+        payloadKeys: Object.keys(payload ?? {}).filter((key) => key !== "__raw"),
+        impact: item?.impact && typeof item.impact === "object" ? item.impact : null,
+        payloadPreview: item?.payloadPreview && typeof item.payloadPreview === "object" ? item.payloadPreview : null,
+        riskLevel: str(item?.impact?.riskLevel, "medium"),
+        dependencyClass: str(item?.impact?.dependencyClass, "worker"),
+        internalOnly: item?.impact?.internalOnly === true,
+        publicTriggerable: item?.impact?.publicTriggerable === true,
+        approvalReason: typeof item?.impact?.approvalReason === "string" ? item.impact.approvalReason : null,
+        purpose: typeof item?.impact?.purpose === "string" ? item.impact.purpose : null,
+        priorityScore: 0,
+      };
+
+      row.priorityScore = buildApprovalPriorityScore(row);
+      return row;
+    })
+    .sort((left, right) => {
+      if (right.priorityScore !== left.priorityScore) return right.priorityScore - left.priorityScore;
+      if (left.requestedAtMs && right.requestedAtMs && left.requestedAtMs !== right.requestedAtMs) {
+        return left.requestedAtMs - right.requestedAtMs;
+      }
+      return left.type.localeCompare(right.type);
+    });
+}
+
+function buildApprovalAttentionReason(
+  item: ApprovalRowVM,
+  context: { oldestTaskId: string | null; topType: string | null; topTypeCount: number },
+): string {
+  const reasons: string[] = [];
+
+  if (item.riskLevel === "high") reasons.push("high risk");
+  if (item.dependencyClass === "external") reasons.push("external dependency");
+  if (item.taskId === context.oldestTaskId) reasons.push("oldest waiting request");
+  if (context.topType && item.type === context.topType && context.topTypeCount > 1) {
+    reasons.push(`busiest lane (${context.topTypeCount})`);
+  }
+  if (item.publicTriggerable) reasons.push("public trigger surface");
+
+  if (reasons.length) {
+    return reasons.join(" · ");
+  }
+
+  return item.approvalReason ?? item.purpose ?? "review payload scope and blast radius";
 }
 
 export default function ApprovalsPage() {
@@ -54,16 +135,37 @@ export default function ApprovalsPage() {
   const approvals = useMemo(() => buildApprovalRows(approvalsData), [approvalsData]);
   const selectedApproval = approvals.find((item) => item.taskId === selectedTaskId) ?? approvals[0] ?? null;
   const approvalSummary = useMemo(
-    () => ({
-      highRiskCount: approvals.filter((item) => item.riskLevel === "high").length,
-      externalCount: approvals.filter((item) => item.dependencyClass === "external").length,
-      publicCount: approvals.filter((item) => item.publicTriggerable).length,
-      oldestRequestedAt:
-        approvals
-          .map((item) => item.requestedAt)
-          .filter(Boolean)
-          .sort()[0] ?? null,
-    }),
+    () => {
+      const topTypeBuckets = new Map<string, number>();
+      for (const approval of approvals) {
+        topTypeBuckets.set(approval.type, (topTypeBuckets.get(approval.type) ?? 0) + 1);
+      }
+
+      const oldestApproval = approvals
+        .filter((item) => item.requestedAtMs !== null)
+        .slice()
+        .sort((left, right) => (left.requestedAtMs ?? 0) - (right.requestedAtMs ?? 0))[0] ?? null;
+
+      const [topType = null, topTypeCount = 0] =
+        [...topTypeBuckets.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
+
+      const urgentCount = approvals.filter(
+        (item) => item.riskLevel === "high" || item.dependencyClass === "external",
+      ).length;
+
+      return {
+        urgentCount,
+        highRiskCount: approvals.filter((item) => item.riskLevel === "high").length,
+        externalCount: approvals.filter((item) => item.dependencyClass === "external").length,
+        publicCount: approvals.filter((item) => item.publicTriggerable).length,
+        oldestTaskId: oldestApproval?.taskId ?? null,
+        oldestRequestedAt: oldestApproval?.requestedAt ?? null,
+        oldestAgeLabel: formatApprovalAge(oldestApproval?.requestedAt, false),
+        topType,
+        topTypeCount,
+        primaryApproval: approvals[0] ?? null,
+      };
+    },
     [approvals],
   );
 
@@ -151,18 +253,48 @@ export default function ApprovalsPage() {
           <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mt-1">Pending Reviews</p>
         </div>
         <div className="console-inset p-3 rounded-sm text-center">
-          <p className="metric-value text-2xl">{approvalSummary.highRiskCount}</p>
-          <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mt-1">High Risk</p>
+          <p className="metric-value text-2xl">{approvalSummary.urgentCount}</p>
+          <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mt-1">Immediate Attention</p>
         </div>
         <div className="console-inset p-3 rounded-sm text-center">
-          <p className="metric-value text-2xl">{approvalSummary.externalCount}</p>
-          <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mt-1">External Dependency</p>
+          <p className="metric-value text-lg">{approvalSummary.oldestAgeLabel}</p>
+          <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mt-1">Oldest Waiting</p>
         </div>
         <div className="console-inset p-3 rounded-sm text-center">
-          <p className="metric-value text-2xl">{approvalSummary.publicCount}</p>
-          <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mt-1">Public Triggerable</p>
+          <p className="metric-value text-2xl">{approvalSummary.topTypeCount}</p>
+          <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider mt-1">
+            {approvalSummary.topType ? `${approvalSummary.topType} Lane` : "Top Lane"}
+          </p>
         </div>
       </div>
+
+      {approvals.length > 0 && (
+        <SummaryCard title="Operator Focus" icon={<AlertTriangle className="w-4 h-4" />} variant="highlight">
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+            <GuidancePanel title="Start with the first queue item" eyebrow="Triage">
+              <p>
+                {approvalSummary.primaryApproval
+                  ? `${approvalSummary.primaryApproval.type} is surfaced first because it carries ${buildApprovalAttentionReason(approvalSummary.primaryApproval, approvalSummary)}.`
+                  : "No approval is currently selected."}
+              </p>
+            </GuidancePanel>
+            <GuidancePanel title="Watch queue age" eyebrow="Backlog">
+              <p>
+                {approvalSummary.oldestRequestedAt
+                  ? `The oldest visible request has been waiting ${formatApprovalAge(approvalSummary.oldestRequestedAt, true)}. Clear old approvals before newer low-risk work if you want the queue to stay believable.`
+                  : "No approval age pressure is currently visible."}
+              </p>
+            </GuidancePanel>
+            <GuidancePanel title="Clustered lane pressure" eyebrow="Pattern">
+              <p>
+                {approvalSummary.topType
+                  ? `${approvalSummary.topType} appears ${approvalSummary.topTypeCount} time${approvalSummary.topTypeCount === 1 ? "" : "s"} in the inbox. Repeated approvals usually mean one lane is generating most of the review work.`
+                  : "No repeated task lane dominates the inbox right now."}
+              </p>
+            </GuidancePanel>
+          </div>
+        </SummaryCard>
+      )}
 
       {!approvals.length ? (
         <SummaryCard title="Approvals Inbox" icon={<Inbox className="w-4 h-4" />}>
@@ -179,6 +311,7 @@ export default function ApprovalsPage() {
             <div className="space-y-2">
               {approvals.map((item) => {
                 const isSelected = item.taskId === selectedApproval?.taskId;
+                const attentionReason = buildApprovalAttentionReason(item, approvalSummary);
                 return (
                   <button
                     key={item.taskId}
@@ -201,28 +334,24 @@ export default function ApprovalsPage() {
                       </div>
                       <div className="activity-cell px-3 py-2 hidden sm:flex items-center">
                         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wide">
-                          {(() => {
-                            if (!item.requestedAt) return "—";
-                            try {
-                              return formatDistanceToNow(new Date(item.requestedAt), { addSuffix: true });
-                            } catch {
-                              return item.requestedAt;
-                            }
-                          })()}
+                          {formatApprovalAge(item.requestedAt, true)}
                         </span>
                       </div>
                       <div className="activity-cell px-3 py-2 hidden md:flex items-center">
                         <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wide">
-                          {item.payloadKeys.length} field{item.payloadKeys.length !== 1 ? "s" : ""}
+                          {attentionReason}
                         </span>
                       </div>
-                      {item.riskLevel && (
-                        <div className="activity-cell px-3 py-2 hidden xl:flex items-center">
+                      <div className="activity-cell px-3 py-2 hidden xl:flex items-center gap-1.5">
+                        {item.riskLevel && (
                           <span className="text-[10px] font-mono text-muted-foreground uppercase tracking-wide">
                             {item.riskLevel} risk
                           </span>
-                        </div>
-                      )}
+                        )}
+                        {item.taskId === approvalSummary.oldestTaskId && (
+                          <span className="text-[10px] font-mono text-amber-300 uppercase tracking-wide">oldest</span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 );
@@ -256,6 +385,9 @@ export default function ApprovalsPage() {
                   <p className="text-[10px] font-mono text-muted-foreground uppercase tracking-[0.12em]">Operator Decision Path</p>
                   <p className="text-[10px] font-mono text-foreground leading-relaxed">
                     Approval releases the task back into orchestrator execution using the existing request payload. Rejection keeps the task blocked and records operator intent.
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    Current triage reason: {buildApprovalAttentionReason(selectedApproval, approvalSummary)}.
                   </p>
                 </div>
 

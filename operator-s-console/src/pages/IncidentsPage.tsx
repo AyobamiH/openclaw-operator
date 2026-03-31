@@ -20,6 +20,61 @@ import { AlertTriangle, GitBranchPlus, Loader2, ShieldCheck, Wrench } from "luci
 import { toArray } from "@/lib/safe-render";
 import { buildIncidentDetail, buildIncidentRow, buildIncidentSummary } from "@/lib/incident-view";
 
+function parseTimestamp(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isUnowned(owner: string | null | undefined): boolean {
+  return !owner || owner === "unowned";
+}
+
+function incidentPriorityScore(incident: ReturnType<typeof buildIncidentRow>): number {
+  let score = 0;
+
+  if (incident.severity === "critical") score += 320;
+  else if (incident.severity === "warning") score += 200;
+  else score += 90;
+
+  if (incident.status === "active") score += 90;
+  else if (incident.status === "watching") score += 35;
+
+  if (isUnowned(incident.owner)) score += 70;
+  if (!incident.acknowledgedAt && incident.status !== "resolved") score += 45;
+  if (incident.verificationRequired && incident.verificationStatus !== "verified") score += 55;
+  if (!incident.hasRemediationTask && incident.status !== "resolved") score += 35;
+  if (incident.escalationStatus === "breached" || incident.escalationStatus === "escalated") score += 70;
+
+  const dueAt = parseTimestamp(incident.escalationDueAt);
+  if (dueAt && dueAt <= Date.now() && incident.status !== "resolved") {
+    score += 35;
+  }
+
+  return score;
+}
+
+function buildIncidentAttentionReason(incident: ReturnType<typeof buildIncidentRow>): string {
+  const reasons: string[] = [];
+
+  if (incident.severity === "critical") reasons.push("critical severity");
+  if (isUnowned(incident.owner)) reasons.push("unowned");
+  if (!incident.acknowledgedAt && incident.status !== "resolved") reasons.push("ack pending");
+  if (incident.verificationRequired && incident.verificationStatus !== "verified") {
+    reasons.push(`verify ${incident.verificationStatus}`);
+  }
+  if (!incident.hasRemediationTask && incident.status !== "resolved") reasons.push("no remediation yet");
+  if (incident.escalationStatus === "breached" || incident.escalationStatus === "escalated") {
+    reasons.push(incident.escalationStatus);
+  }
+
+  if (reasons.length) {
+    return reasons.join(" · ");
+  }
+
+  return `${incident.classification} lane`;
+}
+
 export default function IncidentsPage() {
   const { user, hasRole } = useAuth();
   const isOperator = hasRole("operator");
@@ -43,15 +98,58 @@ export default function IncidentsPage() {
     [extended?.incidents],
   );
 
+  const allIncidents = useMemo(
+    () =>
+      toArray(incidentsData?.incidents)
+        .map(buildIncidentRow)
+        .sort((left, right) => {
+          const scoreDelta = incidentPriorityScore(right) - incidentPriorityScore(left);
+          if (scoreDelta !== 0) return scoreDelta;
+          const leftLastSeen = parseTimestamp(left.lastSeenAt) ?? 0;
+          const rightLastSeen = parseTimestamp(right.lastSeenAt) ?? 0;
+          if (rightLastSeen !== leftLastSeen) return rightLastSeen - leftLastSeen;
+          return left.title.localeCompare(right.title);
+        }),
+    [incidentsData?.incidents],
+  );
+
+  const incidentFocus = useMemo(() => {
+    const openIncidents = allIncidents.filter((incident) => incident.status !== "resolved");
+    const classificationCounts = new Map<string, number>();
+
+    for (const incident of openIncidents) {
+      classificationCounts.set(incident.classification, (classificationCounts.get(incident.classification) ?? 0) + 1);
+    }
+
+    const [topClassification = null, topClassificationCount = 0] =
+      [...classificationCounts.entries()].sort((left, right) => right[1] - left[1])[0] ?? [];
+
+    return {
+      unownedCount: openIncidents.filter((incident) => isUnowned(incident.owner)).length,
+      unacknowledgedCount: openIncidents.filter((incident) => !incident.acknowledgedAt).length,
+      verificationCount: openIncidents.filter(
+        (incident) => incident.verificationRequired && incident.verificationStatus !== "verified",
+      ).length,
+      noRemediationCount: openIncidents.filter((incident) => !incident.hasRemediationTask).length,
+      topClassification,
+      topClassificationCount,
+      primaryIncident: openIncidents[0] ?? null,
+    };
+  }, [allIncidents]);
+
   const filteredIncidents = useMemo(() => {
-    const incidents = toArray(incidentsData?.incidents).map(buildIncidentRow);
-    return incidents.filter((incident) => {
+    return allIncidents.filter((incident) => {
       if (incidentFilter === "all") return true;
       if (incidentFilter === "resolved") return incident.status === "resolved";
       if (incidentFilter === "watching") return incident.status === "watching";
+      if (incidentFilter === "critical") return incident.severity === "critical" && incident.status !== "resolved";
+      if (incidentFilter === "unowned") return incident.status !== "resolved" && isUnowned(incident.owner);
+      if (incidentFilter === "needs-verification") {
+        return incident.status !== "resolved" && incident.verificationRequired && incident.verificationStatus !== "verified";
+      }
       return incident.status === "active";
     });
-  }, [incidentFilter, incidentsData?.incidents]);
+  }, [allIncidents, incidentFilter]);
 
   useEffect(() => {
     if (!filteredIncidents.length) {
@@ -188,6 +286,25 @@ export default function IncidentsPage() {
             </div>
           </div>
 
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="console-inset p-3 rounded-sm text-center">
+              <p className="metric-value text-xl">{incidentFocus.unownedCount}</p>
+              <p className="text-[8px] font-mono text-muted-foreground uppercase tracking-wider mt-1">Unowned</p>
+            </div>
+            <div className="console-inset p-3 rounded-sm text-center">
+              <p className="metric-value text-xl">{incidentFocus.unacknowledgedCount}</p>
+              <p className="text-[8px] font-mono text-muted-foreground uppercase tracking-wider mt-1">Ack Pending</p>
+            </div>
+            <div className="console-inset p-3 rounded-sm text-center">
+              <p className="metric-value text-xl">{incidentFocus.verificationCount}</p>
+              <p className="text-[8px] font-mono text-muted-foreground uppercase tracking-wider mt-1">Needs Verification</p>
+            </div>
+            <div className="console-inset p-3 rounded-sm text-center">
+              <p className="metric-value text-xl">{incidentFocus.noRemediationCount}</p>
+              <p className="text-[8px] font-mono text-muted-foreground uppercase tracking-wider mt-1">No Remediation</p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
             <GuidancePanel title="What this page is for" eyebrow="Operator Hint" tone="tip">
               <p>Use Incidents when the system has already detected trouble and you need to decide who owns it, whether remediation should be queued, and what still blocks closure.</p>
@@ -197,6 +314,30 @@ export default function IncidentsPage() {
             </GuidancePanel>
             <GuidancePanel title="What remediation does" eyebrow="Action Consequence">
               <p>Create Remediation queues a bounded task lane for this incident. Verification and runtime truth still decide whether the incident can close.</p>
+            </GuidancePanel>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-2">
+            <GuidancePanel title="Start with the first queue item" eyebrow="Operator Focus" tone="tip">
+              <p>
+                {incidentFocus.primaryIncident
+                  ? `${incidentFocus.primaryIncident.title} is surfaced first because it carries ${buildIncidentAttentionReason(incidentFocus.primaryIncident)}.`
+                  : "No open incident currently needs operator triage."}
+              </p>
+            </GuidancePanel>
+            <GuidancePanel title="Ownership and acknowledgement" eyebrow="Attention">
+              <p>
+                {incidentFocus.unownedCount || incidentFocus.unacknowledgedCount
+                  ? `${incidentFocus.unownedCount} open incident${incidentFocus.unownedCount === 1 ? "" : "s"} are unowned and ${incidentFocus.unacknowledgedCount} still need acknowledgement. Clear those first if you want the queue to read like real operator work instead of passive telemetry.`
+                  : "Ownership and acknowledgement are currently keeping up with the open incident queue."}
+              </p>
+            </GuidancePanel>
+            <GuidancePanel title="Dominant incident cluster" eyebrow="Pattern">
+              <p>
+                {incidentFocus.topClassification
+                  ? `${incidentFocus.topClassification} appears ${incidentFocus.topClassificationCount} time${incidentFocus.topClassificationCount === 1 ? "" : "s"} in the open queue. Repeated classifications usually mean one runtime surface is creating most of the operational drag.`
+                  : "No single classification currently dominates the incident queue."}
+              </p>
             </GuidancePanel>
           </div>
 
@@ -223,6 +364,9 @@ export default function IncidentsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="critical">Critical</SelectItem>
+                  <SelectItem value="unowned">Unowned</SelectItem>
+                  <SelectItem value="needs-verification">Needs Verification</SelectItem>
                   <SelectItem value="watching">Watching</SelectItem>
                   <SelectItem value="resolved">Resolved</SelectItem>
                   <SelectItem value="all">All</SelectItem>
@@ -267,9 +411,16 @@ export default function IncidentsPage() {
                       <p className="mt-2 text-[10px] font-mono text-muted-foreground leading-relaxed">
                         {incident.summary}
                       </p>
+                      <p className="mt-2 text-[9px] font-mono uppercase tracking-wider text-foreground/80">
+                        {buildIncidentAttentionReason(incident)}
+                      </p>
                       <div className="mt-2 flex flex-wrap gap-2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                        <span>{incident.classification}</span>
                         <span>{incident.truthLayer} truth</span>
                         <span>{incident.owner ?? "unowned"}</span>
+                        {!incident.acknowledgedAt && incident.status !== "resolved" && <span>ack pending</span>}
+                        {incident.verificationRequired && <span>verify:{incident.verificationStatus}</span>}
+                        {!incident.hasRemediationTask && incident.status !== "resolved" && <span>no remediation</span>}
                         <span>{incident.lastSeenAt ? new Date(incident.lastSeenAt).toLocaleString() : "no timestamp"}</span>
                       </div>
                     </button>
@@ -308,6 +459,9 @@ export default function IncidentsPage() {
 
                   <GuidancePanel title="Recommended operator action" eyebrow="Do This Next" tone="tip">
                     <p>{selectedIncident.nextAction}</p>
+                    <p className="pt-1 text-[10px] font-mono text-muted-foreground">
+                      Current triage reason: {buildIncidentAttentionReason(selectedIncident)}.
+                    </p>
                     <GuidanceList items={actionGuidance} className="pt-1" />
                   </GuidancePanel>
 
