@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.repository == 'AyobamiH/openclaw-operator'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -42,6 +43,7 @@ jobs:
           path: site/.vitepress/dist
 
   deploy:
+    if: github.repository == 'AyobamiH/openclaw-operator'
     needs: build
     runs-on: ubuntu-latest
     environment:
