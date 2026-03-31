@@ -103,6 +103,20 @@ side-step workflows should only land here once they are ready for public use.
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for the working rule.
 
+## Branch-First Workflow
+
+Public product work should happen on a local branch first, not directly on
+`main`.
+
+The expected flow is:
+
+1. create a local feature branch
+2. make and validate the change there
+3. merge into `main` locally once the branch is ready
+4. push the merged `main`
+
+That is the normal working style for this repo going forward.
+
 ## Using It For Real Client Work
 
 OpenClaw Operator is most useful when you treat it as a governed web-dev

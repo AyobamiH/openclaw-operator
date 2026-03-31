@@ -3,6 +3,19 @@
 This repository is the canonical home for public OpenClaw Operator product
 work.
 
+## Branch-First Workflow
+
+Use a local branch for every non-trivial change.
+
+Expected flow:
+
+1. create a local branch from `main`
+2. make and validate the change on that branch
+3. merge the branch into `main` locally when it is ready
+4. push the merged `main`
+
+Do not treat `main` as the place where active work accumulates directly.
+
 ## What Belongs Here
 
 Open issues and pull requests here for:
