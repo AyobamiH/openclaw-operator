@@ -20,10 +20,12 @@ export function ActivityModuleRow({ task }: ActivityModuleRowProps) {
       agentRaw.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join('-'))
     : str(task.type, "unknown");
   const timestamp =
+    toNullableString(task.lastSeenAt) ??
     toNullableString(task.completedAt) ??
     toNullableString(task.handledAt) ??
     toNullableString(task.startedAt) ??
     toNullableString(task.createdAt);
+  const repeatCount = Number(task.repeatCount ?? 1);
 
   const statusColor = 
     status === "success" || status === "completed" ? "text-indicator-green" :
@@ -47,6 +49,11 @@ export function ActivityModuleRow({ task }: ActivityModuleRowProps) {
           <span className="font-mono text-[11px] font-bold text-foreground uppercase tracking-wide truncate">
             {taskLabel}
           </span>
+          {repeatCount > 1 && (
+            <span className="shrink-0 rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[9px] font-mono font-semibold uppercase tracking-wider text-primary">
+              x{repeatCount}
+            </span>
+          )}
         </div>
 
         {/* Mini indicator block */}

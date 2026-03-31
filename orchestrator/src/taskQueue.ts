@@ -7,6 +7,8 @@ export class TaskQueue {
   private queue = new PQueue({ concurrency: 2 });
   private listeners: Array<(task: Task) => void> = [];
   private enqueueListeners: Array<(task: Task) => void> = [];
+  private queuedTasks = new Map<string, Task>();
+  private processingTasks = new Map<string, Task>();
 
   private deriveIdempotencyKey(
     payload: Record<string, unknown>,
@@ -45,9 +47,17 @@ export class TaskQueue {
       listener(task);
     }
 
+    this.queuedTasks.set(task.id, task);
+
     const queuedExecution = this.queue.add(async () => {
-      for (const listener of this.listeners) {
-        await listener(task);
+      this.queuedTasks.delete(task.id);
+      this.processingTasks.set(task.id, task);
+      try {
+        for (const listener of this.listeners) {
+          await listener(task);
+        }
+      } finally {
+        this.processingTasks.delete(task.id);
       }
     });
     queuedExecution.catch((error) => {
@@ -74,5 +84,12 @@ export class TaskQueue {
 
   getQueuedCount() {
     return this.queue.size;
+  }
+
+  getSnapshot() {
+    return {
+      queued: [...this.queuedTasks.values()].map((task) => ({ ...task })),
+      processing: [...this.processingTasks.values()].map((task) => ({ ...task })),
+    };
   }
 }

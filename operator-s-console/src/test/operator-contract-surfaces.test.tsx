@@ -191,7 +191,20 @@ describe("operator contract surfaces", () => {
             remainingLlmCalls: 12,
           },
         },
-        queue: { queued: 2, processing: 1 },
+        queue: {
+          queued: 2,
+          processing: 1,
+          pressure: [
+            {
+              type: "doc-change",
+              label: "Doc Change",
+              source: "Doc Watch",
+              queuedCount: 2,
+              processingCount: 0,
+              totalCount: 2,
+            },
+          ],
+        },
         approvals: { pendingCount: 1, pending: [] },
         governance: {
           approvals: 1,
@@ -203,6 +216,16 @@ describe("operator contract surfaces", () => {
           activeCount: 1,
           watchingCount: 0,
           bySeverity: { critical: 0, warning: 1, info: 0 },
+          topClassifications: [
+            {
+              classification: "knowledge",
+              label: "Knowledge",
+              count: 1,
+              activeCount: 1,
+              watchingCount: 0,
+              highestSeverity: "warning",
+            },
+          ],
         },
         recentTasks: [
           {
@@ -220,7 +243,14 @@ describe("operator contract surfaces", () => {
     } as unknown as ReturnType<typeof consoleHooks.useDashboardOverview>);
 
     vi.mocked(consoleHooks.useAgentsOverview).mockReturnValue({
-      data: { count: 1, agents: [{ id: "doc-specialist", serviceAvailable: true, serviceRunning: true }] },
+      data: {
+        count: 3,
+        agents: [
+          { id: "doc-specialist", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
+          { id: "reddit-helper", serviceAvailable: true, serviceExpected: true, serviceRunning: false },
+          { id: "integration-agent", serviceAvailable: true, serviceExpected: false, serviceRunning: false },
+        ],
+      },
       isLoading: false,
     } as unknown as ReturnType<typeof consoleHooks.useAgentsOverview>);
 
@@ -269,6 +299,13 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText("Safe Next Actions")).toBeInTheDocument();
     expect(screen.getByText("Fast-start mode is active")).toBeInTheDocument();
     expect(screen.getByText("Heartbeat")).toBeInTheDocument();
+    expect(screen.getByText("Top Incident Classifications")).toBeInTheDocument();
+    expect(screen.getByText("Knowledge")).toBeInTheDocument();
+    expect(screen.getByText("Queue Pressure Sources")).toBeInTheDocument();
+    expect(screen.getByText("Doc Change")).toBeInTheDocument();
+    expect(screen.getByText("3 declared")).toBeInTheDocument();
+    expect(screen.getByText(/1 host-running/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Stale").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByText("Heartbeat"));
     expect(navigateMock).toHaveBeenCalledWith({
@@ -276,6 +313,87 @@ describe("operator contract surfaces", () => {
       search: "?openTask=heartbeat",
     });
   }, 15000);
+
+  it("collapses repeated recent activity noise and shows timed-out public proof honestly", () => {
+    vi.mocked(consoleHooks.useDashboardOverview).mockReturnValue({
+      data: {
+        health: { status: "degraded", fastStartMode: false },
+        persistence: { status: "healthy", database: "mongo" },
+        accounting: {
+          totalCostUsd: 0,
+          currentBudget: {
+            status: "ok",
+            remainingLlmCalls: 20,
+          },
+        },
+        queue: { queued: 200, processing: 1, pressure: [] },
+        approvals: { pendingCount: 0, pending: [] },
+        governance: {
+          approvals: 0,
+          taskRetryRecoveries: 0,
+        },
+        incidents: {
+          overallStatus: "warning",
+          openCount: 0,
+          activeCount: 0,
+          watchingCount: 0,
+          bySeverity: { critical: 0, warning: 0, info: 0 },
+          topClassifications: [],
+        },
+        recentTasks: [
+          {
+            id: "task-1",
+            taskId: "task-1",
+            type: "system-monitor",
+            message: "queued 200 doc changes (drift repair already active)",
+            status: "success",
+            handledAt: "2026-03-11T10:00:00.000Z",
+          },
+          {
+            id: "task-2",
+            taskId: "task-2",
+            type: "system-monitor",
+            message: "queued 200 doc changes (drift repair already active)",
+            status: "success",
+            handledAt: "2026-03-11T10:02:00.000Z",
+          },
+          {
+            id: "task-3",
+            taskId: "task-3",
+            type: "system-monitor",
+            message: "queued 200 doc changes (drift repair already active)",
+            status: "success",
+            handledAt: "2026-03-11T10:04:00.000Z",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useDashboardOverview>);
+
+    vi.mocked(consoleHooks.useAgentsOverview).mockReturnValue({
+      data: { count: 0, agents: [] },
+      isLoading: false,
+    } as unknown as ReturnType<typeof consoleHooks.useAgentsOverview>);
+
+    vi.mocked(publicSurfaceHooks.useCommandCenterOverview).mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new Error("request timed out"),
+    } as unknown as ReturnType<typeof publicSurfaceHooks.useCommandCenterOverview>);
+
+    render(
+      <MemoryRouter>
+        <OverviewPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("Timed Out").length).toBeGreaterThan(0);
+    expect(screen.getByText("x3")).toBeInTheDocument();
+    expect(screen.getByText("queued 200 doc changes (drift repair already active)")).toBeInTheDocument();
+  });
 
   it("renders agent capability readiness and gap evidence", () => {
     vi.mocked(consoleHooks.useAgentsOverview).mockReturnValue({

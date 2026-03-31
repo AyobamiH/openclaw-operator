@@ -1496,6 +1496,186 @@ function getOperatorTaskProfile(taskType: string): OperatorTaskProfile | null {
   return OPERATOR_TASK_PROFILES.find((profile) => profile.type === taskType) ?? null;
 }
 
+type DashboardQueuePressureSummary = {
+  type: string;
+  label: string;
+  source: string;
+  queuedCount: number;
+  processingCount: number;
+  totalCount: number;
+  oldestCreatedAt: string | null;
+  newestCreatedAt: string | null;
+};
+
+type DashboardIncidentClassificationSummary = {
+  classification: IncidentLedgerClassification;
+  label: string;
+  count: number;
+  activeCount: number;
+  watchingCount: number;
+  highestSeverity: IncidentLedgerSeverity;
+};
+
+const INCIDENT_CLASSIFICATION_LABELS: Record<IncidentLedgerClassification, string> = {
+  "runtime-mode": "Runtime Mode",
+  persistence: "Persistence",
+  "proof-delivery": "Proof Delivery",
+  repair: "Repair",
+  "retry-recovery": "Retry Recovery",
+  knowledge: "Knowledge",
+  "service-runtime": "Service Runtime",
+  "approval-backlog": "Approval Backlog",
+};
+
+function humanizeHyphenLabel(value: string) {
+  return value
+    .split("-")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(" ");
+}
+
+function classifyDashboardQueueSource(task: Task) {
+  const payload = task.payload ?? {};
+
+  if (task.type === "doc-change") {
+    return "Doc Watch";
+  }
+  if (payload.approvedFromTaskId) {
+    return "Approval Replay";
+  }
+  if (payload.__remediationId) {
+    return "Incident Remediation";
+  }
+  if (Number(payload.__attempt ?? task.attempt ?? 1) > 1) {
+    return "Retry Recovery";
+  }
+  if (typeof payload.reason === "string") {
+    if (payload.reason === "scheduled") {
+      return "Scheduler";
+    }
+    if (payload.reason === "periodic") {
+      return "Heartbeat";
+    }
+    return humanizeHyphenLabel(payload.reason);
+  }
+  if (typeof payload.__role === "string" && payload.__role === "operator") {
+    return "Operator Trigger";
+  }
+  if (task.type === "startup") {
+    return "Runtime Boot";
+  }
+  return "System";
+}
+
+function buildDashboardQueuePressure(args: {
+  queued: Task[];
+  processing: Task[];
+}) {
+  const grouped = new Map<string, DashboardQueuePressureSummary>();
+  const severitySort = (value: DashboardQueuePressureSummary) =>
+    value.totalCount * 10_000 + value.processingCount * 100;
+
+  const ingest = (
+    tasks: Task[],
+    status: "queued" | "processing",
+  ) => {
+    for (const task of tasks) {
+      const type = typeof task.type === "string" ? task.type : "unknown";
+      const label =
+        getOperatorTaskProfile(type)?.label ??
+        humanizeHyphenLabel(type);
+      const source = classifyDashboardQueueSource(task);
+      const key = `${type}:${source}`;
+      const createdAtIso =
+        Number.isFinite(task.createdAt) && task.createdAt > 0
+          ? new Date(task.createdAt).toISOString()
+          : null;
+      const current = grouped.get(key) ?? {
+        type,
+        label,
+        source,
+        queuedCount: 0,
+        processingCount: 0,
+        totalCount: 0,
+        oldestCreatedAt: createdAtIso,
+        newestCreatedAt: createdAtIso,
+      };
+      if (status === "queued") {
+        current.queuedCount += 1;
+      } else {
+        current.processingCount += 1;
+      }
+      current.totalCount += 1;
+      if (createdAtIso) {
+        current.oldestCreatedAt =
+          !current.oldestCreatedAt || createdAtIso.localeCompare(current.oldestCreatedAt) < 0
+            ? createdAtIso
+            : current.oldestCreatedAt;
+        current.newestCreatedAt =
+          !current.newestCreatedAt || createdAtIso.localeCompare(current.newestCreatedAt) > 0
+            ? createdAtIso
+            : current.newestCreatedAt;
+      }
+      grouped.set(key, current);
+    }
+  };
+
+  ingest(args.queued, "queued");
+  ingest(args.processing, "processing");
+
+  return [...grouped.values()]
+    .sort((left, right) => {
+      const byPressure = severitySort(right) - severitySort(left);
+      if (byPressure !== 0) return byPressure;
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, 6);
+}
+
+function buildDashboardIncidentClassifications(
+  records: IncidentLedgerRecord[],
+  limit: number = 4,
+) {
+  const grouped = new Map<IncidentLedgerClassification, DashboardIncidentClassificationSummary>();
+  const severityRank: Record<IncidentLedgerSeverity, number> = {
+    critical: 3,
+    warning: 2,
+    info: 1,
+  };
+
+  for (const record of records) {
+    if (record.status === "resolved") {
+      continue;
+    }
+    const current = grouped.get(record.classification) ?? {
+      classification: record.classification,
+      label: INCIDENT_CLASSIFICATION_LABELS[record.classification],
+      count: 0,
+      activeCount: 0,
+      watchingCount: 0,
+      highestSeverity: record.severity,
+    };
+    current.count += 1;
+    if (record.status === "active") current.activeCount += 1;
+    if (record.status === "watching") current.watchingCount += 1;
+    if (severityRank[record.severity] > severityRank[current.highestSeverity]) {
+      current.highestSeverity = record.severity;
+    }
+    grouped.set(record.classification, current);
+  }
+
+  return [...grouped.values()]
+    .sort((left, right) => {
+      const byCount = right.count - left.count;
+      if (byCount !== 0) return byCount;
+      const bySeverity = severityRank[right.highestSeverity] - severityRank[left.highestSeverity];
+      if (bySeverity !== 0) return bySeverity;
+      return left.label.localeCompare(right.label);
+    })
+    .slice(0, limit);
+}
+
 function summarizePayloadPreview(payload: Record<string, unknown>) {
   const keys = Object.keys(payload).filter((key) => key !== "__raw");
   const internalKeys = keys.filter((key) => key.startsWith("__"));
@@ -12050,6 +12230,7 @@ async function bootstrap() {
             const selfHealing = governance.repairs;
             const queueQueued = queue.getQueuedCount();
             const queueProcessing = queue.getPendingCount();
+            const queueSnapshot = queue.getSnapshot();
             const knowledge = knowledgeIntegration.getSummary();
             const knowledgeRuntime = buildKnowledgeRuntimeSignals({
               summary: knowledge,
@@ -12094,6 +12275,7 @@ async function bootstrap() {
               queue: {
                 queued: queueQueued,
                 processing: queueProcessing,
+                pressure: buildDashboardQueuePressure(queueSnapshot),
               },
               approvals: {
                 pendingCount: pendingApprovals.length,
@@ -12105,7 +12287,12 @@ async function bootstrap() {
                 summary: selfHealing,
               },
               governance,
-              incidents,
+              incidents: {
+                ...incidents,
+                topClassifications: buildDashboardIncidentClassifications(
+                  state.incidentLedger,
+                ),
+              },
               recentTasks: state.taskHistory.slice(-20),
             };
           },

@@ -29,7 +29,11 @@ export interface DashboardOverview {
       budgetDate?: string | null;
     } | null;
   };
-  queue: { queued: number; processing: number };
+  queue: {
+    queued: number;
+    processing: number;
+    pressure?: DashboardQueuePressureItem[];
+  };
   approvals: { pendingCount: number; pending: PendingApprovalItem[] };
   governance: {
     approvals: number;
@@ -38,8 +42,38 @@ export interface DashboardOverview {
   };
   truthLayers?: RuntimeTruthLayers;
   topology?: AgentTopology;
-  incidents?: RuntimeIncidentModel;
+  incidents?: RuntimeIncidentModel & {
+    topClassifications?: DashboardIncidentClassificationItem[];
+  };
   recentTasks: RecentTask[];
+}
+
+export interface DashboardQueuePressureItem {
+  type: string;
+  label: string;
+  source: string;
+  queuedCount: number;
+  processingCount: number;
+  totalCount: number;
+  oldestCreatedAt?: string | null;
+  newestCreatedAt?: string | null;
+}
+
+export interface DashboardIncidentClassificationItem {
+  classification:
+    | "runtime-mode"
+    | "persistence"
+    | "proof-delivery"
+    | "repair"
+    | "retry-recovery"
+    | "knowledge"
+    | "service-runtime"
+    | "approval-backlog";
+  label: string;
+  count: number;
+  activeCount: number;
+  watchingCount: number;
+  highestSeverity: "info" | "warning" | "critical";
 }
 
 export interface GovernedSkillsSummary {
@@ -65,6 +99,9 @@ export interface RecentTask {
   completedAt?: string;
   createdAt?: string;
   handledAt?: string;
+  repeatCount?: number;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
 }
 
 // ── Health ──

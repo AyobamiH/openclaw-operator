@@ -958,12 +958,33 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
   it('exposes enriched incidents and persists acknowledgement and owner updates', async () => {
     const overview = await fetchProtected<{
+      queue?: {
+        pressure?: Array<{
+          type?: string;
+          source?: string;
+          queuedCount?: number;
+          processingCount?: number;
+        }>;
+      };
       incidents?: {
         openCount?: number;
+        topClassifications?: Array<{
+          classification?: string;
+          label?: string;
+          count?: number;
+          highestSeverity?: string;
+        }>;
       };
     }>('/api/dashboard/overview');
 
     expect(overview.incidents?.openCount ?? 0).toBeGreaterThan(0);
+    expect(Array.isArray(overview.queue?.pressure)).toBe(true);
+    expect(Array.isArray(overview.incidents?.topClassifications)).toBe(true);
+    expect((overview.incidents?.topClassifications ?? []).length).toBeGreaterThan(0);
+    expect(overview.incidents?.topClassifications?.[0]?.classification).toBeTruthy();
+    expect(overview.incidents?.topClassifications?.[0]?.label).toBeTruthy();
+    expect(overview.incidents?.topClassifications?.[0]?.count ?? 0).toBeGreaterThan(0);
+    expect(overview.incidents?.topClassifications?.[0]?.highestSeverity).toBeTruthy();
     const listPayload = await fetchProtected<{
       incidents?: Array<{
         id?: string;

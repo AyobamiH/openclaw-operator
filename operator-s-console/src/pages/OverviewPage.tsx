@@ -23,7 +23,11 @@ import {
   Wrench,
 } from "lucide-react";
 import { bool, num, str, toArray, toNullableString } from "@/lib/safe-render";
-import type { RecentTask } from "@/types/console";
+import type {
+  DashboardIncidentClassificationItem,
+  DashboardQueuePressureItem,
+  RecentTask,
+} from "@/types/console";
 
 interface OverviewVM {
   healthStatus: string;
@@ -35,10 +39,12 @@ interface OverviewVM {
   remainingBudgetCalls: number | null;
   queued: number;
   processing: number;
+  queuePressure: QueuePressureVM[];
   pendingApprovals: number;
   retryRecoveries: number;
   openIncidents: number;
   watchingIncidents: number;
+  incidentClassifications: IncidentClassificationVM[];
   recentTasks: RecentTask[];
 }
 
@@ -53,12 +59,35 @@ interface ProofWidgetVM {
   stale: boolean;
   evidenceCount: number;
   activeLaneCount: number;
+  statusLabel: string;
+  badgeLabel: string;
+  detail: string;
+  tone: "healthy" | "warning" | "info" | "neutral";
 }
 
 interface AgentSignalVM {
   declaredCount: number;
   serviceAvailableCount: number;
+  serviceExpectedCount: number;
   serviceRunningCount: number;
+}
+
+interface QueuePressureVM {
+  type: string;
+  label: string;
+  source: string;
+  queuedCount: number;
+  processingCount: number;
+  totalCount: number;
+}
+
+interface IncidentClassificationVM {
+  classification: DashboardIncidentClassificationItem["classification"];
+  label: string;
+  count: number;
+  activeCount: number;
+  watchingCount: number;
+  highestSeverity: DashboardIncidentClassificationItem["highestSeverity"];
 }
 
 interface ActionTaskVM {
@@ -79,6 +108,123 @@ interface AttentionItemVM {
   detail: string;
   route: string;
   tone: "warning" | "healthy" | "info";
+}
+
+function buildQueuePressureVM(queue: any): QueuePressureVM[] {
+  return toArray<DashboardQueuePressureItem>(queue?.pressure)
+    .map((item) => ({
+      type: str(item?.type, "unknown"),
+      label: str(item?.label, "Unknown Task"),
+      source: str(item?.source, "System"),
+      queuedCount: num(item?.queuedCount),
+      processingCount: num(item?.processingCount),
+      totalCount: num(item?.totalCount),
+    }))
+    .filter((item) => item.totalCount > 0);
+}
+
+function buildIncidentClassificationVM(incidents: any): IncidentClassificationVM[] {
+  return toArray<DashboardIncidentClassificationItem>(incidents?.topClassifications)
+    .map((item) => ({
+      classification: str(item?.classification, "knowledge") as IncidentClassificationVM["classification"],
+      label: str(item?.label, "Unknown"),
+      count: num(item?.count),
+      activeCount: num(item?.activeCount),
+      watchingCount: num(item?.watchingCount),
+      highestSeverity: str(item?.highestSeverity, "info") as IncidentClassificationVM["highestSeverity"],
+    }))
+    .filter((item) => item.count > 0);
+}
+
+function collapseRepeatedRecentTasks(tasks: RecentTask[]) {
+  const collapsed: RecentTask[] = [];
+
+  for (const task of tasks) {
+    const previous = collapsed.at(-1);
+    const signature = [
+      str(task.type, "unknown"),
+      str(task.status, "unknown"),
+      str(task.label ?? task.message ?? "", ""),
+      str(task.result ?? "", ""),
+      str(task.agent ?? "", ""),
+    ].join("|");
+    const previousSignature = previous
+      ? [
+          str(previous.type, "unknown"),
+          str(previous.status, "unknown"),
+          str(previous.label ?? previous.message ?? "", ""),
+          str(previous.result ?? "", ""),
+          str(previous.agent ?? "", ""),
+        ].join("|")
+      : null;
+
+    if (previous && previousSignature === signature) {
+      previous.repeatCount = (previous.repeatCount ?? 1) + 1;
+      previous.firstSeenAt =
+        previous.firstSeenAt ??
+        previous.handledAt ??
+        previous.completedAt ??
+        previous.startedAt ??
+        previous.createdAt;
+      previous.lastSeenAt =
+        task.handledAt ??
+        task.completedAt ??
+        task.startedAt ??
+        task.createdAt ??
+        previous.lastSeenAt;
+      continue;
+    }
+
+    collapsed.push({
+      ...task,
+      repeatCount: task.repeatCount ?? 1,
+      firstSeenAt:
+        task.handledAt ??
+        task.completedAt ??
+        task.startedAt ??
+        task.createdAt,
+      lastSeenAt:
+        task.handledAt ??
+        task.completedAt ??
+        task.startedAt ??
+        task.createdAt,
+    });
+  }
+
+  return collapsed;
+}
+
+function isTimeoutLikeError(error: unknown) {
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : str((error as { message?: string } | null | undefined)?.message, "").toLowerCase();
+  return (
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("abort") ||
+    message.includes("failed to fetch")
+  );
+}
+
+function buildQueuePressureSummary(queuePressure: QueuePressureVM[]) {
+  if (queuePressure.length === 0) {
+    return "No queue hotspot is currently dominating the execution ledger.";
+  }
+
+  return queuePressure
+    .slice(0, 2)
+    .map((item) => {
+      const parts: string[] = [];
+      if (item.queuedCount > 0) {
+        parts.push(`${item.queuedCount} queued`);
+      }
+      if (item.processingCount > 0) {
+        parts.push(`${item.processingCount} processing`);
+      }
+      return `${item.label} (${item.source}) ${parts.join(" · ")}`;
+    })
+    .join(" · ");
 }
 
 function buildOverviewVM(dashboard: any): OverviewVM {
@@ -103,38 +249,90 @@ function buildOverviewVM(dashboard: any): OverviewVM {
       typeof budget?.remainingLlmCalls === "number" ? budget.remainingLlmCalls : null,
     queued: num(queue?.queued),
     processing: num(queue?.processing),
+    queuePressure: buildQueuePressureVM(queue),
     pendingApprovals: num(approvals?.pendingCount),
     retryRecoveries: num(governance?.taskRetryRecoveries),
     openIncidents: num(incidents?.openCount),
     watchingIncidents: num(incidents?.watchingCount),
-    recentTasks: rawTasks.map((task: any) => {
-      const rawStatus = str(task?.result ?? task?.status, "unknown");
-      const normalizedStatus =
-        rawStatus === "ok" ? "success" : rawStatus === "error" ? "failed" : rawStatus;
+    incidentClassifications: buildIncidentClassificationVM(incidents),
+    recentTasks: collapseRepeatedRecentTasks(
+      rawTasks.map((task: any) => {
+        const rawStatus = str(task?.result ?? task?.status, "unknown");
+        const normalizedStatus =
+          rawStatus === "ok" ? "success" : rawStatus === "error" ? "failed" : rawStatus;
 
-      return {
-        id: str(task?.id ?? task?.taskId, ""),
-        taskId: str(task?.taskId ?? task?.id, ""),
-        type: str(task?.type, "unknown"),
-        label: str(task?.message ?? task?.label ?? task?.type, "unknown"),
-        message: toNullableString(task?.message) ?? undefined,
-        status: normalizedStatus,
-        result: toNullableString(task?.result) ?? undefined,
-        agent: str(task?.agent ?? "system", "system"),
-        startedAt: toNullableString(task?.startedAt ?? task?.handledAt) ?? undefined,
-        completedAt: toNullableString(task?.completedAt ?? task?.handledAt) ?? undefined,
-        createdAt: toNullableString(task?.createdAt) ?? undefined,
-        handledAt: toNullableString(task?.handledAt) ?? undefined,
-      };
-    }),
+        return {
+          id: str(task?.id ?? task?.taskId, ""),
+          taskId: str(task?.taskId ?? task?.id, ""),
+          type: str(task?.type, "unknown"),
+          label: str(task?.message ?? task?.label ?? task?.type, "unknown"),
+          message: toNullableString(task?.message) ?? undefined,
+          status: normalizedStatus,
+          result: toNullableString(task?.result) ?? undefined,
+          agent: str(task?.agent ?? "system", "system"),
+          startedAt: toNullableString(task?.startedAt ?? task?.handledAt) ?? undefined,
+          completedAt: toNullableString(task?.completedAt ?? task?.handledAt) ?? undefined,
+          createdAt: toNullableString(task?.createdAt) ?? undefined,
+          handledAt: toNullableString(task?.handledAt) ?? undefined,
+        };
+      }),
+    ),
   };
 }
 
-function buildProofWidgetVM(proof: any): ProofWidgetVM | null {
-  if (!proof) return null;
+function buildProofWidgetVM(args: {
+  proof: any;
+  isLoading: boolean;
+  isError: boolean;
+  error: unknown;
+}): ProofWidgetVM {
+  const { proof, isLoading, isError, error } = args;
+  if (!proof) {
+    if (isLoading) {
+      return {
+        onTrack: 0,
+        atRisk: 0,
+        blocked: 0,
+        completed: 0,
+        latestClaim: null,
+        latestScope: null,
+        latestTimestamp: null,
+        stale: false,
+        evidenceCount: 0,
+        activeLaneCount: 0,
+        statusLabel: "Polling",
+        badgeLabel: "pending",
+        detail: "The public proof surface is still polling for its first fresh runtime snapshot.",
+        tone: "info",
+      };
+    }
+    return {
+      onTrack: 0,
+      atRisk: 0,
+      blocked: 0,
+      completed: 0,
+      latestClaim: null,
+      latestScope: null,
+      latestTimestamp: null,
+      stale: false,
+      evidenceCount: 0,
+      activeLaneCount: 0,
+      statusLabel: isError && isTimeoutLikeError(error) ? "Timed Out" : "Unavailable",
+      badgeLabel: "warning",
+      detail:
+        isError && isTimeoutLikeError(error)
+          ? "The public proof route is timing out, so private operator truth may be ahead."
+          : "The public evidence surface is not reporting yet.",
+      tone: "warning",
+    };
+  }
 
   const risk = proof?.riskCounts ?? {};
   const latest = proof?.latest;
+  const evidenceCount = num(proof?.evidenceCount);
+  const activeLaneCount = num(proof?.activeLaneCount);
+  const stale = bool(proof?.stale);
+  const emptyButHealthy = evidenceCount === 0 && activeLaneCount === 0 && !latest && !stale;
 
   return {
     onTrack: num(risk?.onTrack),
@@ -144,9 +342,17 @@ function buildProofWidgetVM(proof: any): ProofWidgetVM | null {
     latestClaim: toNullableString(latest?.claim),
     latestScope: toNullableString(latest?.scope),
     latestTimestamp: toNullableString(latest?.timestampUtc),
-    stale: bool(proof?.stale),
-    evidenceCount: num(proof?.evidenceCount),
-    activeLaneCount: num(proof?.activeLaneCount),
+    stale,
+    evidenceCount,
+    activeLaneCount,
+    statusLabel: stale ? "Stale" : emptyButHealthy ? "Empty but live" : "Publishing",
+    badgeLabel: stale ? "catching-up" : emptyButHealthy ? "live" : "publishing",
+    detail: stale
+      ? "Public proof is up, but its visible evidence window is behind the active runtime."
+      : emptyButHealthy
+        ? "Public proof is healthy, but no publishable evidence has been emitted into the feed yet."
+        : `${evidenceCount} evidence entr${evidenceCount === 1 ? "y" : "ies"} across ${activeLaneCount} live lane${activeLaneCount === 1 ? "" : "s"}.`,
+    tone: stale ? "warning" : emptyButHealthy ? "healthy" : "info",
   };
 }
 
@@ -156,6 +362,7 @@ function buildAgentSignalVM(agentsData: any): AgentSignalVM {
   return {
     declaredCount: agents.length,
     serviceAvailableCount: agents.filter((agent: any) => bool(agent?.serviceAvailable ?? agent?.serviceOperational)).length,
+    serviceExpectedCount: agents.filter((agent: any) => bool(agent?.serviceExpected)).length,
     serviceRunningCount: agents.filter((agent: any) => agent?.serviceRunning === true).length,
   };
 }
@@ -227,7 +434,7 @@ function buildActionTasks(catalog: any): ActionTaskVM[] {
     });
 }
 
-function buildAttentionItems(vm: OverviewVM, proofVM: ProofWidgetVM | null): AttentionItemVM[] {
+function buildAttentionItems(vm: OverviewVM, proofVM: ProofWidgetVM): AttentionItemVM[] {
   const items: AttentionItemVM[] = [];
 
   if (vm.pendingApprovals > 0) {
@@ -280,7 +487,15 @@ function buildAttentionItems(vm: OverviewVM, proofVM: ProofWidgetVM | null): Att
     });
   }
 
-  if (proofVM?.stale) {
+  if (proofVM?.statusLabel === "Timed Out") {
+    items.push({
+      id: "proof-timeout",
+      title: "Public proof polling timed out",
+      detail: "The public evidence route is reachable enough to matter, but not completing cleanly.",
+      route: "/public-proof",
+      tone: "warning",
+    });
+  } else if (proofVM?.stale) {
     items.push({
       id: "proof",
       title: "Public proof is stale",
@@ -386,10 +601,23 @@ export default function OverviewPage() {
   const { data: dashboard, isLoading, isError, error } = useDashboardOverview();
   const { data: agentsData } = useAgentsOverview();
   const { data: catalog } = useTaskCatalog();
-  const { data: proof } = useCommandCenterOverview();
+  const {
+    data: proof,
+    isLoading: proofLoading,
+    isError: proofError,
+    error: proofRouteError,
+  } = useCommandCenterOverview();
 
   const vm = useMemo(() => buildOverviewVM(dashboard), [dashboard]);
-  const proofVM = useMemo(() => buildProofWidgetVM(proof), [proof]);
+  const proofVM = useMemo(
+    () => buildProofWidgetVM({
+      proof,
+      isLoading: proofLoading,
+      isError: proofError,
+      error: proofRouteError,
+    }),
+    [proof, proofError, proofLoading, proofRouteError],
+  );
   const agentSignal = useMemo(() => buildAgentSignalVM(agentsData), [agentsData]);
   const actionTasks = useMemo(() => buildActionTasks(catalog).slice(0, 4), [catalog]);
   const attentionItems = useMemo(() => buildAttentionItems(vm, proofVM), [proofVM, vm]);
@@ -440,7 +668,7 @@ export default function OverviewPage() {
             <StatusBadge label={vm.healthStatus} size="sm" />
             <StatusBadge label={vm.persistenceStatus} size="sm" />
             {vm.fastStartMode && <StatusBadge label="fast-start" size="sm" />}
-            {proofVM?.stale && <StatusBadge label="proof stale" size="sm" />}
+            {(proofVM.stale || proofVM.statusLabel === "Timed Out") && <StatusBadge label="proof stale" size="sm" />}
           </div>
         </div>
       </div>
@@ -505,29 +733,66 @@ export default function OverviewPage() {
           </button>
         )}
       >
-        {attentionItems.length > 0 ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
-            {attentionItems.map((item) => (
-              <AttentionRailItem
-                key={item.id}
-                item={item}
-                onOpen={() => navigate(item.route)}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className="console-inset p-4 rounded-sm flex items-center gap-3">
-            <CheckCircle2 className="w-4 h-4 text-status-healthy shrink-0" />
-            <div>
-              <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-status-healthy">
-                No immediate operator action required
-              </p>
-              <p className="mt-1 text-[10px] font-mono text-muted-foreground">
-                Queue, approvals, incidents, persistence, and public proof are not currently signaling urgent intervention.
-              </p>
+        <div className="space-y-3">
+          {attentionItems.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+              {attentionItems.map((item) => (
+                <AttentionRailItem
+                  key={item.id}
+                  item={item}
+                  onOpen={() => navigate(item.route)}
+                />
+              ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="console-inset p-4 rounded-sm flex items-center gap-3">
+              <CheckCircle2 className="w-4 h-4 text-status-healthy shrink-0" />
+              <div>
+                <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-status-healthy">
+                  No immediate operator action required
+                </p>
+                <p className="mt-1 text-[10px] font-mono text-muted-foreground">
+                  Queue, approvals, incidents, persistence, and public proof are not currently signaling urgent intervention.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {vm.incidentClassifications.length > 0 && (
+            <div className="console-inset p-3 rounded-sm space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                  Top Incident Classifications
+                </p>
+                <button
+                  type="button"
+                  onClick={() => navigate("/incidents")}
+                  className="text-[9px] font-mono uppercase tracking-wider text-primary hover:text-primary/80 transition-colors"
+                >
+                  Review Queue
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {vm.incidentClassifications.map((item) => (
+                  <div
+                    key={item.classification}
+                    className="rounded-sm border border-border/60 bg-panel-highlight/10 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.08em] text-foreground">
+                        {item.label}
+                      </p>
+                      <StatusBadge label={item.highestSeverity} size="sm" />
+                    </div>
+                    <p className="mt-2 text-[10px] font-mono text-muted-foreground">
+                      {item.count} open · {item.activeCount} active · {item.watchingCount} watching
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </SummaryCard>
 
       <SummaryCard
@@ -548,7 +813,7 @@ export default function OverviewPage() {
             title="Queue"
             icon={<ListTodo className="w-4 h-4" />}
             value={`${vm.queued} queued`}
-            detail={`${vm.processing} processing now. Queue pressure belongs to tasks and runs.`}
+            detail={`${vm.processing} processing now. ${buildQueuePressureSummary(vm.queuePressure)}`}
             routeLabel="Tasks + Runs"
             tone={vm.queued > 0 || vm.processing > 0 ? "info" : "neutral"}
             onOpen={() => navigate("/task-runs")}
@@ -565,8 +830,8 @@ export default function OverviewPage() {
           <SnapshotStage
             title="Agents"
             icon={<Bot className="w-4 h-4" />}
-            value={`${agentSignal.serviceRunningCount}/${agentSignal.declaredCount}`}
-            detail={`${agentSignal.serviceAvailableCount} service entrypoints are available in the active catalog.`}
+            value={`${agentSignal.declaredCount} declared`}
+            detail={`${agentSignal.serviceRunningCount} host-running · ${agentSignal.serviceAvailableCount} entrypoints available · ${agentSignal.serviceExpectedCount} service-expected.`}
             routeLabel="Agents"
             tone={agentSignal.serviceRunningCount > 0 ? "healthy" : "neutral"}
             onOpen={() => navigate("/agents")}
@@ -574,13 +839,50 @@ export default function OverviewPage() {
           <SnapshotStage
             title="Public Proof"
             icon={<Globe className="w-4 h-4" />}
-            value={!proofVM ? "Unavailable" : proofVM.stale ? "Stale" : "Publishing"}
-            detail={proofVM ? `${proofVM.evidenceCount} evidence entries across ${proofVM.activeLaneCount} live lanes.` : "Public evidence surface is not reporting yet."}
+            value={proofVM.statusLabel}
+            detail={proofVM.detail}
             routeLabel="Public Proof"
-            tone={!proofVM || proofVM.stale ? "warning" : "info"}
+            tone={proofVM.tone}
             onOpen={() => navigate("/public-proof")}
           />
         </div>
+
+        {vm.queuePressure.length > 0 && (
+          <div className="console-inset mt-3 p-3 rounded-sm space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                Queue Pressure Sources
+              </p>
+              <button
+                type="button"
+                onClick={() => navigate("/task-runs")}
+                className="text-[9px] font-mono uppercase tracking-wider text-primary hover:text-primary/80 transition-colors"
+              >
+                Open Runs
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {vm.queuePressure.slice(0, 4).map((item) => (
+                <div
+                  key={`${item.type}:${item.source}`}
+                  className="rounded-sm border border-border/60 bg-panel-highlight/10 px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.08em] text-foreground">
+                      {item.label}
+                    </p>
+                    <span className="text-[9px] font-mono uppercase tracking-wider text-primary">
+                      {item.source}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[10px] font-mono text-muted-foreground">
+                    {item.queuedCount} queued · {item.processingCount} processing · {item.totalCount} total pressure
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </SummaryCard>
 
       <SummaryCard
@@ -642,52 +944,53 @@ export default function OverviewPage() {
             </button>
           )}
         >
-          {proofVM ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <StatusBadge label={proofVM.stale ? "stale" : "live"} size="sm" />
-                <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
-                  {proofVM.evidenceCount} evidence · {proofVM.activeLaneCount} lanes
-                </span>
-              </div>
-
-              <div className="console-inset p-3 rounded-sm space-y-2">
-                <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
-                  Latest Public Claim
-                </p>
-                {proofVM.latestClaim ? (
-                  <>
-                    <div className="flex items-start gap-2">
-                      <Milestone className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
-                      <p className="text-[11px] font-mono text-foreground leading-relaxed">{proofVM.latestClaim}</p>
-                    </div>
-                    <p className="text-[9px] font-mono text-muted-foreground">
-                      {proofVM.latestScope ?? "public-proof"} · {proofVM.latestTimestamp
-                        ? formatDistanceToNow(new Date(proofVM.latestTimestamp), { addSuffix: true })
-                        : "no timestamp"}
-                    </p>
-                  </>
-                ) : (
-                  <p className="text-[10px] font-mono text-muted-foreground">
-                    No public milestone has been emitted yet.
-                  </p>
-                )}
-              </div>
-
-              <div className="console-inset p-3 rounded-sm">
-                <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
-                  Public proof is intentionally separate from private operator certainty. It proves publishable evidence,
-                  not every internal runtime state transition.
-                </p>
-              </div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <StatusBadge label={proofVM.badgeLabel} size="sm" />
+              <span className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                {proofVM.statusLabel}
+              </span>
             </div>
-          ) : (
-            <div className="console-inset p-4 rounded-sm">
-              <p className="text-[10px] font-mono text-muted-foreground">
-                Public proof data is not available yet. Internal operator truth may still be live.
+
+            <div className="console-inset p-3 rounded-sm space-y-2">
+              <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                Public Proof State
+              </p>
+              <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                {proofVM.detail}
               </p>
             </div>
-          )}
+
+            <div className="console-inset p-3 rounded-sm space-y-2">
+              <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                Latest Public Claim
+              </p>
+              {proofVM.latestClaim ? (
+                <>
+                  <div className="flex items-start gap-2">
+                    <Milestone className="w-3.5 h-3.5 text-primary mt-0.5 shrink-0" />
+                    <p className="text-[11px] font-mono text-foreground leading-relaxed">{proofVM.latestClaim}</p>
+                  </div>
+                  <p className="text-[9px] font-mono text-muted-foreground">
+                    {proofVM.latestScope ?? "public-proof"} · {proofVM.latestTimestamp
+                      ? formatDistanceToNow(new Date(proofVM.latestTimestamp), { addSuffix: true })
+                      : "no timestamp"}
+                  </p>
+                </>
+              ) : (
+                <p className="text-[10px] font-mono text-muted-foreground">
+                  No public milestone has been emitted yet.
+                </p>
+              )}
+            </div>
+
+            <div className="console-inset p-3 rounded-sm">
+              <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                Public proof is intentionally separate from private operator certainty. It proves publishable evidence,
+                not every internal runtime state transition.
+              </p>
+            </div>
+          </div>
         </SummaryCard>
       </div>
     </div>
