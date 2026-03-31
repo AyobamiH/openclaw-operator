@@ -24,13 +24,6 @@ import {
   fetchSkillsAudit,
   fetchMemoryRecall,
   submitKnowledgeQuery,
-  fetchReviewSessions,
-  fetchReviewSessionDetail,
-  updateReviewSessionBucket,
-  addReviewSessionNote,
-  linkReviewSessionRun,
-  stopReviewSession,
-  exportReviewSession,
 } from "@/lib/api";
 import type { KnowledgeQueryRequest } from "@/types/console";
 import { jitteredInterval, nextProtectedPollInterval } from "@/lib/polling";
@@ -277,76 +270,5 @@ export function useMemoryRecall(params?: {
 export function useKnowledgeQuery() {
   return useMutation({
     mutationFn: (body: KnowledgeQueryRequest) => submitKnowledgeQuery(body),
-  });
-}
-
-export function useReviewSessions() {
-  return useQuery({
-    queryKey: ["review-sessions"],
-    queryFn: fetchReviewSessions,
-    refetchInterval: (query) => nextProtectedPollInterval(15000, query.state.error as { status?: number } | null),
-  });
-}
-
-export function useReviewSessionDetail(id: string | null) {
-  return useQuery({
-    queryKey: ["review-session-detail", id],
-    queryFn: () => fetchReviewSessionDetail(id!),
-    enabled: !!id,
-    refetchInterval: (query) => nextProtectedPollInterval(15000, query.state.error as { status?: number } | null),
-  });
-}
-
-export function useReviewSessionBucket() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, bucket, note }: { id: string; bucket: string; note?: string }) =>
-      updateReviewSessionBucket(id, { bucket, note }),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: ["review-sessions"] });
-      qc.invalidateQueries({ queryKey: ["review-session-detail", variables.id] });
-    },
-  });
-}
-
-export function useReviewSessionNote() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, bucket, text }: { id: string; bucket: string; text: string }) =>
-      addReviewSessionNote(id, { bucket, text }),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: ["review-sessions"] });
-      qc.invalidateQueries({ queryKey: ["review-session-detail", variables.id] });
-    },
-  });
-}
-
-export function useReviewSessionLinkRun() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, runId }: { id: string; runId: string }) => linkReviewSessionRun(id, runId),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: ["review-sessions"] });
-      qc.invalidateQueries({ queryKey: ["review-session-detail", variables.id] });
-      qc.invalidateQueries({ queryKey: ["tasks-runs"] });
-    },
-  });
-}
-
-export function useReviewSessionStop() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => stopReviewSession(id),
-    onSuccess: (_result, id) => {
-      qc.invalidateQueries({ queryKey: ["review-sessions"] });
-      qc.invalidateQueries({ queryKey: ["review-session-detail", id] });
-    },
-  });
-}
-
-export function useReviewSessionExport() {
-  return useMutation({
-    mutationFn: ({ id, format }: { id: string; format: "json" | "markdown" }) =>
-      exportReviewSession(id, format),
   });
 }

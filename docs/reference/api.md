@@ -68,14 +68,6 @@ Protected operator routes (bearer token):
 - `POST /api/tasks/trigger`
 - `GET /api/tasks/runs`
 - `GET /api/tasks/runs/:runId`
-- `POST /api/review-sessions/bootstrap-handoff`
-- `GET /api/review-sessions`
-- `GET /api/review-sessions/:id`
-- `POST /api/review-sessions/:id/bucket`
-- `POST /api/review-sessions/:id/note`
-- `POST /api/review-sessions/:id/link-run`
-- `POST /api/review-sessions/:id/stop`
-- `GET /api/review-sessions/:id/export`
 - `GET /api/approvals/pending`
 - `POST /api/approvals/:id/decision`
 - `GET /api/incidents`
@@ -149,23 +141,10 @@ Operator Console contract truth:
   orchestrator milestone feed surfaces for latest visible proof and proof-risk
   items.
 - `GET /api/auth/me`: protected auth identity surface.
-- `POST /api/review-sessions/bootstrap-handoff`: protected bootstrap seam. The bootstrap helper creates a persisted `pending_handoff` session before startup, then the orchestrator accepts this route only to promote that existing session to `active` after startup ownership is transferred.
-- `GET /api/review-sessions` and `GET /api/review-sessions/:id`: protected review-session ledger and detail surfaces.
-- `POST /api/review-sessions/:id/bucket`, `POST /api/review-sessions/:id/note`, and `POST /api/review-sessions/:id/link-run`: protected operator mutation routes for active review sessions only.
-- `POST /api/review-sessions/:id/stop`: protected terminal transition from `active` to `completed`.
-- `GET /api/review-sessions/:id/export`: protected export surface for review-session evidence snapshots.
 - `GET /api/persistence/health`: public persistence dependency truth, now
   including first-slice coordination status for Redis-backed claims, locks, and
   shared helper budgets.
 - `/system-health`: not a backend route; it is a frontend-only page path.
-
-### Review Session Lifecycle Contract
-
-- Lifecycle states are exactly `pending_handoff`, `active`, `completed`, and `handoff_failed`.
-- The bootstrap helper is responsible for creating the persisted `pending_handoff` record before orchestrator startup.
-- The orchestrator owns the transition from `pending_handoff` to `active` when `POST /api/review-sessions/bootstrap-handoff` succeeds.
-- `completed` and `handoff_failed` are terminal. Review-session note and run-link mutation is allowed only while the session is `active`.
-- `POST /api/review-sessions/:id/link-run` validates the provided identifier against canonical task execution truth before storing the linked run.
 
 ### Operator Console Rendering Guardrails
 

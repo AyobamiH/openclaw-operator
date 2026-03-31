@@ -161,14 +161,6 @@ This matrix is about backend route exposure, not current frontend implementation
 | `POST /api/tasks/trigger` | operator | Yes | Yes | Expose now | Curated tasks only. Frontends should not assume the full allowlist is user-facing. |
 | `GET /api/tasks/runs` | viewer | Yes | Yes | Expose now | First-class run visibility surface. |
 | `GET /api/tasks/runs/:runId` | viewer | Yes | Yes | Expose now | Full run detail / workflow graph / repair linkage surface. |
-| `POST /api/review-sessions/bootstrap-handoff` | operator | No | No | Internal-only | Bootstrap-to-orchestrator seam. Used only to promote an already persisted `pending_handoff` session into `active`. |
-| `GET /api/review-sessions` | viewer | Yes | Yes | Expose now | Review-session ledger for the canonical private operator console. |
-| `GET /api/review-sessions/:id` | viewer | Yes | Yes | Expose now | Review-session detail and sample stream. |
-| `POST /api/review-sessions/:id/bucket` | operator | Yes | Yes | Expose now | Active-session bucket control only. |
-| `POST /api/review-sessions/:id/note` | operator | Yes | Yes | Expose now | Active-session note capture only. |
-| `POST /api/review-sessions/:id/link-run` | operator | Yes | Yes | Expose now | Active-session run linking only; identifiers must match canonical task execution truth. |
-| `POST /api/review-sessions/:id/stop` | operator | Yes | Yes | Expose now | Completes an active review session. |
-| `GET /api/review-sessions/:id/export` | viewer | Yes | Yes | Expose now | Review-session export for evidence handoff. |
 | `GET /api/approvals/pending` | operator | Yes | Yes | Expose now | Approval inbox for sensitive or review-gated flows. |
 | `POST /api/approvals/:id/decision` | operator | Yes | Yes | Expose now | Action route; keep operator-only. |
 | `GET /api/incidents` | viewer | Yes | Yes | Expose now | Core incident queue / ledger surface. |
@@ -193,7 +185,6 @@ This matrix is about backend route exposure, not current frontend implementation
 ### Route Policy Notes
 
 - `operator-s-console` should not be forced to mirror every valid backend route.
-- Review Session uses a strict four-state lifecycle: `pending_handoff` is created by the bootstrap helper before orchestrator startup, orchestrator promotes only `pending_handoff -> active`, and `completed` plus `handoff_failed` are terminal.
 - `GET /api/persistence/historical` is valid backend truth, but it is still
   reasonable to keep it out of both current consoles until a historical ops use
   case is designed.

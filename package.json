@@ -3,7 +3,6 @@
   "private": true,
   "scripts": {
     "postinstall": "npm --prefix orchestrator install && npm --prefix operator-s-console install",
-    "review-session:start": "node scripts/review-session/bootstrap.mjs",
     "dev": "npm run build:operator-ui && npm --prefix orchestrator run dev",
     "start": "npm --prefix orchestrator run start",
     "build:operator-ui": "npm --prefix operator-s-console run build",

@@ -1,7 +1,7 @@
 // Real API layer for OpenClaw Operator Console
 // Calls live backend endpoints per Integration Contract V1
 
-import { apiFetch, apiFetchText } from "@/lib/api-client";
+import { apiFetch } from "@/lib/api-client";
 import type {
   DashboardOverview,
   HealthResponse,
@@ -32,8 +32,6 @@ import type {
   CommandCenterDemandResponse,
   MilestoneFeedResponse,
   MilestoneDeadLetterResponse,
-  ReviewSessionDetailResponse,
-  ReviewSessionsOverviewResponse,
 } from "@/types/console";
 
 // ── Dashboard ──
@@ -221,57 +219,3 @@ export const fetchCommandCenterDemandLive = () =>
 
 export const fetchMilestonesDeadLetter = () =>
   apiFetch<MilestoneDeadLetterResponse>("/api/milestones/dead-letter");
-
-export const fetchReviewSessions = () =>
-  apiFetch<ReviewSessionsOverviewResponse>("/api/review-sessions");
-
-export const fetchReviewSessionDetail = (id: string) =>
-  apiFetch<ReviewSessionDetailResponse>(`/api/review-sessions/${encodeURIComponent(id)}`);
-
-export const updateReviewSessionBucket = (
-  id: string,
-  body: { bucket: string; note?: string },
-) =>
-  apiFetch<{ status: "ok"; session: ReviewSessionDetailResponse["session"] }>(
-    `/api/review-sessions/${encodeURIComponent(id)}/bucket`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
-
-export const addReviewSessionNote = (
-  id: string,
-  body: { bucket: string; text: string },
-) =>
-  apiFetch<{ status: "ok"; session: ReviewSessionDetailResponse["session"] }>(
-    `/api/review-sessions/${encodeURIComponent(id)}/note`,
-    {
-      method: "POST",
-      body: JSON.stringify(body),
-    },
-  );
-
-export const linkReviewSessionRun = (id: string, runId: string) =>
-  apiFetch<{ status: "ok"; session: ReviewSessionDetailResponse["session"] }>(
-    `/api/review-sessions/${encodeURIComponent(id)}/link-run`,
-    {
-      method: "POST",
-      body: JSON.stringify({ runId }),
-    },
-  );
-
-export const stopReviewSession = (id: string) =>
-  apiFetch<{ status: "ok"; session: ReviewSessionDetailResponse["session"] }>(
-    `/api/review-sessions/${encodeURIComponent(id)}/stop`,
-    {
-      method: "POST",
-    },
-  );
-
-export const exportReviewSession = (id: string, format: "json" | "markdown") => {
-  const path = `/api/review-sessions/${encodeURIComponent(id)}/export?format=${format}`;
-  return format === "markdown"
-    ? apiFetchText(path)
-    : apiFetch<ReviewSessionDetailResponse>(path);
-};
