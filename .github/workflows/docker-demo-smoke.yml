@@ -1,0 +1,35 @@
+name: Docker Demo Smoke
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "docker-compose.override.example.yml"
+      - "package.json"
+      - "scripts/docker-demo-smoke.sh"
+      - "orchestrator/**"
+      - "operator-s-console/**"
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - "Dockerfile"
+      - "docker-compose.yml"
+      - "docker-compose.override.example.yml"
+      - "package.json"
+      - "scripts/docker-demo-smoke.sh"
+      - "orchestrator/**"
+      - "operator-s-console/**"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run official Docker demo smoke
+        run: CLEANUP_ON_EXIT=1 bash scripts/docker-demo-smoke.sh

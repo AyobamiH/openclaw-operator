@@ -47,6 +47,7 @@ localhost-only port.
 ```bash
 cd openclaw-operator
 docker compose up -d --build
+npm run docker:demo:smoke
 ```
 
 Open `http://127.0.0.1:4300/operator`.
@@ -67,6 +68,7 @@ If you want real provider keys, different ports, or non-demo credentials:
 cp docker-compose.override.example.yml docker-compose.override.yml
 # edit docker-compose.override.yml
 docker compose up -d --build
+npm run docker:demo:smoke
 ```
 
 ### Path C: Advanced Observability Stack

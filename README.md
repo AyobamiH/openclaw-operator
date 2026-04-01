@@ -260,6 +260,7 @@ the repo root, localhost-only by default, with MongoDB and Redis included.
 git clone https://github.com/AyobamiH/openclaw-operator.git
 cd openclaw-operator
 docker compose up -d --build
+npm run docker:demo:smoke
 ```
 
 Open:
@@ -279,6 +280,8 @@ Important Docker truth:
 - it is intentionally localhost-only and uses demo-local credentials so a new
   user can boot the product without first creating a private `.env`
 - provider-backed lanes will stay degraded until you add real provider keys
+- `npm run docker:demo:smoke` is the local proof that the official demo stack
+  actually booted, authenticated, and served the built operator shell
 - for anything beyond a throwaway local try-out, copy
   [docker-compose.override.example.yml](./docker-compose.override.example.yml)
   to `docker-compose.override.yml` and replace the demo credentials before you

@@ -41,11 +41,16 @@ interface OverviewVM {
   processing: number;
   queuePressure: QueuePressureVM[];
   pendingApprovals: number;
-  retryRecoveries: number;
+  retryRecoveries: RetryRecoveryVM;
   openIncidents: number;
   watchingIncidents: number;
   incidentClassifications: IncidentClassificationVM[];
   recentTasks: RecentTask[];
+}
+
+interface RetryRecoveryVM {
+  count: number;
+  nextRetryAt: string | null;
 }
 
 interface ProofWidgetVM {
@@ -125,6 +130,7 @@ interface PrimaryActionVM {
   actionLabel: string;
   tone: "healthy" | "warning" | "info";
   supportingSignals: string[];
+  whyNow: string[];
 }
 
 interface PressureStoryVM {
@@ -250,6 +256,43 @@ function buildQueuePressureSummary(queuePressure: QueuePressureVM[]) {
     .join(" · ");
 }
 
+function buildRetryRecoveryVM(governance: any): RetryRecoveryVM {
+  const raw = governance?.taskRetryRecoveries;
+
+  if (typeof raw === "number") {
+    return {
+      count: num(raw),
+      nextRetryAt: null,
+    };
+  }
+
+  return {
+    count: num(raw?.count),
+    nextRetryAt: toNullableString(raw?.nextRetryAt),
+  };
+}
+
+function hasDominantIncidentPressure(vm: OverviewVM) {
+  const topClassification = vm.incidentClassifications[0];
+  const hottestQueue = vm.queuePressure[0];
+  const queuePressureCount = hottestQueue?.totalCount ?? vm.queued + vm.processing;
+
+  if (vm.openIncidents === 0) {
+    return false;
+  }
+
+  if (!topClassification) {
+    return vm.openIncidents >= Math.max(25, vm.pendingApprovals * 3, queuePressureCount * 4);
+  }
+
+  return (
+    topClassification.count >= Math.max(25, vm.pendingApprovals * 3, queuePressureCount * 4) ||
+    topClassification.activeCount >= 25 ||
+    (topClassification.highestSeverity === "critical" &&
+      topClassification.count >= Math.max(10, vm.pendingApprovals * 2))
+  );
+}
+
 function buildOverviewVM(dashboard: any): OverviewVM {
   const health = dashboard?.health ?? {};
   const persistence = dashboard?.persistence ?? {};
@@ -274,7 +317,7 @@ function buildOverviewVM(dashboard: any): OverviewVM {
     processing: num(queue?.processing),
     queuePressure: buildQueuePressureVM(queue),
     pendingApprovals: num(approvals?.pendingCount),
-    retryRecoveries: num(governance?.taskRetryRecoveries),
+    retryRecoveries: buildRetryRecoveryVM(governance),
     openIncidents: num(incidents?.openCount),
     watchingIncidents: num(incidents?.watchingCount),
     incidentClassifications: buildIncidentClassificationVM(incidents),
@@ -459,6 +502,7 @@ function buildActionTasks(catalog: any): ActionTaskVM[] {
 
 function buildAttentionItems(vm: OverviewVM, proofVM: ProofWidgetVM): AttentionItemVM[] {
   const items: AttentionItemVM[] = [];
+  const topClassification = vm.incidentClassifications[0];
 
   if (vm.pendingApprovals > 0) {
     items.push({
@@ -474,7 +518,9 @@ function buildAttentionItems(vm: OverviewVM, proofVM: ProofWidgetVM): AttentionI
     items.push({
       id: "incidents",
       title: `${vm.openIncidents} active incident${vm.openIncidents === 1 ? "" : "s"}`,
-      detail: "Ownership, remediation, and verification are still in flight.",
+      detail: topClassification
+        ? `${topClassification.label} is the dominant incident class, so ownership, remediation, and verification are still in flight there first.`
+        : "Ownership, remediation, and verification are still in flight.",
       route: "/incidents",
       tone: "warning",
     });
@@ -490,11 +536,13 @@ function buildAttentionItems(vm: OverviewVM, proofVM: ProofWidgetVM): AttentionI
     });
   }
 
-  if (vm.retryRecoveries > 0) {
+  if (vm.retryRecoveries.count > 0) {
     items.push({
       id: "retries",
-      title: `${vm.retryRecoveries} retry recovery${vm.retryRecoveries === 1 ? "" : "ies"} pending`,
-      detail: "Execution truth is live, but some failed work is still replaying.",
+      title: `${vm.retryRecoveries.count} retry recovery${vm.retryRecoveries.count === 1 ? "" : "ies"} pending`,
+      detail: vm.retryRecoveries.nextRetryAt
+        ? `Execution truth is live, and the next persisted replay is scheduled ${formatDistanceToNow(new Date(vm.retryRecoveries.nextRetryAt), { addSuffix: true })}.`
+        : "Execution truth is live, but some failed work is still replaying.",
       route: "/task-runs",
       tone: "info",
     });
@@ -538,6 +586,19 @@ function buildControlPlaneMode(vm: OverviewVM, proofVM: ProofWidgetVM): ControlP
       detail: "Persistence is degraded, so replay confidence and durable operator truth are currently reduced.",
       route: "/system-health",
       actionLabel: "Inspect System Health",
+      tone: "warning",
+    };
+  }
+
+  const topClassification = vm.incidentClassifications[0];
+  if (hasDominantIncidentPressure(vm)) {
+    return {
+      label: "Incident Storm",
+      detail: topClassification
+        ? `${topClassification.label} is overwhelming the rest of the control plane, so incident ownership and repair outrank smaller approval or queue concerns.`
+        : "Incident pressure is overwhelming the rest of the control plane, so incident ownership and repair outrank smaller approval or queue concerns.",
+      route: "/incidents",
+      actionLabel: "Work The Incident Queue",
       tone: "warning",
     };
   }
@@ -602,6 +663,39 @@ function buildControlPlaneMode(vm: OverviewVM, proofVM: ProofWidgetVM): ControlP
 }
 
 function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActionVM {
+  const topClassification = vm.incidentClassifications[0];
+  const hottestQueue = vm.queuePressure[0];
+  const dominantIncidentPressure = hasDominantIncidentPressure(vm);
+
+  if (dominantIncidentPressure) {
+    return {
+      title: "Stabilize the incident queue first",
+      detail: topClassification
+        ? `${topClassification.label} is carrying most of the incident load, so clear ownership, remediation, and verification there before treating smaller approval backlog as the main story.`
+        : "Incidents are currently dominating the control plane, so clear ownership, remediation, and verification before treating smaller approval backlog as the main story.",
+      route: "/incidents",
+      actionLabel: "Work Incidents",
+      tone: "warning",
+      supportingSignals: [
+        `${vm.openIncidents} open incident${vm.openIncidents === 1 ? "" : "s"}`,
+        topClassification
+          ? `${topClassification.count} ${topClassification.label.toLowerCase()}`
+          : `${vm.watchingIncidents} watching`,
+      ],
+      whyNow: [
+        topClassification
+          ? `${topClassification.label} currently owns ${topClassification.count} open incident record${topClassification.count === 1 ? "" : "s"} at ${topClassification.highestSeverity} severity.`
+          : `${vm.openIncidents} incident record${vm.openIncidents === 1 ? "" : "s"} are still unresolved.`,
+        hottestQueue
+          ? `${hottestQueue.label} is only contributing ${hottestQueue.totalCount} total queue event${hottestQueue.totalCount === 1 ? "" : "s"}, so queue churn is not the main bottleneck.`
+          : `${vm.queued} queued and ${vm.processing} processing means queue pressure is secondary to the incident load.`,
+        vm.pendingApprovals > 0
+          ? `${vm.pendingApprovals} approval${vm.pendingApprovals === 1 ? "" : "s"} are waiting, but they are downstream of the larger incident story right now.`
+          : "No approval backlog is currently outranking the incident work.",
+      ],
+    };
+  }
+
   if (vm.pendingApprovals > 0) {
     return {
       title: "Clear the approval inbox first",
@@ -613,11 +707,19 @@ function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActi
         `${vm.pendingApprovals} pending approval${vm.pendingApprovals === 1 ? "" : "s"}`,
         vm.openIncidents > 0 ? `${vm.openIncidents} open incident${vm.openIncidents === 1 ? "" : "s"} still active` : "No open incidents outranking the review queue",
       ],
+      whyNow: [
+        `${vm.pendingApprovals} queued decision${vm.pendingApprovals === 1 ? "" : "s"} can unblock work immediately once reviewed.`,
+        vm.openIncidents > 0
+          ? "Incident pressure exists, but it is not currently dominant enough to outrank the review queue."
+          : "No incident class is currently dominating the runtime enough to outrank approvals.",
+        hottestQueue
+          ? `${hottestQueue.label} remains bounded at ${hottestQueue.totalCount} total queued/processing event${hottestQueue.totalCount === 1 ? "" : "s"}.`
+          : "Queue pressure is not currently the strongest source of lost throughput.",
+      ],
     };
   }
 
   if (vm.openIncidents > 0) {
-    const topClassification = vm.incidentClassifications[0];
     return {
       title: "Stabilize the incident queue",
       detail: topClassification
@@ -629,6 +731,17 @@ function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActi
       supportingSignals: [
         `${vm.openIncidents} open incident${vm.openIncidents === 1 ? "" : "s"}`,
         `${vm.watchingIncidents} watching`,
+      ],
+      whyNow: [
+        topClassification
+          ? `${topClassification.label} is the leading incident class, so start there instead of spreading attention across smaller queues.`
+          : "Incident ownership, remediation, and verification are still the strongest live runtime signal.",
+        hottestQueue
+          ? `${hottestQueue.label} is still lower-pressure than the incident ledger.`
+          : "Queue pressure is not strong enough to outrank incident remediation.",
+        vm.pendingApprovals > 0
+          ? `${vm.pendingApprovals} approvals are waiting, but incident pressure is still the stronger operational risk.`
+          : "There is no approval backlog outranking the incident work.",
       ],
     };
   }
@@ -642,7 +755,16 @@ function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActi
       tone: "warning",
       supportingSignals: [
         `Persistence ${vm.persistenceStatus}`,
-        `${vm.retryRecoveries} retry recover${vm.retryRecoveries === 1 ? "y" : "ies"} pending`,
+        `${vm.retryRecoveries.count} retry recover${vm.retryRecoveries.count === 1 ? "y" : "ies"} pending`,
+      ],
+      whyNow: [
+        "Durability posture is degraded, so replay and state confidence are currently weaker than normal operator flows.",
+        vm.retryRecoveries.count > 0 && vm.retryRecoveries.nextRetryAt
+          ? `The next persisted retry replay is scheduled ${formatDistanceToNow(new Date(vm.retryRecoveries.nextRetryAt), { addSuffix: true })}.`
+          : "No stronger review or incident signal is currently outranking storage posture.",
+        hottestQueue
+          ? `${hottestQueue.label} is not currently a larger source of risk than persistence drift.`
+          : "Queue pressure is secondary until storage confidence is restored.",
       ],
     };
   }
@@ -661,10 +783,21 @@ function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActi
         `Proof ${proofVM.statusLabel}`,
         `${proofVM.evidenceCount} evidence entr${proofVM.evidenceCount === 1 ? "y" : "ies"} visible`,
       ],
+      whyNow: [
+        proofVM.statusLabel === "Timed Out"
+          ? "The public proof route is not completing cleanly, which weakens outward-facing trust even when private runtime truth is live."
+          : "The public evidence surface is behind the private runtime, so external proof needs reconciliation before you rely on it.",
+        vm.openIncidents > 0
+          ? "Incident pressure is present, but it is not dominant enough to outrank proof reconciliation in this state."
+          : "No incident or approval signal is currently stronger than proof lag.",
+        hottestQueue
+          ? `${hottestQueue.label} remains bounded enough that proof lag is the sharper trust risk.`
+          : "Queue pressure is not currently the leading trust problem.",
+      ],
     };
   }
 
-  if (vm.retryRecoveries > 0) {
+  if (vm.retryRecoveries.count > 0) {
     return {
       title: "Check retry recoveries",
       detail: "Execution is progressing, but failed work is still replaying and may hide a recurring workflow stop.",
@@ -672,13 +805,19 @@ function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActi
       actionLabel: "Inspect Retry Runs",
       tone: "info",
       supportingSignals: [
-        `${vm.retryRecoveries} retry recover${vm.retryRecoveries === 1 ? "y" : "ies"}`,
+        `${vm.retryRecoveries.count} retry recover${vm.retryRecoveries.count === 1 ? "y" : "ies"}`,
         `${vm.queued} queued · ${vm.processing} processing`,
+      ],
+      whyNow: [
+        vm.retryRecoveries.nextRetryAt
+          ? `The next persisted retry replay is scheduled ${formatDistanceToNow(new Date(vm.retryRecoveries.nextRetryAt), { addSuffix: true })}.`
+          : "Persisted retry work is still waiting to replay.",
+        "Failed work is still influencing the execution story even though the queue is otherwise moving.",
+        "No stronger approval, incident, or persistence signal is currently outranking the replay queue.",
       ],
     };
   }
 
-  const hottestQueue = vm.queuePressure[0];
   if (hottestQueue) {
     return {
       title: `Check ${hottestQueue.label} pressure`,
@@ -689,6 +828,11 @@ function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActi
       supportingSignals: [
         `${hottestQueue.queuedCount} queued`,
         `${hottestQueue.processingCount} processing`,
+      ],
+      whyNow: [
+        `${hottestQueue.label} is currently the hottest queue source.`,
+        `${hottestQueue.source} accounts for ${hottestQueue.totalCount} total queue event${hottestQueue.totalCount === 1 ? "" : "s"} right now.`,
+        "There is no stronger incident, approval, proof, or persistence signal currently outranking it.",
       ],
     };
   }
@@ -703,11 +847,18 @@ function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActi
       `${vm.queued} queued`,
       `${vm.processing} processing`,
     ],
+    whyNow: [
+      "No urgent review, incident, proof, or persistence signal is dominating the control plane.",
+      "The queue is active enough for normal bounded work but not under obvious stress.",
+      "This is the point where task lanes should own the next action, not escalation surfaces.",
+    ],
   };
 }
 
 function buildPressureStory(vm: OverviewVM, proofVM: ProofWidgetVM): PressureStoryVM {
   const signals: string[] = [];
+  const topClassification = vm.incidentClassifications[0];
+  const dominantIncidentPressure = hasDominantIncidentPressure(vm);
 
   const hottestQueue = vm.queuePressure[0];
   if (hottestQueue) {
@@ -720,7 +871,6 @@ function buildPressureStory(vm: OverviewVM, proofVM: ProofWidgetVM): PressureSto
     signals.push("Queue pressure is currently low enough that no single task family is dominating execution.");
   }
 
-  const topClassification = vm.incidentClassifications[0];
   if (topClassification) {
     signals.push(
       `${topClassification.label} leads the incident queue with ${topClassification.count} open record${topClassification.count === 1 ? "" : "s"}.`,
@@ -740,7 +890,9 @@ function buildPressureStory(vm: OverviewVM, proofVM: ProofWidgetVM): PressureSto
   }
 
   const headline =
-    vm.pendingApprovals > 0
+    dominantIncidentPressure && topClassification
+      ? `${topClassification.label} is currently outranking approvals and queue pressure.`
+      : vm.pendingApprovals > 0
       ? "Review-gated work is the first operator choke point."
       : vm.openIncidents > 0
         ? "Incidents are still the dominant runtime pressure."
@@ -749,7 +901,9 @@ function buildPressureStory(vm: OverviewVM, proofVM: ProofWidgetVM): PressureSto
           : "The control plane is stable enough for normal bounded work.";
 
   const detail =
-    vm.pendingApprovals > 0
+    dominantIncidentPressure
+      ? "The safe next move is to stabilize the dominant incident class before treating smaller approval or queue backlog as the main story."
+      : vm.pendingApprovals > 0
       ? "The fastest safe throughput gain is to clear waiting decisions before launching anything new."
       : vm.openIncidents > 0
         ? "Incident ownership, remediation, and verification still outrank new task launches."
@@ -964,6 +1118,16 @@ export default function OverviewPage() {
             <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
               {primaryAction.detail}
             </p>
+            <div className="console-inset p-3 rounded-sm space-y-2">
+              <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Why This Outranks</p>
+              <div className="space-y-2">
+                {primaryAction.whyNow.map((reason) => (
+                  <p key={reason} className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    {reason}
+                  </p>
+                ))}
+              </div>
+            </div>
             <div className="flex flex-wrap gap-2">
               {primaryAction.supportingSignals.map((signal) => (
                 <span key={signal} className="activity-cell px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-muted-foreground">

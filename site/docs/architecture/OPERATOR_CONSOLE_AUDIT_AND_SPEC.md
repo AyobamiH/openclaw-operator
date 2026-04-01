@@ -65,6 +65,10 @@ The console does not need every route. It needs the right route families.
   layer with explicit mode labeling, one ranked primary operator move, and a
   fused pressure story so operators can answer “what do I do first?” without
   stitching together multiple cards by hand.
+- Phase 5 landed: `Overview` now explains why the top action outranks the rest
+  of the console, including incident-storm cases where a dominant incident
+  class should beat a smaller approval backlog instead of forcing operators to
+  infer that relationship manually.
 
 ### Private Operator Truth
 

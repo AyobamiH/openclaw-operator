@@ -37,7 +37,12 @@ export interface DashboardOverview {
   approvals: { pendingCount: number; pending: PendingApprovalItem[] };
   governance: {
     approvals: number;
-    taskRetryRecoveries: number;
+    taskRetryRecoveries:
+      | number
+      | {
+          count?: number;
+          nextRetryAt?: string | null;
+        };
     governedSkills?: GovernedSkillsSummary;
   };
   truthLayers?: RuntimeTruthLayers;

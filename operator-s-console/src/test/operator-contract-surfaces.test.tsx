@@ -306,6 +306,7 @@ describe("operator contract surfaces", () => {
     expect(screen.getAllByText("Durability Risk").length).toBeGreaterThan(0);
     expect(screen.getByText("Primary Operator Move")).toBeInTheDocument();
     expect(screen.getByText("Clear the approval inbox first")).toBeInTheDocument();
+    expect(screen.getByText("Why This Outranks")).toBeInTheDocument();
     expect(screen.getByText("Pressure Story")).toBeInTheDocument();
     expect(screen.getByText("Review-gated work is the first operator choke point.")).toBeInTheDocument();
     expect(screen.getByText("Needs Attention")).toBeInTheDocument();
@@ -407,6 +408,127 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText("Reconcile public proof lag")).toBeInTheDocument();
     expect(screen.getByText("x3")).toBeInTheDocument();
     expect(screen.getByText("queued 200 doc changes (drift repair already active)")).toBeInTheDocument();
+  });
+
+  it("lets a dominant incident storm outrank a smaller approval backlog", () => {
+    vi.mocked(consoleHooks.useDashboardOverview).mockReturnValue({
+      data: {
+        health: { status: "degraded", fastStartMode: false },
+        persistence: { status: "healthy", database: "mongo" },
+        accounting: {
+          totalCostUsd: 0,
+          currentBudget: {
+            status: "ok",
+            remainingLlmCalls: 20,
+          },
+        },
+        queue: {
+          queued: 0,
+          processing: 1,
+          pressure: [
+            {
+              type: "heartbeat",
+              label: "Heartbeat",
+              source: "Heartbeat",
+              queuedCount: 0,
+              processingCount: 1,
+              totalCount: 1,
+            },
+          ],
+        },
+        approvals: { pendingCount: 13, pending: [] },
+        governance: {
+          approvals: 13,
+          taskRetryRecoveries: {
+            count: 0,
+            nextRetryAt: null,
+          },
+        },
+        incidents: {
+          overallStatus: "critical",
+          openCount: 375,
+          activeCount: 333,
+          watchingCount: 42,
+          bySeverity: { critical: 374, warning: 1, info: 0 },
+          topClassifications: [
+            {
+              classification: "repair",
+              label: "Repair",
+              count: 374,
+              activeCount: 333,
+              watchingCount: 41,
+              highestSeverity: "critical",
+            },
+            {
+              classification: "approval-backlog",
+              label: "Approval Backlog",
+              count: 1,
+              activeCount: 0,
+              watchingCount: 1,
+              highestSeverity: "warning",
+            },
+          ],
+        },
+        recentTasks: [
+          {
+            id: "task-heartbeat",
+            taskId: "task-heartbeat",
+            type: "heartbeat",
+            status: "success",
+            result: "success",
+            message: "heartbeat (periodic)",
+            handledAt: "2026-03-11T10:14:00.000Z",
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useDashboardOverview>);
+
+    vi.mocked(consoleHooks.useAgentsOverview).mockReturnValue({
+      data: {
+        agents: [
+          { id: "system-monitor-agent", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
+          { id: "security-agent", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useAgentsOverview>);
+
+    vi.mocked(consoleHooks.useTaskCatalog).mockReturnValue({
+      data: { generatedAt: "2026-03-11T10:00:00.000Z", tasks: [] },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useTaskCatalog>);
+
+    vi.mocked(publicSurfaceHooks.useCommandCenterOverview).mockReturnValue({
+      data: {
+        riskCounts: { onTrack: 0, atRisk: 0, blocked: 0, completed: 0 },
+        latest: null,
+        stale: false,
+        evidenceCount: 0,
+        activeLaneCount: 0,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof publicSurfaceHooks.useCommandCenterOverview>);
+
+    render(
+      <MemoryRouter>
+        <OverviewPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getAllByText("Incident Storm").length).toBeGreaterThan(0);
+    expect(screen.getByText("Stabilize the incident queue first")).toBeInTheDocument();
+    expect(screen.getByText(/Repair is currently outranking approvals and queue pressure/i)).toBeInTheDocument();
+    expect(screen.getByText(/Repair currently owns 374 open incident records at critical severity/i)).toBeInTheDocument();
+    expect(screen.getByText(/13 approvals are waiting, but they are downstream of the larger incident story right now/i)).toBeInTheDocument();
   });
 
   it("renders agent capability readiness and gap evidence", () => {

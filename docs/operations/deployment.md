@@ -40,6 +40,7 @@ container path:
 docker compose -f docker-compose.yml config --services
 docker compose -f docker-compose.yml up -d --build
 docker compose -f docker-compose.yml ps
+bash scripts/docker-demo-smoke.sh
 ```
 
 Operational truth for Mode A:
@@ -50,6 +51,8 @@ Operational truth for Mode A:
   new user can boot without creating `orchestrator/.env`
 - keeps host exposure localhost-only by default
 - should be treated as a try-it path, not a production credential posture
+- has a dedicated smoke path in `scripts/docker-demo-smoke.sh` and the
+  `Docker Demo Smoke` GitHub Actions workflow
 
 Before any shared or non-local deployment:
 

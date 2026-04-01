@@ -21,6 +21,7 @@
     "docs:site:dev": "npm run docs:site:sync && vitepress dev site",
     "docs:site:build": "npm run docs:site:sync && vitepress build site",
     "docs:site:preview": "vitepress preview site",
+    "docker:demo:smoke": "bash scripts/docker-demo-smoke.sh",
     "docs:sync": "npm --prefix orchestrator run docs:check-sync",
     "docs:sync:staged": "npm --prefix orchestrator run docs:check-sync:staged",
     "openapi:generate": "npm --prefix orchestrator run openapi:generate",

@@ -66,6 +66,7 @@ If you want the official public container path instead:
 
 ```bash
 docker compose up -d --build
+npm run docker:demo:smoke
 ```
 
 Open:
@@ -80,7 +81,8 @@ Demo bearer keys:
 
 This path is localhost-only by default and already carries demo-local auth,
 MongoDB, and Redis credentials so first boot does not require a private `.env`
-file. Before any shared or non-local deployment, copy
+file. `npm run docker:demo:smoke` is the local proof that the demo stack came
+up healthy and served the built operator shell. Before any shared or non-local deployment, copy
 `docker-compose.override.example.yml` to `docker-compose.override.yml` and
 replace the demo values.
 
