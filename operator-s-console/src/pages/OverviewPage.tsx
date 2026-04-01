@@ -110,6 +110,29 @@ interface AttentionItemVM {
   tone: "warning" | "healthy" | "info";
 }
 
+interface ControlPlaneModeVM {
+  label: string;
+  detail: string;
+  route: string;
+  actionLabel: string;
+  tone: "healthy" | "warning" | "info" | "neutral";
+}
+
+interface PrimaryActionVM {
+  title: string;
+  detail: string;
+  route: string;
+  actionLabel: string;
+  tone: "healthy" | "warning" | "info";
+  supportingSignals: string[];
+}
+
+interface PressureStoryVM {
+  headline: string;
+  detail: string;
+  signals: string[];
+}
+
 function buildQueuePressureVM(queue: any): QueuePressureVM[] {
   return toArray<DashboardQueuePressureItem>(queue?.pressure)
     .map((item) => ({
@@ -508,6 +531,233 @@ function buildAttentionItems(vm: OverviewVM, proofVM: ProofWidgetVM): AttentionI
   return items;
 }
 
+function buildControlPlaneMode(vm: OverviewVM, proofVM: ProofWidgetVM): ControlPlaneModeVM {
+  if (vm.persistenceStatus !== "healthy") {
+    return {
+      label: "Durability Risk",
+      detail: "Persistence is degraded, so replay confidence and durable operator truth are currently reduced.",
+      route: "/system-health",
+      actionLabel: "Inspect System Health",
+      tone: "warning",
+    };
+  }
+
+  if (vm.openIncidents > 0 && vm.pendingApprovals > 0) {
+    return {
+      label: "Backlog Under Pressure",
+      detail: "The control plane is live, but incidents and review-gated work are stacking at the same time.",
+      route: "/incidents",
+      actionLabel: "Work The Incident Queue",
+      tone: "warning",
+    };
+  }
+
+  if (vm.openIncidents > 0) {
+    return {
+      label: "Incident Control",
+      detail: "Runtime truth is live, but unresolved incidents still own the operational story of the day.",
+      route: "/incidents",
+      actionLabel: "Open Incidents",
+      tone: "warning",
+    };
+  }
+
+  if (vm.pendingApprovals > 0) {
+    return {
+      label: "Review-Gated",
+      detail: "Execution is healthy enough to continue, but the next work is paused behind operator review.",
+      route: "/approvals",
+      actionLabel: "Open Approvals",
+      tone: "info",
+    };
+  }
+
+  if (proofVM.statusLabel === "Timed Out" || proofVM.stale) {
+    return {
+      label: "Proof Lag",
+      detail: "Internal operator truth is ahead of the public evidence surface, so proof needs reconciliation before external claims.",
+      route: "/public-proof",
+      actionLabel: "Inspect Public Proof",
+      tone: "info",
+    };
+  }
+
+  if (vm.queued > 0 || vm.processing > 0) {
+    return {
+      label: "Active Queue",
+      detail: "The control plane is processing bounded work without an obvious failure dominant enough to override the task ledger.",
+      route: "/task-runs",
+      actionLabel: "Open Runs",
+      tone: "healthy",
+    };
+  }
+
+  return {
+    label: "Steady State",
+    detail: "No dominant operator intervention is currently outranking routine bounded work.",
+    route: "/tasks",
+    actionLabel: "Open Tasks",
+    tone: "healthy",
+  };
+}
+
+function buildPrimaryAction(vm: OverviewVM, proofVM: ProofWidgetVM): PrimaryActionVM {
+  if (vm.pendingApprovals > 0) {
+    return {
+      title: "Clear the approval inbox first",
+      detail: `${vm.pendingApprovals} queued decision${vm.pendingApprovals === 1 ? "" : "s"} are pausing work that is already ready to continue once reviewed.`,
+      route: "/approvals",
+      actionLabel: "Review Approvals",
+      tone: "warning",
+      supportingSignals: [
+        `${vm.pendingApprovals} pending approval${vm.pendingApprovals === 1 ? "" : "s"}`,
+        vm.openIncidents > 0 ? `${vm.openIncidents} open incident${vm.openIncidents === 1 ? "" : "s"} still active` : "No open incidents outranking the review queue",
+      ],
+    };
+  }
+
+  if (vm.openIncidents > 0) {
+    const topClassification = vm.incidentClassifications[0];
+    return {
+      title: "Stabilize the incident queue",
+      detail: topClassification
+        ? `${topClassification.label} is the leading incident class, so start with ownership, remediation, and verification there.`
+        : "Unresolved incidents are the strongest live signal, so work the queue before launching new bounded tasks.",
+      route: "/incidents",
+      actionLabel: "Work Incidents",
+      tone: "warning",
+      supportingSignals: [
+        `${vm.openIncidents} open incident${vm.openIncidents === 1 ? "" : "s"}`,
+        `${vm.watchingIncidents} watching`,
+      ],
+    };
+  }
+
+  if (vm.persistenceStatus !== "healthy") {
+    return {
+      title: "Restore persistence confidence",
+      detail: "Durability truth is degraded, so replay and storage posture should be checked before trusting downstream operator outcomes.",
+      route: "/system-health",
+      actionLabel: "Inspect Persistence",
+      tone: "warning",
+      supportingSignals: [
+        `Persistence ${vm.persistenceStatus}`,
+        `${vm.retryRecoveries} retry recover${vm.retryRecoveries === 1 ? "y" : "ies"} pending`,
+      ],
+    };
+  }
+
+  if (proofVM.statusLabel === "Timed Out" || proofVM.stale) {
+    return {
+      title: "Reconcile public proof lag",
+      detail:
+        proofVM.statusLabel === "Timed Out"
+          ? "The proof route is timing out, so confirm whether the public evidence surface is reachable enough for external trust."
+          : "Public proof is stale, so verify whether the publishing window has simply lagged behind the private runtime.",
+      route: "/public-proof",
+      actionLabel: "Inspect Public Proof",
+      tone: "info",
+      supportingSignals: [
+        `Proof ${proofVM.statusLabel}`,
+        `${proofVM.evidenceCount} evidence entr${proofVM.evidenceCount === 1 ? "y" : "ies"} visible`,
+      ],
+    };
+  }
+
+  if (vm.retryRecoveries > 0) {
+    return {
+      title: "Check retry recoveries",
+      detail: "Execution is progressing, but failed work is still replaying and may hide a recurring workflow stop.",
+      route: "/task-runs",
+      actionLabel: "Inspect Retry Runs",
+      tone: "info",
+      supportingSignals: [
+        `${vm.retryRecoveries} retry recover${vm.retryRecoveries === 1 ? "y" : "ies"}`,
+        `${vm.queued} queued · ${vm.processing} processing`,
+      ],
+    };
+  }
+
+  const hottestQueue = vm.queuePressure[0];
+  if (hottestQueue) {
+    return {
+      title: `Check ${hottestQueue.label} pressure`,
+      detail: `${hottestQueue.source} is the hottest queue source right now, so confirm whether it is normal churn or the start of backlog growth.`,
+      route: "/task-runs",
+      actionLabel: "Open Runs",
+      tone: "info",
+      supportingSignals: [
+        `${hottestQueue.queuedCount} queued`,
+        `${hottestQueue.processingCount} processing`,
+      ],
+    };
+  }
+
+  return {
+    title: "Use a bounded task lane",
+    detail: "No urgent review, incident, or persistence issue is dominating the control plane, so bounded operator work can continue normally.",
+    route: "/tasks",
+    actionLabel: "Open Tasks",
+    tone: "healthy",
+    supportingSignals: [
+      `${vm.queued} queued`,
+      `${vm.processing} processing`,
+    ],
+  };
+}
+
+function buildPressureStory(vm: OverviewVM, proofVM: ProofWidgetVM): PressureStoryVM {
+  const signals: string[] = [];
+
+  const hottestQueue = vm.queuePressure[0];
+  if (hottestQueue) {
+    signals.push(
+      `${hottestQueue.label} is the hottest queue source with ${hottestQueue.totalCount} total pressure from ${hottestQueue.source}.`,
+    );
+  } else if (vm.queued > 0 || vm.processing > 0) {
+    signals.push(`${vm.queued} queued and ${vm.processing} processing with no single hotspot yet dominating the queue ledger.`);
+  } else {
+    signals.push("Queue pressure is currently low enough that no single task family is dominating execution.");
+  }
+
+  const topClassification = vm.incidentClassifications[0];
+  if (topClassification) {
+    signals.push(
+      `${topClassification.label} leads the incident queue with ${topClassification.count} open record${topClassification.count === 1 ? "" : "s"}.`,
+    );
+  } else if (vm.openIncidents > 0) {
+    signals.push(`${vm.openIncidents} incident${vm.openIncidents === 1 ? "" : "s"} remain open without a dominant classification exposed yet.`);
+  } else {
+    signals.push("No incident class is currently outweighing the rest of the control plane.");
+  }
+
+  if (proofVM.statusLabel === "Timed Out" || proofVM.stale) {
+    signals.push(`Public proof is ${proofVM.statusLabel.toLowerCase()}, so external evidence is behind private operator truth.`);
+  } else if (proofVM.statusLabel === "Empty but live") {
+    signals.push("Public proof is reachable but has not emitted publishable evidence into its visible feed yet.");
+  } else {
+    signals.push(`Public proof is ${proofVM.statusLabel.toLowerCase()} and not currently the dominant blocker.`);
+  }
+
+  const headline =
+    vm.pendingApprovals > 0
+      ? "Review-gated work is the first operator choke point."
+      : vm.openIncidents > 0
+        ? "Incidents are still the dominant runtime pressure."
+        : hottestQueue
+          ? `${hottestQueue.label} is currently defining queue posture.`
+          : "The control plane is stable enough for normal bounded work.";
+
+  const detail =
+    vm.pendingApprovals > 0
+      ? "The fastest safe throughput gain is to clear waiting decisions before launching anything new."
+      : vm.openIncidents > 0
+        ? "Incident ownership, remediation, and verification still outrank new task launches."
+        : "No single degraded surface is overwhelming the rest of the operator loop right now.";
+
+  return { headline, detail, signals };
+}
+
 function AttentionRailItem({
   item,
   onOpen,
@@ -621,6 +871,9 @@ export default function OverviewPage() {
   const agentSignal = useMemo(() => buildAgentSignalVM(agentsData), [agentsData]);
   const actionTasks = useMemo(() => buildActionTasks(catalog).slice(0, 4), [catalog]);
   const attentionItems = useMemo(() => buildAttentionItems(vm, proofVM), [proofVM, vm]);
+  const controlPlaneMode = useMemo(() => buildControlPlaneMode(vm, proofVM), [proofVM, vm]);
+  const primaryAction = useMemo(() => buildPrimaryAction(vm, proofVM), [proofVM, vm]);
+  const pressureStory = useMemo(() => buildPressureStory(vm, proofVM), [proofVM, vm]);
 
   const openTaskShortcut = (taskType: string) => {
     const params = new URLSearchParams();
@@ -673,6 +926,62 @@ export default function OverviewPage() {
         </div>
       </div>
 
+      <SummaryCard
+        title="Control Plane Mode"
+        icon={<ShieldCheck className="w-4 h-4" />}
+        headerAction={(
+          <button
+            type="button"
+            onClick={() => navigate(controlPlaneMode.route)}
+            className="text-[9px] font-mono uppercase tracking-wider text-primary hover:text-primary/80 transition-colors"
+          >
+            {controlPlaneMode.actionLabel}
+          </button>
+        )}
+      >
+        <div className="grid xl:grid-cols-[0.95fr_1.05fr] gap-3">
+          <div className="console-inset p-4 rounded-sm space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Mode</p>
+              <StatusBadge label={controlPlaneMode.label} size="sm" />
+            </div>
+            <p className="text-[13px] font-mono font-semibold uppercase tracking-[0.08em] text-foreground">
+              {controlPlaneMode.label}
+            </p>
+            <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+              {controlPlaneMode.detail}
+            </p>
+          </div>
+
+          <div className="console-inset p-4 rounded-sm space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[9px] font-mono uppercase tracking-wider text-muted-foreground">Primary Operator Move</p>
+              <StatusBadge label={primaryAction.tone === "warning" ? "act now" : primaryAction.tone === "info" ? "next move" : "steady work"} size="sm" />
+            </div>
+            <p className="text-[13px] font-mono font-semibold uppercase tracking-[0.08em] text-foreground">
+              {primaryAction.title}
+            </p>
+            <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+              {primaryAction.detail}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {primaryAction.supportingSignals.map((signal) => (
+                <span key={signal} className="activity-cell px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-muted-foreground">
+                  {signal}
+                </span>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => navigate(primaryAction.route)}
+              className="text-[9px] font-mono uppercase tracking-wider text-primary hover:text-primary/80 transition-colors"
+            >
+              {primaryAction.actionLabel}
+            </button>
+          </div>
+        </div>
+      </SummaryCard>
+
       <div className="grid grid-cols-2 xl:grid-cols-5 gap-3">
         <MetricModule
           title="System"
@@ -719,6 +1028,26 @@ export default function OverviewPage() {
           onClick={() => navigate("/task-runs")}
         />
       </div>
+
+      <SummaryCard title="Pressure Story" icon={<ListTodo className="w-4 h-4" />}>
+        <div className="space-y-3">
+          <div className="console-inset p-4 rounded-sm">
+            <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-foreground">
+              {pressureStory.headline}
+            </p>
+            <p className="mt-2 text-[10px] font-mono text-muted-foreground leading-relaxed">
+              {pressureStory.detail}
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {pressureStory.signals.map((signal) => (
+              <div key={signal} className="console-inset p-3 rounded-sm">
+                <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">{signal}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </SummaryCard>
 
       <SummaryCard
         title="Needs Attention"

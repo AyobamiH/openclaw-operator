@@ -302,6 +302,12 @@ describe("operator contract surfaces", () => {
     );
 
     expect(screen.getByText("Operator Overview")).toBeInTheDocument();
+    expect(screen.getByText("Control Plane Mode")).toBeInTheDocument();
+    expect(screen.getAllByText("Durability Risk").length).toBeGreaterThan(0);
+    expect(screen.getByText("Primary Operator Move")).toBeInTheDocument();
+    expect(screen.getByText("Clear the approval inbox first")).toBeInTheDocument();
+    expect(screen.getByText("Pressure Story")).toBeInTheDocument();
+    expect(screen.getByText("Review-gated work is the first operator choke point.")).toBeInTheDocument();
     expect(screen.getByText("Needs Attention")).toBeInTheDocument();
     expect(screen.getByText("Safe Next Actions")).toBeInTheDocument();
     expect(screen.getByText("Fast-start mode is active")).toBeInTheDocument();
@@ -398,6 +404,7 @@ describe("operator contract surfaces", () => {
     );
 
     expect(screen.getAllByText("Timed Out").length).toBeGreaterThan(0);
+    expect(screen.getByText("Reconcile public proof lag")).toBeInTheDocument();
     expect(screen.getByText("x3")).toBeInTheDocument();
     expect(screen.getByText("queued 200 doc changes (drift repair already active)")).toBeInTheDocument();
   });

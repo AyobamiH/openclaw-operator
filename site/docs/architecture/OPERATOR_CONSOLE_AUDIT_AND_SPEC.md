@@ -61,6 +61,10 @@ The console does not need every route. It needs the right route families.
   operator-focus triage signals first, including queue pressure, repeated
   activity grouping, approval age/lane clustering, and incident ownership /
   verification / remediation pressure before drill-down.
+- Phase 4 landed: `Overview` now also carries a decision-first control-plane
+  layer with explicit mode labeling, one ranked primary operator move, and a
+  fused pressure story so operators can answer “what do I do first?” without
+  stitching together multiple cards by hand.
 
 ### Private Operator Truth
 
