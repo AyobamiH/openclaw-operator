@@ -36,11 +36,25 @@ Open:
 
 - `http://127.0.0.1:3000/operator`
 
+If you want the always-on user-service path after the first local boot:
+
+```bash
+mkdir -p ~/.config/systemd/user
+install -m 0644 systemd/orchestrator.service ~/.config/systemd/user/orchestrator.service
+systemctl --user daemon-reload
+systemctl --user enable --now orchestrator
+```
+
+Then open:
+
+- `http://127.0.0.1:3312/operator`
+
 ## Fast Verification
 
 ```bash
 curl http://127.0.0.1:3000/health
 curl http://127.0.0.1:3000/api/knowledge/summary
+curl http://127.0.0.1:3312/health
 curl http://127.0.0.1:4300/health
 ```
 
@@ -79,6 +93,9 @@ If you intentionally want the heavier observability stack instead, use
   truth and now resolves relative path fields from the config file location.
 - `orchestrator/orchestrator_config.json` is the container-shaped config for
   Docker-based deployment.
+- `systemd/orchestrator.service` is the canonical always-on user-service unit
+  and assumes the repo lives at `~/openclaw-operator`. If you clone elsewhere,
+  update the unit paths before enabling it.
 - Root commands are the default command hub for this repo.
 
 ## Next

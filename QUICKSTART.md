@@ -22,6 +22,20 @@ Config: `./orchestrator_config.json` (repo-relative paths for local dev)
 
 **Systemd service**: `./systemd/orchestrator.service`
 
+If you want the always-on user-service path on `3312` after the first local
+boot:
+
+```bash
+mkdir -p ~/.config/systemd/user
+install -m 0644 systemd/orchestrator.service ~/.config/systemd/user/orchestrator.service
+systemctl --user daemon-reload
+systemctl --user enable --now orchestrator
+```
+
+Then open `http://127.0.0.1:3312/operator`. The tracked service assumes the
+repo lives at `~/openclaw-operator`; if you clone elsewhere, update the unit
+paths before enabling it.
+
 ---
 
 ### Path B: Official Docker Demo Stack
@@ -101,10 +115,12 @@ Docker demo note:
 ```bash
 curl http://127.0.0.1:3000/health
 curl http://127.0.0.1:3000/api/knowledge/summary
+curl http://127.0.0.1:3312/health
 curl http://127.0.0.1:4300/health
 ```
 
-Then open `http://127.0.0.1:3000/operator` for root local dev or
+Then open `http://127.0.0.1:3000/operator` for root local dev,
+`http://127.0.0.1:3312/operator` for the user service, or
 `http://127.0.0.1:4300/operator` for the Docker demo and confirm the console
 loads.
 
@@ -156,7 +172,7 @@ curl -X POST "$SLACK_ERROR_WEBHOOK" -d '{"text":"test"}'
 - [ ] `.env` created with all required vars for Path A or Path C
 - [ ] `npm install` run in the repo root (root `postinstall` installs orchestrator and operator console deps)
 - [ ] `npm run dev` rebuilds the operator console bundle and starts the orchestrator from the repo root
-- [ ] `http://127.0.0.1:3000/operator` or `http://127.0.0.1:4300/operator` loads the canonical operator console
+- [ ] `http://127.0.0.1:3000/operator`, `http://127.0.0.1:3312/operator`, or `http://127.0.0.1:4300/operator` loads the canonical operator console
 - [ ] `/operator` loads the built operator console instead of a fixture bundle
 - [ ] Public proof routes respond from the orchestrator: `/api/milestones/latest` and `/api/command-center/overview`
 

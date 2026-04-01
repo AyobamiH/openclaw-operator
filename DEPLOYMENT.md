@@ -9,11 +9,11 @@ one operator UI entrypoint: the orchestrator serves the built
 > - `./docker-compose.yml` — **Official public quickstart**. Root localhost-only demo stack with orchestrator + MongoDB + Redis.
 > - `./orchestrator/docker-compose.yml` — Advanced observability stack with Prometheus, Grafana, and Alertmanager. Run from `./orchestrator/`.
 
-## Quick Start (systemd)
+## Quick Start (user-level systemd)
 
 ### Prerequisites
 - Node.js 22.x installed
-- systemd available (Linux systems)
+- systemd user services available (Linux systems)
 
 ### Installation
 
@@ -21,32 +21,39 @@ one operator UI entrypoint: the orchestrator serves the built
 ```bash
 cd openclaw-operator
 npm install
+cp orchestrator/.env.example orchestrator/.env
+# fill in orchestrator/.env
 npm run build
 ```
 
-2. **Install systemd service:**
+2. **Install the user service:**
 ```bash
-sudo cp systemd/orchestrator.service /etc/systemd/system/
-sudo systemctl daemon-reload
+mkdir -p ~/.config/systemd/user
+install -m 0644 systemd/orchestrator.service ~/.config/systemd/user/orchestrator.service
+systemctl --user daemon-reload
 ```
 
 3. **Start the service:**
 ```bash
-sudo systemctl start orchestrator
-sudo systemctl enable orchestrator  # Enable on boot
+systemctl --user enable --now orchestrator
 ```
 
 4. **Monitor:**
 ```bash
 # Check status
-sudo systemctl status orchestrator
+systemctl --user status orchestrator
 
 # View logs
-sudo journalctl -u orchestrator -f
+journalctl --user -u orchestrator -f
 
 # Check if running
-sudo systemctl is-active orchestrator
+systemctl --user is-active orchestrator
 ```
+
+The tracked unit expects the repo at `~/openclaw-operator`, uses
+`tsx + src/index.ts`, serves the built operator UI from
+`~/openclaw-operator/operator-s-console/dist`, and binds the always-on control
+plane to `3312`.
 
 ---
 
@@ -134,42 +141,42 @@ docker run -d \
 
 ```bash
 # Start
-sudo systemctl start orchestrator
+systemctl --user start orchestrator
 
 # Stop
-sudo systemctl stop orchestrator
+systemctl --user stop orchestrator
 
 # Restart
-sudo systemctl restart orchestrator
+systemctl --user restart orchestrator
 
 # Reload (for config changes)
-sudo systemctl reload orchestrator
+systemctl --user restart orchestrator
 
 # Check status
-sudo systemctl status orchestrator
+systemctl --user status orchestrator
 
 # View recent logs
-sudo systemctl status orchestrator -n 50
+systemctl --user status orchestrator -n 50
 
 # Enable/disable on boot
-sudo systemctl enable orchestrator
-sudo systemctl disable orchestrator
+systemctl --user enable orchestrator
+systemctl --user disable orchestrator
 ```
 
 ### Logs
 
 ```bash
 # Real-time logs
-sudo journalctl -u orchestrator -f
+journalctl --user -u orchestrator -f
 
 # Last 50 lines
-sudo journalctl -u orchestrator -n 50
+journalctl --user -u orchestrator -n 50
 
 # Since boot
-sudo journalctl -u orchestrator --since boot
+journalctl --user -u orchestrator --since boot
 
 # Time range
-sudo journalctl -u orchestrator --since "2 hours ago"
+journalctl --user -u orchestrator --since "2 hours ago"
 ```
 
 ---
@@ -178,7 +185,7 @@ sudo journalctl -u orchestrator --since "2 hours ago"
 
 ### Environment Variables
 
-Edit `/etc/systemd/system/orchestrator.service`:
+Edit `~/.config/systemd/user/orchestrator.service`:
 
 ```ini
 [Service]
@@ -189,8 +196,8 @@ Environment="SLACK_ERROR_WEBHOOK=https://hooks.slack.com/..."
 
 Then reload:
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl restart orchestrator
+systemctl --user daemon-reload
+systemctl --user restart orchestrator
 ```
 
 ### Config Files
@@ -212,10 +219,10 @@ sudo systemctl restart orchestrator
 
 ```bash
 # Is service running?
-sudo systemctl is-active orchestrator
+systemctl --user is-active orchestrator
 
 # Check for restarts
-sudo systemctl status orchestrator | grep "Restart"
+systemctl --user status orchestrator | grep "Restart"
 ```
 
 ### File-based Health
@@ -250,7 +257,7 @@ tail -20 logs/orchestrator.log 2>/dev/null || echo "No log file yet"
 
 1. **Check syntax:**
 ```bash
-systemd-analyze verify /etc/systemd/system/orchestrator.service
+systemd-analyze --user verify ~/.config/systemd/user/orchestrator.service
 ```
 
 2. **Check permissions:**
@@ -266,7 +273,7 @@ node -v
 
 4. **Check logs:**
 ```bash
-sudo journalctl -u orchestrator -n 100 --no-pager
+journalctl --user -u orchestrator -n 100 --no-pager
 ```
 
 ### High memory usage
@@ -278,14 +285,14 @@ MemoryLimit=1G
 
 Increase or remove if needed, then:
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl restart orchestrator
+systemctl --user daemon-reload
+systemctl --user restart orchestrator
 ```
 
 ### Task failures
 
 1. Check alert logs in `orchestrator_state.json`
-2. View full logs: `sudo journalctl -u orchestrator -f`
+2. View full logs: `journalctl --user -u orchestrator -f`
 3. Validate config: `cat orchestrator_config.json | jq`
 
 ---
@@ -298,8 +305,8 @@ sudo systemctl restart orchestrator
 - [ ] Logs directory writable: `logs/`
 - [ ] Documentation paths exist: openclaw-docs/, openai-cookbook/
 - [ ] Service starts cleanly: `systemctl start orchestrator`
-- [ ] Service auto-restarts: `systemctl is-active orchestrator`
-- [ ] Logs are being written: `journalctl -u orchestrator | head`
+- [ ] Service auto-restarts: `systemctl --user is-active orchestrator`
+- [ ] Logs are being written: `journalctl --user -u orchestrator | head`
 - [ ] Tasks running on schedule: check orchestrator_state.json
 
 ---

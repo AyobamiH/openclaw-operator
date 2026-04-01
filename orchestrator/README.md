@@ -38,10 +38,10 @@ orchestrator container so it always uses the local `mongo` service. That keeps
 Docker validation honest even when the host `.env` used by systemd or manual
 runs points at an external database.
 
-The host/systemd path now assumes an open-source local Redis service on
-`127.0.0.1:6379`. In this workspace that service is provided by the
-repo-managed `systemd/openclaw-redis.service`, which runs `redis:7-alpine`
-locally through Docker. No paid Redis subscription is required.
+The host/user-service path can either point at your own reachable `REDIS_URL`
+from `orchestrator/.env` or use the repo-managed
+`systemd/openclaw-redis.service`, which runs `redis:7-alpine` locally through
+Docker. No paid Redis subscription is required for the local-service posture.
 
 ## Common Commands
 
@@ -60,7 +60,9 @@ orchestrator is already using `3312`, run a second local dev instance on a
 different port such as `3313`.
 The user-level `orchestrator.service` should mirror this same `tsx` +
 `src/index.ts` entrypoint for the always-on local/tunnel runtime rather than
-booting a separate `dist/index.js` posture.
+booting a separate `dist/index.js` posture. The tracked
+`systemd/orchestrator.service` now follows that exact user-service posture and
+expects a clone at `~/openclaw-operator`.
 
 Useful targeted checks:
 
