@@ -8,6 +8,7 @@ import {
   IncidentEscalationState,
   IncidentHistoryEvent,
   IncidentLedgerRecord,
+  MaintenanceCheckRecord,
   IncidentOwnershipRecord,
   IncidentPolicyExecutionRecord,
   IncidentRemediationPlanStep,
@@ -39,6 +40,59 @@ const MONGO_STATE_PREFIX = "mongo:";
 type StateRetentionOptions = {
   taskHistoryLimit?: number;
 };
+
+function createDefaultMaintenanceChecks(): MaintenanceCheckRecord[] {
+  return [
+    {
+      id: "system-monitor",
+      label: "System Monitor",
+      taskType: "system-monitor",
+      intervalMinutes: 5,
+      lastCheckedAt: null,
+      lastActionQueuedAt: null,
+      nextDueAt: null,
+      status: "idle",
+      summary: "Control-plane heartbeat has not evaluated this maintenance check yet.",
+      actionQueued: false,
+      lastTaskId: null,
+      lastRunId: null,
+      latestObservedRunAt: null,
+      latestObservedRunStatus: null,
+    },
+    {
+      id: "security-posture",
+      label: "Security Posture",
+      taskType: "security-audit",
+      intervalMinutes: 15,
+      lastCheckedAt: null,
+      lastActionQueuedAt: null,
+      nextDueAt: null,
+      status: "idle",
+      summary: "Control-plane heartbeat has not evaluated this maintenance check yet.",
+      actionQueued: false,
+      lastTaskId: null,
+      lastRunId: null,
+      latestObservedRunAt: null,
+      latestObservedRunStatus: null,
+    },
+    {
+      id: "qa-readiness",
+      label: "QA Readiness",
+      taskType: "qa-verification",
+      intervalMinutes: 30,
+      lastCheckedAt: null,
+      lastActionQueuedAt: null,
+      nextDueAt: null,
+      status: "idle",
+      summary: "Control-plane heartbeat has not evaluated this maintenance check yet.",
+      actionQueued: false,
+      lastTaskId: null,
+      lastRunId: null,
+      latestObservedRunAt: null,
+      latestObservedRunStatus: null,
+    },
+  ];
+}
 
 export function isMongoStateTarget(target: string) {
   return typeof target === "string" && target.startsWith(MONGO_STATE_PREFIX);
@@ -477,6 +531,10 @@ export async function loadState(
       ...rest,
       taskHistory: parsed.taskHistory?.slice(-historyLimit) ?? [],
       taskExecutions: parsed.taskExecutions?.slice(-TASK_EXECUTION_LIMIT) ?? [],
+      maintenanceChecks:
+        Array.isArray(parsed.maintenanceChecks) && parsed.maintenanceChecks.length > 0
+          ? (parsed.maintenanceChecks as MaintenanceCheckRecord[])
+          : createDefaultMaintenanceChecks(),
       approvals: parsed.approvals?.slice(-APPROVALS_LIMIT) ?? [],
       pendingDocChanges: parsed.pendingDocChanges ?? [],
       driftRepairs: parsed.driftRepairs ?? [],
@@ -582,6 +640,7 @@ export function createDefaultState(): OrchestratorState {
     pendingDocChanges: [],
     taskHistory: [],
     taskExecutions: [],
+    maintenanceChecks: createDefaultMaintenanceChecks(),
     approvals: [],
     driftRepairs: [],
     repairRecords: [],

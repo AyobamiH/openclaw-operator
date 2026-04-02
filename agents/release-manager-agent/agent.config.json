@@ -29,9 +29,5 @@
   "constraints": {
     "timeoutSec": 90,
     "maxRetries": 1
-  },
-  "heartbeat": {
-    "interval": "10m",
-    "checks": ["release_truth", "verification_posture"]
   }
 }

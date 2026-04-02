@@ -50,13 +50,22 @@ Useful fields to watch:
 
 ## Heartbeat Health
 
-Heartbeats are expected every 5 minutes.
+The control-plane heartbeat is expected every 5 minutes.
+
+It is an internal maintenance scheduler, not a normal operator task lane.
+Healthy heartbeat activity is intentionally quiet in normal operator views.
 
 ```bash
-curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq '.health.lastHeartbeatAt'
+curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq '.maintenance.checks'
 ```
 
-If the latest heartbeat is stale, treat it as a runtime health warning and
+What the heartbeat owns:
+
+- `system-monitor` maintenance every `5m`
+- `security-audit` posture maintenance every `15m`
+- `qa-verification` readiness maintenance every `30m`, plus startup preflight
+
+If heartbeat coverage looks stale, treat it as a runtime health warning and
 check process liveness immediately.
 
 ## Scheduled Task Monitoring
@@ -65,13 +74,14 @@ The default recurring tasks are:
 
 - `nightly-batch`
 - `send-digest`
-- `heartbeat`
+- internal `heartbeat`
 
 Watch the relevant events:
 
 ```bash
 grep -E "nightly-batch|send-digest|heartbeat" logs/orchestrator.log | tail -20
 curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq '.recentTasks[:10]'
+curl -fsS -H "Authorization: Bearer $API_KEY" "http://127.0.0.1:3312/api/tasks/runs?includeInternal=true&limit=20" | jq '.runs[] | {type, visibility, maintenanceCheckId, status, lastHandledAt}'
 ls -lah logs/digests/digest-*.json
 ```
 
@@ -89,7 +99,9 @@ curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/agents/o
 ```
 
 This gives you recent failures, agent-heavy task flows, and the current
-deployment memory tracked by the runtime.
+deployment memory tracked by the runtime. Normal task/run views exclude
+internal maintenance by default; add `includeInternal=true` only when you are
+doing diagnostics.
 
 ## GitHub Push Monitoring
 
@@ -178,7 +190,7 @@ Alert behavior to expect:
 ps aux | grep "node\\|tsx" | grep -v grep
 ls -la logs/
 curl -fsS http://127.0.0.1:3312/health | jq
-curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq '.health.lastHeartbeatAt'
+curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq '.maintenance.checks'
 ```
 
 ## Common Failure Patterns
@@ -197,7 +209,7 @@ curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboar
 When runtime health looks wrong:
 
 1. Check process liveness.
-2. Check the latest heartbeat.
+2. Check the maintenance cadence status from `/api/dashboard/overview`.
 3. Check the most recent failing task record.
 4. Inspect notifier errors if alerts did not arrive.
 5. Use [Common Issues](../troubleshooting/common-issues.md) and

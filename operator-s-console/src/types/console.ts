@@ -45,6 +45,9 @@ export interface DashboardOverview {
         };
     governedSkills?: GovernedSkillsSummary;
   };
+  maintenance?: {
+    checks?: DashboardMaintenanceCheck[];
+  };
   truthLayers?: RuntimeTruthLayers;
   topology?: AgentTopology;
   incidents?: RuntimeIncidentModel & {
@@ -89,6 +92,23 @@ export interface GovernedSkillsSummary {
   restartSafeApproved?: number;
   metadataOnly?: number;
   metadataOnlyApproved?: number;
+}
+
+export interface DashboardMaintenanceCheck {
+  id: "system-monitor" | "security-posture" | "qa-readiness";
+  label: string;
+  taskType: "system-monitor" | "security-audit" | "qa-verification";
+  intervalMinutes: number;
+  lastCheckedAt?: string | null;
+  lastActionQueuedAt?: string | null;
+  nextDueAt?: string | null;
+  status?: "idle" | "queued" | "watching" | "skipped" | "error" | string;
+  summary?: string;
+  actionQueued?: boolean;
+  lastTaskId?: string | null;
+  lastRunId?: string | null;
+  latestObservedRunAt?: string | null;
+  latestObservedRunStatus?: string | null;
 }
 
 export interface RecentTask {
@@ -231,6 +251,9 @@ export interface TaskRun {
   id?: string;
   runId?: string;
   taskId?: string;
+  visibility?: "operator" | "internal";
+  internalOnly?: boolean;
+  maintenanceCheckId?: string | null;
   type: string;
   status: string;
   createdAt?: string;

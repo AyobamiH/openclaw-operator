@@ -16,12 +16,14 @@ export default function TaskRunsPage() {
   const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
+  const [showInternal, setShowInternal] = useState(false);
   const [page, setPage] = useState(0);
   const { data: catalog } = useTaskCatalog();
 
   const { data, isLoading, isError, error } = useTaskRuns({
     type: typeFilter === "all" ? undefined : typeFilter,
     status: statusFilter === "all" ? undefined : statusFilter,
+    includeInternal: showInternal,
     limit: PAGE_SIZE,
     offset: page * PAGE_SIZE,
   });
@@ -154,7 +156,7 @@ export default function TaskRunsPage() {
       <div className="console-inset p-3">
         <p className="text-[11px] text-muted-foreground font-mono tracking-wide">
           <History className="w-3 h-3 inline mr-1.5 text-primary" />
-          What actually happened. This ledger owns run truth, latency, metered spend, and budget posture for operator-safe work.
+          What actually happened. This ledger owns run truth, latency, metered spend, and budget posture for operator-safe work. Internal maintenance runs stay hidden unless you explicitly open diagnostics mode.
         </p>
       </div>
 
@@ -228,6 +230,18 @@ export default function TaskRunsPage() {
             </SelectContent>
           </Select>
         </div>
+        <Button
+          type="button"
+          variant={showInternal ? "default" : "outline"}
+          size="sm"
+          className="h-8 text-[10px] font-mono uppercase tracking-wider"
+          onClick={() => {
+            setShowInternal((current) => !current);
+            setPage(0);
+          }}
+        >
+          {showInternal ? "Hide Internal Maintenance" : "Show Internal Maintenance"}
+        </Button>
       </div>
 
       <div className="grid xl:grid-cols-[1.05fr_0.95fr] gap-3">

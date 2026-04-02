@@ -34,7 +34,6 @@ interface TaskRowVM {
 }
 
 interface TaskDraftState {
-  heartbeatReason: string;
   controlPlaneFocus: string;
   buildMode: "autonomous" | "explicit";
   buildType: string;
@@ -106,7 +105,6 @@ interface TaskDraftState {
 }
 
 const DEFAULT_TASK_DRAFT: TaskDraftState = {
-  heartbeatReason: "operator-station",
   controlPlaneFocus: "",
   buildMode: "autonomous",
   buildType: "refactor",
@@ -204,7 +202,6 @@ const AVAILABILITY_LABELS: Record<string, string> = {
 
 function categorizeTask(taskType: string): TaskCategory {
   const categoryMap: Record<string, TaskCategory> = {
-    heartbeat: "Routine",
     "doc-sync": "Routine",
     "nightly-batch": "Routine",
     "send-digest": "Routine",
@@ -298,12 +295,6 @@ function buildTaskRows(catalog: any): TaskRowVM[] {
 }
 
 function buildTaskPayload(taskType: string, draft: TaskDraftState): Record<string, unknown> {
-  if (taskType === "heartbeat") {
-    return {
-      reason: draft.heartbeatReason.trim() || "operator-station",
-    };
-  }
-
   if (taskType === "control-plane-brief") {
     return {
       ...(draft.controlPlaneFocus.trim()
@@ -613,21 +604,6 @@ function renderTaskFields(
   draft: TaskDraftState,
   updateDraft: (patch: Partial<TaskDraftState>) => void,
 ) {
-  if (task.type === "heartbeat") {
-    return (
-      <div className="space-y-2">
-        <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
-          Reason
-        </label>
-        <Input
-          value={draft.heartbeatReason}
-          onChange={(event) => updateDraft({ heartbeatReason: event.target.value })}
-          className="bg-panel-inset border-border font-mono text-sm"
-        />
-      </div>
-    );
-  }
-
   if (task.type === "control-plane-brief") {
     return (
       <>

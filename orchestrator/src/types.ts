@@ -59,6 +59,8 @@ export interface TaskRecord {
   handledAt: string;
   result: "ok" | "error";
   message?: string;
+  visibility?: TaskExecutionVisibility;
+  maintenanceCheckId?: MaintenanceCheckId | null;
 }
 
 export interface TaskExecutionUsage {
@@ -335,10 +337,49 @@ export interface IncidentLedgerRecord {
   remediationTasks: IncidentRemediationTaskRecord[];
 }
 
+export type TaskExecutionVisibility = "operator" | "internal";
+
+export type MaintenanceCheckId =
+  | "system-monitor"
+  | "security-posture"
+  | "qa-readiness";
+
+export type MaintenanceCheckStatus =
+  | "idle"
+  | "queued"
+  | "watching"
+  | "skipped"
+  | "error";
+
+export interface MaintenanceCheckRecord {
+  id: MaintenanceCheckId;
+  label: string;
+  taskType: "system-monitor" | "security-audit" | "qa-verification";
+  intervalMinutes: number;
+  lastCheckedAt: string | null;
+  lastActionQueuedAt: string | null;
+  nextDueAt: string | null;
+  status: MaintenanceCheckStatus;
+  summary: string;
+  actionQueued: boolean;
+  lastTaskId?: string | null;
+  lastRunId?: string | null;
+  latestObservedRunAt?: string | null;
+  latestObservedRunStatus?:
+    | "pending"
+    | "running"
+    | "success"
+    | "failed"
+    | "retrying"
+    | null;
+}
+
 export interface TaskExecutionRecord {
   taskId: string;
   idempotencyKey: string;
   type: string;
+  visibility?: TaskExecutionVisibility;
+  maintenanceCheckId?: MaintenanceCheckId | null;
   status: "pending" | "running" | "success" | "failed" | "retrying";
   attempt: number;
   maxRetries: number;
@@ -624,6 +665,7 @@ export interface OrchestratorState {
   pendingDocChanges: string[];
   taskHistory: TaskRecord[];
   taskExecutions: TaskExecutionRecord[];
+  maintenanceChecks: MaintenanceCheckRecord[];
   approvals: ApprovalRecord[];
   driftRepairs: DriftRepairRecord[];
   repairRecords: RepairRecord[];

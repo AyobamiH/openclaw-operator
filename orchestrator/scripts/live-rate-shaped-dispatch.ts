@@ -15,22 +15,6 @@ type StateFile = {
   taskHistory?: TaskHistoryRecord[];
 };
 
-function extractCompletedHeartbeatSeq(stdout: string, runId: string): Set<number> {
-  const completed = new Set<number>();
-  const escapedRunId = runId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`\\[orchestrator\\] ✅ heartbeat: heartbeat \\(${escapedRunId}-(\\d+)\\)`, 'g');
-
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(stdout)) !== null) {
-    const seq = Number(match[1]);
-    if (!Number.isNaN(seq)) {
-      completed.add(seq);
-    }
-  }
-
-  return completed;
-}
-
 function sleep(ms: number) {
   return new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
@@ -123,25 +107,6 @@ async function waitForTaskHistory(
   }
 
   return partial;
-}
-
-async function waitForStdoutCompletions(
-  getStdout: () => string,
-  runId: string,
-  expectedCompletions: number,
-  timeoutMs = 180000,
-): Promise<Set<number>> {
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    const completed = extractCompletedHeartbeatSeq(getStdout(), runId);
-    if (completed.size >= expectedCompletions) {
-      return completed;
-    }
-    await sleep(500);
-  }
-
-  return extractCompletedHeartbeatSeq(getStdout(), runId);
 }
 
 async function main() {
@@ -239,8 +204,10 @@ async function main() {
           'X-Forwarded-For': clientIp,
         },
         body: JSON.stringify({
-          type: 'heartbeat',
+          type: 'system-monitor',
           payload: {
+            type: 'health',
+            agents: ['security-agent'],
             reason: `${runId}-${i + 1}`,
             seq: i + 1,
           },
@@ -272,12 +239,6 @@ async function main() {
     }
 
     const dispatchDurationMs = Date.now() - dispatchStart;
-    const completedByStdout = await waitForStdoutCompletions(
-      () => stdoutBuffer,
-      runId,
-      accepted,
-      300000,
-    );
     const completed = await waitForTaskHistory(stateFilePath, acceptedTaskIds, 10000);
 
     let completedOk = 0;
@@ -302,7 +263,7 @@ async function main() {
       ? (accepted / (dispatchDurationMs / 60000))
       : 0;
 
-    const completionCoverage = accepted > 0 ? (completedByStdout.size / accepted) * 100 : 0;
+    const completionCoverage = accepted > 0 ? (completed.size / accepted) * 100 : 0;
     const totalDrainSeconds = latestHandledAt > 0
       ? (latestHandledAt - dispatchStart) / 1000
       : 0;
@@ -315,8 +276,7 @@ async function main() {
     console.log(`Other errors: ${otherErrors}`);
     console.log(`Enqueue latency p50/p95/max: ${enqueueP50}ms / ${enqueueP95}ms / ${enqueueMax}ms`);
     console.log(`Effective dispatch rate: ${dispatchRatePerMin.toFixed(2)} req/min`);
-    console.log(`Completions observed in stdout: ${completedByStdout.size}/${accepted} (${completionCoverage.toFixed(1)}%)`);
-    console.log(`Completions found in taskHistory (rolling 50): ${completed.size}/${accepted}`);
+    console.log(`Completions found in taskHistory (rolling sample): ${completed.size}/${accepted} (${completionCoverage.toFixed(1)}%)`);
     console.log(`Completion result split from state sample: ok=${completedOk}, error=${completedError}`);
     if (totalDrainSeconds > 0) {
       console.log(`Dispatch-to-last-completion: ${totalDrainSeconds.toFixed(1)}s`);
@@ -339,8 +299,7 @@ async function main() {
         max: enqueueMax,
       },
       effectiveDispatchRatePerMin: Number(dispatchRatePerMin.toFixed(2)),
-      completionsObservedStdout: completedByStdout.size,
-      completionsObservedStateRolling: completed.size,
+      completionsObservedTaskHistory: completed.size,
       completionCoveragePct: Number(completionCoverage.toFixed(1)),
       completionResultSplitFromState: {
         ok: completedOk,

@@ -20,7 +20,6 @@ const TASK_TYPE_ENUM = [
   "rss-sweep",
   "nightly-batch",
   "send-digest",
-  "heartbeat",
   "agent-deploy",
   "doc-sync",
   "control-plane-brief",
@@ -244,6 +243,14 @@ const components = {
         type: "string",
         enum: ["pending", "running", "success", "failed", "retrying"],
       },
+    },
+    IncludeInternal: {
+      name: "includeInternal",
+      in: "query",
+      required: false,
+      description:
+        "Include internal maintenance and diagnostics runs. Defaults to false for normal operator views.",
+      schema: { type: "boolean", default: false },
     },
     IncidentStatus: {
       name: "status",
@@ -571,6 +578,9 @@ const components = {
         id: { type: "string" },
         runId: { type: "string" },
         taskId: { type: "string" },
+        visibility: { type: "string", enum: ["operator", "internal"] },
+        internalOnly: { type: "boolean" },
+        maintenanceCheckId: { type: "string", nullable: true },
         type: { type: "string" },
         status: { type: "string" },
         createdAt: { type: "string", format: "date-time", nullable: true },
@@ -1700,6 +1710,7 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         parameters: [
           parameterRef("TaskRunType"),
           parameterRef("TaskRunStatus"),
+          parameterRef("IncludeInternal"),
           parameterRef("Limit"),
           parameterRef("Offset"),
         ],

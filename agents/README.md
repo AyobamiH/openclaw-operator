@@ -53,7 +53,9 @@ Use these terms separately:
 Current runtime truth:
 
 - **Real long-running service implementations available in repo (`src/service.ts` present):**
-  - all 15 declared runtime agents; `serviceAvailableCount` should now be read as `15`
+  - [`doc-specialist/`](./doc-specialist)
+  - [`reddit-helper/`](./reddit-helper)
+  - `serviceAvailableCount` should now be read as `2` in the canonical public runtime
 - **Service-available and also spawned-worker capable, with live worker proof in the current runtime:**
   - [`doc-specialist/`](./doc-specialist) (`2026-03-07`; `drift-repair` live smoke `run_id=auto-8ef2eb1a3ff49ddd4237ee019d646b4810f9418c699b3a2a1de7682e388fd502`, knowledge-pack verification recorded in `/api/tasks/runs` and `/api/memory/recall`)
 - **Service-available and spawned-worker capable, but worker path is still partial/degraded in the latest validation baseline:**

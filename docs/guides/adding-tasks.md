@@ -96,21 +96,27 @@ export const handlers: Record<string, TaskHandler> = {
 
 ## Step 3: Schedule (Optional)
 
-If you want it to run periodically, add a scheduler in `orchestrator/src/index.ts`:
+Do not add a new ad-hoc `setInterval(...)` loop for a public task. The public
+runtime now has one canonical 5-minute control-plane heartbeat, and recurring
+work should be scheduled either:
+
+- as an explicit cron-owned product task in `orchestrator/src/index.ts`, or
+- as an internal maintenance check owned by the heartbeat scheduler
+
+For a real product schedule, follow the existing cron pattern:
 
 ```typescript
-// In bootstrap() function, after setupSchedulers()
-
-// Run every 5 minutes
-setInterval(async () => {
+cron.schedule("0 12 * * *", () => {
   queue.add({
-    type: 'my-task',
-    priority: 'normal'
+    type: "my-task",
+    priority: "normal",
   });
-}, 1000 * 60 * 5);
-
-console.log('[Scheduler] my-task scheduled: every 5 minutes');
+});
 ```
+
+If the work is really maintenance, keep it internal and wire it into the
+heartbeat-owned maintenance sweep instead of exposing it as a normal operator
+task.
 
 ---
 
@@ -268,7 +274,7 @@ export async function slackNotifyHandler(
 }
 ```
 
-Then register and schedule:
+Then register and schedule through the canonical scheduler surface:
 
 ```typescript
 // In taskHandlers.ts
@@ -278,9 +284,9 @@ export const handlers = {
 };
 
 // In index.ts
-setInterval(async () => {
+cron.schedule("0 * * * *", () => {
   queue.add({ type: 'slack-notify', priority: 'normal' });
-}, 1000 * 60 * 60); // Every hour
+});
 ```
 
 ---

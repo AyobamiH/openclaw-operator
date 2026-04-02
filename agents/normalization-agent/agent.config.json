@@ -20,6 +20,5 @@
     },
     "network": { "allowed": false }
   },
-  "constraints": { "timeoutSec": 120, "maxRetries": 1 },
-  "heartbeat": { "interval": "5m", "checks": ["skill_access", "performance"] }
+  "constraints": { "timeoutSec": 120, "maxRetries": 1 }
 }

@@ -17,6 +17,8 @@ import {
   ApprovalRecord,
   AgentDeploymentRecord,
   DriftRepairRecord,
+  MaintenanceCheckId,
+  MaintenanceCheckRecord,
   RepairRecord,
   RelationshipObservationRecord,
   RelationshipObservationType,
@@ -75,6 +77,34 @@ export const ALLOWED_TASK_TYPES = [
 ] as const;
 
 export type AllowedTaskType = (typeof ALLOWED_TASK_TYPES)[number];
+
+const MAINTENANCE_CHECK_SPECS = [
+  {
+    id: "system-monitor",
+    label: "System Monitor",
+    taskType: "system-monitor",
+    intervalMinutes: 5,
+  },
+  {
+    id: "security-posture",
+    label: "Security Posture",
+    taskType: "security-audit",
+    intervalMinutes: 15,
+  },
+  {
+    id: "qa-readiness",
+    label: "QA Readiness",
+    taskType: "qa-verification",
+    intervalMinutes: 30,
+  },
+] as const satisfies ReadonlyArray<{
+  id: MaintenanceCheckId;
+  label: string;
+  taskType: "system-monitor" | "security-audit" | "qa-verification";
+  intervalMinutes: number;
+}>;
+
+type MaintenanceCheckSpec = (typeof MAINTENANCE_CHECK_SPECS)[number];
 
 const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
   Record<AllowedTaskType, { agentId: string; skillId: string }>
@@ -425,6 +455,123 @@ function hasActiveTaskExecution(
         execution.status === "running" ||
         execution.status === "retrying"),
   );
+}
+
+function addMinutes(timestamp: string, minutes: number) {
+  return new Date(new Date(timestamp).getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function findLatestExecutionForTaskType(
+  context: TaskHandlerContext,
+  taskType: MaintenanceCheckSpec["taskType"],
+) {
+  return [...context.state.taskExecutions]
+    .filter((execution) => execution.type === taskType)
+    .sort((left, right) => right.lastHandledAt.localeCompare(left.lastHandledAt))[0] ?? null;
+}
+
+function ensureMaintenanceCheckRecord(
+  context: TaskHandlerContext,
+  spec: MaintenanceCheckSpec,
+): MaintenanceCheckRecord {
+  const existing = context.state.maintenanceChecks.find((record) => record.id === spec.id);
+  if (existing) {
+    existing.label = spec.label;
+    existing.taskType = spec.taskType;
+    existing.intervalMinutes = spec.intervalMinutes;
+    return existing;
+  }
+
+  const created: MaintenanceCheckRecord = {
+    id: spec.id,
+    label: spec.label,
+    taskType: spec.taskType,
+    intervalMinutes: spec.intervalMinutes,
+    lastCheckedAt: null,
+    lastActionQueuedAt: null,
+    nextDueAt: null,
+    status: "idle",
+    summary: "Control-plane heartbeat has not evaluated this maintenance check yet.",
+    actionQueued: false,
+    lastTaskId: null,
+    lastRunId: null,
+    latestObservedRunAt: null,
+    latestObservedRunStatus: null,
+  };
+  context.state.maintenanceChecks.push(created);
+  return created;
+}
+
+function refreshMaintenanceCheckObservation(
+  context: TaskHandlerContext,
+  record: MaintenanceCheckRecord,
+) {
+  const latestExecution = findLatestExecutionForTaskType(context, record.taskType);
+  record.latestObservedRunAt = latestExecution?.lastHandledAt ?? null;
+  record.latestObservedRunStatus = latestExecution?.status ?? null;
+}
+
+function isMaintenanceCheckDue(record: MaintenanceCheckRecord, now: string) {
+  if (!record.lastActionQueuedAt) {
+    return true;
+  }
+
+  const lastQueuedAt = Date.parse(record.lastActionQueuedAt);
+  if (!Number.isFinite(lastQueuedAt)) {
+    return true;
+  }
+
+  return Date.now() - lastQueuedAt >= record.intervalMinutes * 60 * 1000;
+}
+
+function queueMaintenanceCheck(args: {
+  context: TaskHandlerContext;
+  spec: MaintenanceCheckSpec;
+  now: string;
+  summary: string;
+  actor: "heartbeat" | "startup";
+}) {
+  const { context, spec, now, summary, actor } = args;
+  const record = ensureMaintenanceCheckRecord(context, spec);
+  refreshMaintenanceCheckObservation(context, record);
+  record.lastCheckedAt = now;
+
+  if (hasActiveTaskExecution(spec.taskType, context)) {
+    record.status = "watching";
+    record.summary = `${spec.label} already has active work in flight; no duplicate maintenance run was queued.`;
+    record.actionQueued = false;
+    record.nextDueAt = addMinutes(now, spec.intervalMinutes);
+    return null;
+  }
+
+  const payload: Record<string, unknown> =
+    spec.taskType === "system-monitor"
+      ? { type: "health" }
+      : spec.taskType === "security-audit"
+        ? { type: "scan", scope: "workspace" }
+        : {
+            target: "workspace",
+            suite: "smoke",
+            mode: "dry-run",
+            dryRun: true,
+          };
+
+  const queued = context.enqueueTask(spec.taskType, {
+    ...payload,
+    reason: summary,
+    __actor: actor,
+    __visibility: "internal",
+    __maintenanceCheck: spec.id,
+  });
+
+  record.status = "queued";
+  record.summary = summary;
+  record.actionQueued = true;
+  record.lastActionQueuedAt = now;
+  record.nextDueAt = addMinutes(now, spec.intervalMinutes);
+  record.lastTaskId = queued.id;
+  record.lastRunId = queued.idempotencyKey ?? queued.id;
+  return queued;
 }
 
 function observeRuntimeRelationship(args: {
@@ -1971,10 +2118,19 @@ async function appendDraft(path: string, record: RssDraftRecord) {
 }
 
 const startupHandler: TaskHandler = async (task, context) => {
-  context.state.lastStartedAt = new Date().toISOString();
+  const startedAt = new Date().toISOString();
+  context.state.lastStartedAt = startedAt;
+  queueMaintenanceCheck({
+    context,
+    spec: MAINTENANCE_CHECK_SPECS.find((spec) => spec.id === "qa-readiness")!,
+    now: startedAt,
+    summary:
+      "Queued by orchestrator startup so QA readiness is proven before the next longer maintenance cadence window.",
+    actor: "startup",
+  });
   await context.saveState();
 
-  return "orchestrator boot complete";
+  return "orchestrator boot complete; queued startup QA readiness maintenance";
 };
 
 const docChangeHandler: TaskHandler = async (task, context) => {
@@ -3486,8 +3642,86 @@ const rssSweepHandler: TaskHandler = async (task, context) => {
     : "rss sweep complete (no drafts)";
 };
 
-const heartbeatHandler: TaskHandler = async (task) => {
-  return `heartbeat (${task.payload.reason ?? "interval"})`;
+const heartbeatHandler: TaskHandler = async (task, context) => {
+  const now = new Date().toISOString();
+  const queueSnapshot = context.getQueueSnapshot?.() ?? {
+    queued: [],
+    processing: [],
+  };
+  const queuedCount = queueSnapshot.queued.length;
+  const processingCount = queueSnapshot.processing.length;
+  const pendingApprovalsCount = (context.state.approvals ?? []).filter(
+    (entry) => entry.status === "pending",
+  ).length;
+  const openIncidentsCount = (context.state.incidentLedger ?? []).filter(
+    (entry) => entry.status === "active",
+  ).length;
+  const proofIncidentCount = (context.state.incidentLedger ?? []).filter(
+    (entry) =>
+      entry.status === "active" && entry.classification === "proof-delivery",
+  ).length;
+  const serviceGapIncidentCount = (context.state.incidentLedger ?? []).filter(
+    (entry) =>
+      entry.status === "active" && entry.classification === "service-runtime",
+  ).length;
+
+  const queuedSummaries: string[] = [];
+
+  for (const spec of MAINTENANCE_CHECK_SPECS) {
+    const record = ensureMaintenanceCheckRecord(context, spec);
+    refreshMaintenanceCheckObservation(context, record);
+    record.lastCheckedAt = now;
+
+    if (isMaintenanceCheckDue(record, now)) {
+      const summary =
+        spec.id === "system-monitor"
+          ? queuedCount > 0 ||
+            processingCount > 0 ||
+            pendingApprovalsCount > 0 ||
+            openIncidentsCount > 0 ||
+            proofIncidentCount > 0 ||
+            serviceGapIncidentCount > 0
+            ? `Queued by the 5-minute control-plane heartbeat because runtime pressure is present (${queuedCount} queued, ${processingCount} processing, ${pendingApprovalsCount} approvals, ${openIncidentsCount} open incidents).`
+            : "Queued by the 5-minute control-plane heartbeat on the regular maintenance cadence."
+          : spec.id === "security-posture"
+            ? record.latestObservedRunStatus === "failed"
+              ? "Queued by the control-plane heartbeat because the previous security posture check failed."
+              : "Queued by the control-plane heartbeat on the 15-minute security posture cadence."
+            : record.latestObservedRunStatus === "failed"
+              ? "Queued by the control-plane heartbeat because the previous QA readiness check failed."
+              : "Queued by the control-plane heartbeat on the 30-minute QA readiness cadence.";
+
+      const queuedTask = queueMaintenanceCheck({
+        context,
+        spec,
+        now,
+        summary,
+        actor: "heartbeat",
+      });
+      if (queuedTask) {
+        queuedSummaries.push(spec.id);
+      }
+      continue;
+    }
+
+    record.status =
+      record.latestObservedRunStatus === "failed" ? "error" : "idle";
+    record.summary =
+      record.latestObservedRunStatus === "failed"
+        ? `${spec.label} is between cadence windows, but the latest observed run failed and still needs follow-through.`
+        : `${spec.label} is within cadence; next maintenance check is due at ${record.nextDueAt ?? addMinutes(now, spec.intervalMinutes)}.`;
+    record.actionQueued = false;
+    record.nextDueAt =
+      record.lastActionQueuedAt
+        ? addMinutes(record.lastActionQueuedAt, spec.intervalMinutes)
+        : addMinutes(now, spec.intervalMinutes);
+  }
+
+  await context.saveState();
+
+  return queuedSummaries.length > 0
+    ? `heartbeat (${task.payload.reason ?? "interval"}) queued ${queuedSummaries.join(", ")}`
+    : `heartbeat (${task.payload.reason ?? "interval"}) checked maintenance cadence`;
 };
 
 const agentDeployHandler: TaskHandler = async (task, context) => {

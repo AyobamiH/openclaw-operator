@@ -51,11 +51,6 @@
     "memory": "2048M",
     "cpu": "2.0"
   },
-  "heartbeat": {
-    "enabled": true,
-    "interval": 300000,
-    "checks": ["liveness", "test-access", "skill-access"]
-  },
   "logging": {
     "level": "info",
     "format": "json",

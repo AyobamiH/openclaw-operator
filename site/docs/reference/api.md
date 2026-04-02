@@ -113,6 +113,10 @@ Operator truth reminder:
 - broader operator exposure should follow the same order documented in the
   capability pack: agent maturity first, runtime evidence second, task/route
   promotion third
+- internal maintenance routes and runs are intentionally quieter now:
+  `/api/tasks/catalog` excludes internal-only tasks by default, and
+  `/api/tasks/runs` excludes internal maintenance runs unless
+  `includeInternal=true`
 
 Mission Control implementation note:
 
@@ -991,16 +995,13 @@ async function heartbeatHandler(
 ): Promise<TaskResult>
 ```
 
-**What it does**: Health check, collect diagnostics
+**What it does**: Internal 5-minute control-plane maintenance sweep. It
+evaluates maintenance cadence and conditionally queues internal
+`system-monitor`, `security-audit`, and `qa-verification` runs.
 
 **Result structure**:
 ```json
-{
-  "uptime": 3600000,
-  "memoryUsageMb": 127,
-  "taskQueueDepth": 2,
-  "healthStatus": "ok"
-}
+"heartbeat (periodic) queued system-monitor, security-posture"
 ```
 
 **Spawns agents**: No
@@ -1092,10 +1093,10 @@ const docs = indexer.getIndexedDocs();
 ### Task Queue
 
 ```typescript
-// Add task to queue
+// Add internal maintenance task to queue
 queue.add({
   type: 'heartbeat',
-  priority: 'normal'
+  reason: 'periodic'
 });
 
 // Listen for completions
@@ -1187,14 +1188,14 @@ export const handlers: Record<string, TaskHandler> = {
 };
 ```
 
-Then add schedule in `index.ts`:
+Then add schedule in `index.ts` through the canonical cron surface:
 
 ```typescript
-setInterval(async () => {
+cron.schedule("*/10 * * * *", () => {
   queue.add({
     type: 'my-custom-task'
   });
-}, 1000 * 60 * 10); // Every 10 minutes
+});
 ```
 
 ---

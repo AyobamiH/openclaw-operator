@@ -25,6 +25,7 @@ import {
 import { bool, num, str, toArray, toNullableString } from "@/lib/safe-render";
 import type {
   DashboardIncidentClassificationItem,
+  DashboardMaintenanceCheck,
   DashboardQueuePressureItem,
   RecentTask,
 } from "@/types/console";
@@ -45,6 +46,7 @@ interface OverviewVM {
   openIncidents: number;
   watchingIncidents: number;
   incidentClassifications: IncidentClassificationVM[];
+  maintenanceChecks: MaintenanceCheckVM[];
   recentTasks: RecentTask[];
 }
 
@@ -93,6 +95,17 @@ interface IncidentClassificationVM {
   activeCount: number;
   watchingCount: number;
   highestSeverity: DashboardIncidentClassificationItem["highestSeverity"];
+}
+
+interface MaintenanceCheckVM {
+  id: DashboardMaintenanceCheck["id"];
+  label: string;
+  status: string;
+  summary: string;
+  intervalMinutes: number;
+  nextDueAt: string | null;
+  lastCheckedAt: string | null;
+  latestObservedRunStatus: string | null;
 }
 
 interface ActionTaskVM {
@@ -163,6 +176,20 @@ function buildIncidentClassificationVM(incidents: any): IncidentClassificationVM
       highestSeverity: str(item?.highestSeverity, "info") as IncidentClassificationVM["highestSeverity"],
     }))
     .filter((item) => item.count > 0);
+}
+
+function buildMaintenanceCheckVM(dashboard: any): MaintenanceCheckVM[] {
+  return toArray<DashboardMaintenanceCheck>(dashboard?.maintenance?.checks)
+    .map((item) => ({
+      id: (str(item?.id, "system-monitor") as MaintenanceCheckVM["id"]),
+      label: str(item?.label, "Maintenance Check"),
+      status: str(item?.status, "idle"),
+      summary: str(item?.summary, "No maintenance summary recorded yet."),
+      intervalMinutes: num(item?.intervalMinutes),
+      nextDueAt: toNullableString(item?.nextDueAt),
+      lastCheckedAt: toNullableString(item?.lastCheckedAt),
+      latestObservedRunStatus: toNullableString(item?.latestObservedRunStatus),
+    }));
 }
 
 function collapseRepeatedRecentTasks(tasks: RecentTask[]) {
@@ -321,6 +348,7 @@ function buildOverviewVM(dashboard: any): OverviewVM {
     openIncidents: num(incidents?.openCount),
     watchingIncidents: num(incidents?.watchingCount),
     incidentClassifications: buildIncidentClassificationVM(incidents),
+    maintenanceChecks: buildMaintenanceCheckVM(dashboard),
     recentTasks: collapseRepeatedRecentTasks(
       rawTasks.map((task: any) => {
         const rawStatus = str(task?.result ?? task?.status, "unknown");
@@ -466,15 +494,14 @@ function classifyActionTask(task: any): string {
 
 function buildActionTasks(catalog: any): ActionTaskVM[] {
   const priority: Record<string, number> = {
-    heartbeat: 1,
-    "system-monitor": 2,
-    "doc-sync": 3,
-    "drift-repair": 4,
-    "qa-verification": 5,
-    "nightly-batch": 6,
-    "build-refactor": 7,
-    "market-research": 8,
-    "reddit-response": 9,
+    "system-monitor": 1,
+    "doc-sync": 2,
+    "drift-repair": 3,
+    "qa-verification": 4,
+    "nightly-batch": 5,
+    "build-refactor": 6,
+    "market-research": 7,
+    "reddit-response": 8,
   };
 
   return toArray(catalog?.tasks)
@@ -1207,6 +1234,44 @@ export default function OverviewPage() {
             {pressureStory.signals.map((signal) => (
               <div key={signal} className="console-inset p-3 rounded-sm">
                 <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">{signal}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </SummaryCard>
+
+      <SummaryCard title="Maintenance Cadence" icon={<Clock className="w-4 h-4" />}>
+        <div className="space-y-3">
+          <div className="console-inset p-3 rounded-sm">
+            <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+              One control-plane heartbeat owns maintenance scheduling. Resident loops stay limited to real background producers, and these checks show what the heartbeat last evaluated or queued.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            {vm.maintenanceChecks.map((check) => (
+              <div key={check.id} className="console-inset p-3 rounded-sm space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[10px] font-mono font-semibold uppercase tracking-[0.08em] text-foreground">
+                    {check.label}
+                  </p>
+                  <StatusBadge label={check.status} size="sm" />
+                </div>
+                <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                  {check.summary}
+                </p>
+                <div className="flex flex-wrap gap-2 text-[9px] font-mono uppercase tracking-wider text-muted-foreground">
+                  <span>every {check.intervalMinutes}m</span>
+                  <span>
+                    {check.nextDueAt
+                      ? `next ${formatDistanceToNow(new Date(check.nextDueAt), { addSuffix: true })}`
+                      : "next due pending"}
+                  </span>
+                  <span>
+                    {check.latestObservedRunStatus
+                      ? `latest ${check.latestObservedRunStatus}`
+                      : "no run yet"}
+                  </span>
+                </div>
               </div>
             ))}
           </div>

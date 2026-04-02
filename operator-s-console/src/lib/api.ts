@@ -66,10 +66,17 @@ export const triggerTask = (type: string, payload?: Record<string, unknown>) =>
   });
 
 // ── Task Runs (viewer) ──
-export const fetchTaskRuns = (params?: { type?: string; status?: string; limit?: number; offset?: number }) => {
+export const fetchTaskRuns = (params?: {
+  type?: string;
+  status?: string;
+  includeInternal?: boolean;
+  limit?: number;
+  offset?: number;
+}) => {
   const qs = new URLSearchParams();
   if (params?.type) qs.set("type", params.type);
   if (params?.status) qs.set("status", params.status);
+  if (params?.includeInternal) qs.set("includeInternal", "true");
   if (params?.limit) qs.set("limit", String(params.limit));
   if (params?.offset) qs.set("offset", String(params.offset));
   const query = qs.toString();

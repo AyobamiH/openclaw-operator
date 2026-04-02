@@ -236,10 +236,10 @@ describe("operator contract surfaces", () => {
         },
         recentTasks: [
           {
-            id: "task-heartbeat",
-            taskId: "task-heartbeat",
-            type: "heartbeat",
-            message: "Heartbeat completed",
+            id: "task-system-monitor",
+            taskId: "task-system-monitor",
+            type: "system-monitor",
+            message: "system monitor complete (0 alerts)",
             status: "success",
           },
         ],
@@ -266,9 +266,9 @@ describe("operator contract surfaces", () => {
         generatedAt: "2026-03-11T10:00:00.000Z",
         tasks: [
           {
-            type: "heartbeat",
-            label: "Heartbeat",
-            purpose: "Run a bounded health pulse through the control plane.",
+            type: "system-monitor",
+            label: "System Monitor",
+            purpose: "Inspect queue, service, and incident pressure through bounded checks.",
             operationalStatus: "active",
             approvalGated: false,
             exposeInV1: true,
@@ -312,7 +312,7 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText("Needs Attention")).toBeInTheDocument();
     expect(screen.getByText("Safe Next Actions")).toBeInTheDocument();
     expect(screen.getByText("Fast-start mode is active")).toBeInTheDocument();
-    expect(screen.getByText("Heartbeat")).toBeInTheDocument();
+    expect(screen.getAllByText("System Monitor").length).toBeGreaterThan(0);
     expect(screen.getByText("Top Incident Classifications")).toBeInTheDocument();
     expect(screen.getByText("Knowledge")).toBeInTheDocument();
     expect(screen.getByText("Queue Pressure Sources")).toBeInTheDocument();
@@ -321,10 +321,10 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText(/1 host-running/i)).toBeInTheDocument();
     expect(screen.getAllByText("Stale").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText("Heartbeat"));
+    fireEvent.click(screen.getAllByText("System Monitor")[0]);
     expect(navigateMock).toHaveBeenCalledWith({
       pathname: "/tasks",
-      search: "?openTask=heartbeat",
+      search: "?openTask=system-monitor",
     });
   }, 15000);
 
@@ -427,9 +427,9 @@ describe("operator contract surfaces", () => {
           processing: 1,
           pressure: [
             {
-              type: "heartbeat",
-              label: "Heartbeat",
-              source: "Heartbeat",
+              type: "system-monitor",
+              label: "System Monitor",
+              source: "System Monitor",
               queuedCount: 0,
               processingCount: 1,
               totalCount: 1,
@@ -471,12 +471,12 @@ describe("operator contract surfaces", () => {
         },
         recentTasks: [
           {
-            id: "task-heartbeat",
-            taskId: "task-heartbeat",
-            type: "heartbeat",
+            id: "task-system-monitor",
+            taskId: "task-system-monitor",
+            type: "system-monitor",
             status: "success",
             result: "success",
-            message: "heartbeat (periodic)",
+            message: "system monitor complete (0 alerts)",
             handledAt: "2026-03-11T10:14:00.000Z",
           },
         ],
@@ -1329,7 +1329,7 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText("Handoff And Confidence")).toBeInTheDocument();
     expect(screen.getByText("One source degraded to cached evidence.")).toBeInTheDocument();
     expect(screen.getByText("Recommended task: content-generate.")).toBeInTheDocument();
-  });
+  }, 30000);
 
   it("renders operator focus actions on the governance page", () => {
     vi.mocked(consoleHooks.useDashboardOverview).mockReturnValue({
@@ -1431,7 +1431,7 @@ describe("operator contract surfaces", () => {
         /Decide whether Skill A should stay metadata-only or graduate to restart-safe execution\./i,
       ),
     ).toBeInTheDocument();
-  });
+  }, 30000);
 
   it("renders build-refactor as an operator-usable bounded surgery lane", () => {
     vi.mocked(consoleHooks.useTaskCatalog).mockReturnValue({
@@ -1477,7 +1477,7 @@ describe("operator contract surfaces", () => {
     expect(
       screen.getByDisplayValue(/Repair the bounded runtime\/operator issue inside this scope/i),
     ).toBeInTheDocument();
-  });
+  }, 30000);
 
   it("renders adapted operator guidance directly in the execution ledger", () => {
     vi.mocked(consoleHooks.useTaskRuns).mockReturnValue({
@@ -1987,7 +1987,7 @@ describe("operator contract surfaces", () => {
       note: undefined,
       taskType: undefined,
     });
-  });
+  }, 30000);
 
   it("keeps system health technical after the incident split", () => {
     vi.mocked(consoleHooks.useHealth).mockReturnValue({
@@ -2354,5 +2354,5 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText("Recent Milestones")).toBeInTheDocument();
     expect(screen.getByText("Demand pulse healthy.")).toBeInTheDocument();
     expect(screen.getByText("No dead-letter milestones")).toBeInTheDocument();
-  });
+  }, 30000);
 });

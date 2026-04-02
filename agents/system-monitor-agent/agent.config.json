@@ -19,6 +19,5 @@
     },
     "network": { "allowed": false }
   },
-  "constraints": { "timeoutSec": 30, "maxRetries": 0, "continuous": true },
-  "heartbeat": { "interval": "1m", "checks": ["all_agents_healthy", "resource_usage", "error_rate"] }
+  "constraints": { "timeoutSec": 30, "maxRetries": 0 }
 }

@@ -89,7 +89,13 @@ export function useTriggerTask() {
   });
 }
 
-export function useTaskRuns(params?: { type?: string; status?: string; limit?: number; offset?: number }) {
+export function useTaskRuns(params?: {
+  type?: string;
+  status?: string;
+  includeInternal?: boolean;
+  limit?: number;
+  offset?: number;
+}) {
   return useQuery({
     queryKey: ["tasks-runs", params],
     queryFn: () => fetchTaskRuns(params),

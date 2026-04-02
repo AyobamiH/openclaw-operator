@@ -32,6 +32,5 @@
     "timeoutSec": 600,
     "maxRetries": 0,
     "requiresReview": true
-  },
-  "heartbeat": { "interval": "15m", "checks": ["skill_access", "threat_feeds"] }
+  }
 }

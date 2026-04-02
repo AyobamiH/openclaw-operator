@@ -80,8 +80,12 @@ function buildAgentRows(data: any): { agents: AgentRowVM[]; count: number } {
     capabilityRole: str(a?.capability?.role, "unassigned"),
     capabilitySpine: str(a?.capability?.spine, "execution"),
     capabilityEvidence: toArray<string>(a?.capability?.evidence).map((entry) => str(entry, "")),
-    serviceHeartbeatStatus: toNullableString(a?.runtimeProof?.serviceHeartbeat?.status),
-    serviceHeartbeatCheckedAt: toNullableString(a?.runtimeProof?.serviceHeartbeat?.checkedAt),
+    serviceHeartbeatStatus: bool(a?.serviceExpected)
+      ? toNullableString(a?.runtimeProof?.serviceHeartbeat?.status)
+      : null,
+    serviceHeartbeatCheckedAt: bool(a?.serviceExpected)
+      ? toNullableString(a?.runtimeProof?.serviceHeartbeat?.checkedAt)
+      : null,
     taskObserved: bool(a?.runtimeProof?.distinctions?.taskObserved),
     taskSucceeded: bool(a?.runtimeProof?.distinctions?.taskSucceeded),
     taskLastObservedStatus: toNullableString(a?.runtimeProof?.taskPath?.lastObservedStatus),
@@ -737,17 +741,27 @@ export default function AgentsPage() {
                         Runtime Proof
                       </p>
                       <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px] font-mono">
-                        <div>
-                          <p className="text-muted-foreground uppercase tracking-wider text-[8px]">Service heartbeat</p>
-                          <p className="text-foreground mt-1">
-                            {agent.serviceHeartbeatStatus ?? "unknown"}
-                          </p>
-                          <p className="text-muted-foreground mt-1 leading-relaxed">
-                            {agent.serviceHeartbeatCheckedAt
-                              ? formatDistanceToNow(new Date(agent.serviceHeartbeatCheckedAt)) + " ago"
-                              : "no recent heartbeat"}
-                          </p>
-                        </div>
+                        {agent.serviceExpected ? (
+                          <div>
+                            <p className="text-muted-foreground uppercase tracking-wider text-[8px]">Resident service</p>
+                            <p className="text-foreground mt-1">
+                              {agent.serviceHeartbeatStatus ?? "unknown"}
+                            </p>
+                            <p className="text-muted-foreground mt-1 leading-relaxed">
+                              {agent.serviceHeartbeatCheckedAt
+                                ? formatDistanceToNow(new Date(agent.serviceHeartbeatCheckedAt)) + " ago"
+                                : "no recent resident heartbeat"}
+                            </p>
+                          </div>
+                        ) : (
+                          <div>
+                            <p className="text-muted-foreground uppercase tracking-wider text-[8px]">Execution model</p>
+                            <p className="text-foreground mt-1">worker-first</p>
+                            <p className="text-muted-foreground mt-1 leading-relaxed">
+                              Freshness comes from task-path evidence plus orchestrator-owned maintenance cadence, not a resident heartbeat loop.
+                            </p>
+                          </div>
+                        )}
                         <div>
                           <p className="text-muted-foreground uppercase tracking-wider text-[8px]">Task path</p>
                           <p className="text-foreground mt-1">

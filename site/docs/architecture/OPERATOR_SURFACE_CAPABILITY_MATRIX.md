@@ -106,7 +106,7 @@ Normal operator UIs should follow the matrix below rather than the raw allowlist
 
 | Task Type | Backend Present | Runtime Truth | Safe for `/operator` | Safe for `operator-s-console` | Decision | Notes |
 |---|---:|---|---|---|---|---|
-| `heartbeat` | Yes | confirmed working | Yes | Yes | Expose now | Canonical fast liveness path through the queue. |
+| `heartbeat` | Yes | confirmed working | No | No | Internal-only | Canonical 5-minute maintenance scheduler. It stays internal and should only surface through diagnostics or maintenance state, not as a normal operator task. |
 | `build-refactor` | Yes | approval-gated; explicit bounded patch mode now executes real edits + optional verification | Yes | Yes | Expose now | Sensitive and real. Keep approval language prominent and require explicit scoped payloads for code surgery. |
 | `market-research` | Yes | confirmed-working fetch lane with explicit URLs or derived allowlisted source plans; network posture still matters | Yes | Yes | Expose now | Surface source-plan guidance and network caveats, but treat this as a real research lane rather than a placeholder query capture. |
 | `doc-sync` | Yes | confirmed control-plane path; most useful when pending changes exist | Yes | Yes | Expose now | Safe low-side-effect queue action. |
@@ -172,9 +172,9 @@ This matrix is about backend route exposure, not current frontend implementation
 | `GET /api/companion/runs` | viewer | Yes | Yes | Expose now | Canonical read-first companion recent-run brief surface. |
 | `GET /api/companion/approvals` | operator | Yes | Yes | Expose now | Canonical read-first companion approval summary surface. Keep operator role requirement explicit. |
 | `GET /api/health/extended` | viewer | Yes | Yes | Expose now | Authoritative protected operator-health surface. |
-| `GET /api/tasks/catalog` | viewer | Yes | Yes | Expose now | Canonical operator capability endpoint for task surfacing. |
+| `GET /api/tasks/catalog` | viewer | Yes | Yes | Expose now | Canonical operator capability endpoint for task surfacing. Internal-only maintenance tasks are filtered out by default. |
 | `POST /api/tasks/trigger` | operator | Yes | Yes | Expose now | Curated tasks only. Frontends should not assume the full allowlist is user-facing. |
-| `GET /api/tasks/runs` | viewer | Yes | Yes | Expose now | First-class run visibility surface. |
+| `GET /api/tasks/runs` | viewer | Yes | Yes | Expose now | First-class run visibility surface. Internal maintenance runs are hidden by default unless diagnostics explicitly request `includeInternal=true`. |
 | `GET /api/tasks/runs/:runId` | viewer | Yes | Yes | Expose now | Full run detail / workflow graph / repair linkage surface. |
 | `GET /api/approvals/pending` | operator | Yes | Yes | Expose now | Approval inbox for sensitive or review-gated flows. |
 | `POST /api/approvals/:id/decision` | operator | Yes | Yes | Expose now | Action route; keep operator-only. |
@@ -222,7 +222,7 @@ long-term excuse for permanent partial maturity.
 | Agent | Task Lane(s) | Backend Status | Current Maturity Signal | Safe for `/operator` | Safe for `operator-s-console` | Decision | Notes |
 |---|---|---|---|---|---|---|---|
 | `doc-specialist` | `drift-repair`, `doc-sync` aligned work | Present | Wave 1 gate closed for the current runtime slice; richer truth-spine uplift remains roadmap | Summary only | Full readiness / evidence | Expose now | High-value to surface. Keep action entrypoints contextual through tasks/incidents, not by “run agent” UI. |
-| `system-monitor-agent` | `system-monitor`, `heartbeat` aligned monitoring | Present | Wave 1 gate closed for the current runtime slice; deeper operator-action fusion remains roadmap | Summary only | Full readiness / evidence | Expose now | Strong candidate for deeper operator visibility before broader task exposure. |
+| `system-monitor-agent` | `system-monitor`, heartbeat-owned maintenance checks | Present | Wave 1 gate closed for the current runtime slice; deeper operator-action fusion remains roadmap | Summary only | Full readiness / evidence | Expose now | Strong candidate for deeper operator visibility before broader task exposure. |
 | `security-agent` | `security-audit` | Present | Wave 1 gate closed for the current runtime slice; broader remediation-closure uplift remains roadmap | Summary only | Full readiness / evidence | Expose now | Surface readiness and evidence, but do not oversell as a finished end-state trust auditor. |
 | `qa-verification-agent` | `qa-verification` | Present | Wave 1 gate closed for the current runtime slice; broader acceptance coverage remains roadmap | Summary only | Full readiness / evidence | Expose now | Best surfaced through verification-focused task flows and run detail, not as a generic direct-agent runner. |
 | `integration-agent` | `integration-workflow` | Present | Wave 1 gate closed for the current runtime slice; broader workflow productization remains roadmap | Summary only | Full readiness / evidence | Expose now | Strong observability target; task exposure should follow clearer workflow productization. |

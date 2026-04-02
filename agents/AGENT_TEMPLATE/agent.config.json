@@ -51,11 +51,6 @@
     "memory": "512M",
     "cpu": "1.0"
   },
-  "heartbeat": {
-    "enabled": true,
-    "interval": 300000,
-    "checks": ["liveness", "resource-usage"]
-  },
   "logging": {
     "level": "info",
     "format": "json",

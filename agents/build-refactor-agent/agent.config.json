@@ -45,14 +45,6 @@
     "timeoutSec": 300,
     "maxRetries": 1
   },
-  "heartbeat": {
-    "interval": "10m",
-    "checks": [
-      "disk_access",
-      "skill_access",
-      "test_runner_available"
-    ]
-  },
   "escalation": {
     "alertThreshold": 3,
     "alertIntervalSec": 3600

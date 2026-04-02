@@ -43,11 +43,14 @@ import {
   IncidentRemediationTaskRecord,
   IncidentRemediationTaskStatus,
   IncidentVerificationState,
+  MaintenanceCheckId,
+  MaintenanceCheckRecord,
   OrchestratorState,
   RelationshipObservationRecord,
   RelationshipObservationStatus,
   RelationshipObservationType,
   Task,
+  TaskExecutionVisibility,
   TaskRetryRecoveryRecord,
   ToolInvocation,
   WorkflowEventRecord,
@@ -755,20 +758,82 @@ type OperatorTaskProfile = {
   caveats: string[];
 };
 
+const INTERNAL_TASK_TYPES = new Set(["startup", "doc-change", "heartbeat"]);
+const INTERNAL_VISIBILITY_PAYLOAD_KEY = "__visibility";
+const INTERNAL_MAINTENANCE_CHECK_PAYLOAD_KEY = "__maintenanceCheck";
+
+function isInternalTaskType(type: string) {
+  return INTERNAL_TASK_TYPES.has(type);
+}
+
+function resolveTaskVisibility(
+  payload: Record<string, unknown> | undefined,
+  taskType: string,
+): TaskExecutionVisibility {
+  if (payload?.[INTERNAL_VISIBILITY_PAYLOAD_KEY] === "internal") {
+    return "internal";
+  }
+  return isInternalTaskType(taskType) ? "internal" : "operator";
+}
+
+function resolveMaintenanceCheckId(
+  payload: Record<string, unknown> | undefined,
+): MaintenanceCheckId | null {
+  const value = payload?.[INTERNAL_MAINTENANCE_CHECK_PAYLOAD_KEY];
+  if (
+    value === "system-monitor" ||
+    value === "security-posture" ||
+    value === "qa-readiness"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function isInternalTaskHistoryEntry(
+  entry: Pick<OrchestratorState["taskHistory"][number], "type" | "visibility">,
+) {
+  return entry.visibility === "internal" || isInternalTaskType(entry.type);
+}
+
+function isInternalTaskExecution(
+  execution: Pick<OrchestratorState["taskExecutions"][number], "type" | "visibility">,
+) {
+  return execution.visibility === "internal" || isInternalTaskType(execution.type);
+}
+
+function filterVisibleTaskHistory(
+  history: OrchestratorState["taskHistory"],
+  includeInternal: boolean = false,
+) {
+  return includeInternal ? history : history.filter((entry) => !isInternalTaskHistoryEntry(entry));
+}
+
+function filterVisibleTaskExecutions(
+  executions: OrchestratorState["taskExecutions"],
+  includeInternal: boolean = false,
+) {
+  return includeInternal
+    ? executions
+    : executions.filter((execution) => !isInternalTaskExecution(execution));
+}
+
 const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
   {
     type: "heartbeat",
     label: "Heartbeat",
-    purpose: "Fast control-plane liveness check through the normal queue path.",
-    internalOnly: false,
-    publicTriggerable: true,
+    purpose: "Internal 5-minute maintenance scheduler for control-plane health and conditional downstream checks.",
+    internalOnly: true,
+    publicTriggerable: false,
     approvalGated: false,
     operationalStatus: "confirmed-working",
     dependencyClass: "control-plane",
     baselineConfidence: "high",
     dependencyRequirements: ["task queue"],
-    exposeInV1: true,
-    caveats: [],
+    exposeInV1: false,
+    caveats: [
+      "Internal-only maintenance task. Not operator-runnable through the public task trigger surface.",
+    ],
   },
   {
     type: "build-refactor",
@@ -1834,8 +1899,8 @@ function buildApprovalImpactMetadata(
     dependencyRequirements: profile?.dependencyRequirements ?? [],
     caveats: profile?.caveats ?? [],
     replayBehavior: "approval-requeues-same-payload",
-    internalOnly: profile?.internalOnly ?? false,
-    publicTriggerable: profile?.publicTriggerable ?? true,
+    internalOnly: profile?.internalOnly ?? isInternalTaskType(approval.type),
+    publicTriggerable: profile?.publicTriggerable ?? false,
   };
 }
 
@@ -2283,7 +2348,9 @@ function buildAgentRuntimeProofSummary(args: {
     workerEvidence,
     verifiedRepairCount,
   } = args;
-  const checkedAt = memory?.serviceHeartbeat?.checkedAt ?? memory?.lastRunAt ?? null;
+  const checkedAt = serviceExpected
+    ? memory?.serviceHeartbeat?.checkedAt ?? null
+    : null;
   const checkedAtTs = checkedAt ? toTimestamp(checkedAt) : 0;
   const staleAgeMs = checkedAtTs > 0 ? Math.max(0, Date.now() - checkedAtTs) : null;
   const taskPath = memory?.taskPath ?? null;
@@ -2295,10 +2362,13 @@ function buildAgentRuntimeProofSummary(args: {
   return {
     serviceHeartbeat: {
       checkedAt,
-      status: memory?.serviceHeartbeat?.status ?? memory?.lastStatus ?? null,
-      errorSummary:
-        memory?.serviceHeartbeat?.errorSummary ?? memory?.lastError ?? null,
-      source: memory?.serviceHeartbeat?.source ?? null,
+      status: serviceExpected
+        ? memory?.serviceHeartbeat?.status ?? memory?.lastStatus ?? null
+        : null,
+      errorSummary: serviceExpected
+        ? memory?.serviceHeartbeat?.errorSummary ?? memory?.lastError ?? null
+        : null,
+      source: serviceExpected ? memory?.serviceHeartbeat?.source ?? null : null,
       staleAgeMs,
     },
     taskPath: {
@@ -2314,7 +2384,8 @@ function buildAgentRuntimeProofSummary(args: {
     },
     distinctions: {
       serviceAlive: serviceRunning === true,
-      serviceHeartbeatHealthy: memory?.serviceHeartbeat?.status === "ok",
+      serviceHeartbeatHealthy:
+        serviceExpected && memory?.serviceHeartbeat?.status === "ok",
       serviceAvailable,
       serviceExpected,
       serviceInstalled,
@@ -3379,11 +3450,11 @@ export function buildAgentCapabilityReadiness(args: {
     evidence.push("spawned worker entrypoint detected");
     presentCapabilities.push("spawned worker path");
   }
-  if (serviceAvailable) {
+  if (serviceExpected && serviceAvailable) {
     evidence.push("service entrypoint detected");
     presentCapabilities.push("service entrypoint");
   }
-  if (!spawnedWorkerCapable && !serviceAvailable) {
+  if (!spawnedWorkerCapable && !(serviceExpected && serviceAvailable)) {
     missingCapabilities.push("runtime execution path");
   }
 
@@ -3397,9 +3468,9 @@ export function buildAgentCapabilityReadiness(args: {
   } else if (serviceExpected) {
     missingCapabilities.push("live service coverage");
   }
-  if (runtimeProof.distinctions.serviceHeartbeatHealthy) {
+  if (serviceExpected && runtimeProof.distinctions.serviceHeartbeatHealthy) {
     evidence.push("service heartbeat indicates healthy loop");
-  } else if (runtimeProof.serviceHeartbeat.checkedAt) {
+  } else if (serviceExpected && runtimeProof.serviceHeartbeat.checkedAt) {
     evidence.push(
       `service heartbeat indicates ${runtimeProof.serviceHeartbeat.status ?? "unknown"} loop`,
     );
@@ -3526,7 +3597,7 @@ export function buildAgentCapabilityReadiness(args: {
 
   if (agent.id === "system-monitor-agent") {
     const systemMonitorRuns = Math.max(
-      countSuccessfulExecutionsForTypes(["system-monitor", "heartbeat"]),
+      countSuccessfulExecutionsForTypes(["system-monitor"]),
       Number(runtimeProof.taskPath.successfulRuns ?? 0),
     );
     const proofSignals = support.proofSignalCount;
@@ -4550,19 +4621,26 @@ function buildOperatorTaskCatalog(
   return ALLOWED_TASK_TYPES.map((taskType) => {
     const profile = profileByType.get(taskType);
     if (!profile) {
+      const internalOnly = isInternalTaskType(taskType);
       return {
         type: taskType,
         label: taskType,
-        purpose: "Runtime allowlisted task.",
-        internalOnly: false,
-        publicTriggerable: true,
+        purpose: internalOnly
+          ? "Internal runtime maintenance task."
+          : "Runtime allowlisted task pending explicit operator classification.",
+        internalOnly,
+        publicTriggerable: false,
         approvalGated: approvalRequired.has(taskType),
-        operationalStatus: "unconfirmed" as const,
-        dependencyClass: "worker" as const,
+        operationalStatus: internalOnly ? ("confirmed-working" as const) : ("unconfirmed" as const),
+        dependencyClass: internalOnly ? ("control-plane" as const) : ("worker" as const),
         baselineConfidence: "low" as const,
         dependencyRequirements: [],
         exposeInV1: false,
-        caveats: ["No operator-facing classification recorded yet."],
+        caveats: [
+          internalOnly
+            ? "Internal-only task. Keep it out of normal operator launch surfaces."
+            : "No operator-facing classification recorded yet. Add an explicit task profile before exposing it publicly.",
+        ],
         telemetryOverlay: buildTaskTelemetryOverlay(state, taskType),
       };
     }
@@ -4573,6 +4651,27 @@ function buildOperatorTaskCatalog(
       telemetryOverlay: buildTaskTelemetryOverlay(state, taskType),
     };
   });
+}
+
+function buildDashboardMaintenanceChecks(state: OrchestratorState) {
+  return [...(state.maintenanceChecks ?? [])]
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .map((record) => ({
+      id: record.id,
+      label: record.label,
+      taskType: record.taskType,
+      intervalMinutes: record.intervalMinutes,
+      lastCheckedAt: record.lastCheckedAt ?? null,
+      lastActionQueuedAt: record.lastActionQueuedAt ?? null,
+      nextDueAt: record.nextDueAt ?? null,
+      status: record.status,
+      summary: record.summary,
+      actionQueued: record.actionQueued === true,
+      lastTaskId: record.lastTaskId ?? null,
+      lastRunId: record.lastRunId ?? null,
+      latestObservedRunAt: record.latestObservedRunAt ?? null,
+      latestObservedRunStatus: record.latestObservedRunStatus ?? null,
+    }));
 }
 
 function buildCompanionControlPlaneMode(args: {
@@ -4773,7 +4872,12 @@ function buildCompanionCatalogPayload(
   state: OrchestratorState,
 ) {
   const tasks = buildOperatorTaskCatalog(config, state)
-    .filter((task) => task.exposeInV1 !== false && !task.internalOnly)
+    .filter(
+      (task) =>
+        task.exposeInV1 !== false &&
+        !task.internalOnly &&
+        task.publicTriggerable !== false,
+    )
     .map((task) => ({
       type: task.type,
       label: task.label,
@@ -4875,7 +4979,7 @@ function buildCompanionRunsPayload(
   config: Awaited<ReturnType<typeof loadConfig>>,
   limit: number = 10,
 ) {
-  const runs = [...state.taskExecutions]
+  const runs = [...filterVisibleTaskExecutions(state.taskExecutions)]
     .sort((left, right) => right.lastHandledAt.localeCompare(left.lastHandledAt))
     .slice(0, limit)
     .map((execution) => {
@@ -6254,6 +6358,11 @@ function buildRunRecord(
     created_at: firstSeenAt,
     runId: execution.idempotencyKey,
     taskId: execution.taskId,
+    visibility:
+      execution.visibility ??
+      (isInternalTaskType(execution.type) ? "internal" : "operator"),
+    internalOnly: isInternalTaskExecution(execution),
+    maintenanceCheckId: execution.maintenanceCheckId ?? null,
     createdAt,
     startedAt,
     completedAt,
@@ -10167,6 +10276,10 @@ async function bootstrap() {
       (item) => item.idempotencyKey === idempotencyKey,
     );
     if (existing) {
+      existing.visibility =
+        existing.visibility ?? resolveTaskVisibility(task.payload, task.type);
+      existing.maintenanceCheckId =
+        existing.maintenanceCheckId ?? resolveMaintenanceCheckId(task.payload);
       return { existing, idempotencyKey };
     }
 
@@ -10174,6 +10287,8 @@ async function bootstrap() {
       taskId: task.id,
       idempotencyKey,
       type: task.type,
+      visibility: resolveTaskVisibility(task.payload, task.type),
+      maintenanceCheckId: resolveMaintenanceCheckId(task.payload),
       status: "pending" as const,
       attempt: task.attempt ?? 1,
       maxRetries: Number.isFinite(task.maxRetries)
@@ -10327,12 +10442,16 @@ async function bootstrap() {
     result: "ok" | "error",
     message?: string,
   ) => {
+    const visibility = resolveTaskVisibility(task.payload, task.type);
+    const maintenanceCheckId = resolveMaintenanceCheckId(task.payload);
     state.taskHistory.push({
       id: task.id,
       type: task.type,
       handledAt: new Date().toISOString(),
       result,
       message,
+      visibility,
+      maintenanceCheckId,
     });
     if (state.taskHistory.length > taskHistoryLimit) {
       state.taskHistory.shift();
@@ -12097,7 +12216,9 @@ async function bootstrap() {
           },
           compute: () => ({
             generatedAt: new Date().toISOString(),
-            tasks: buildOperatorTaskCatalog(config, state),
+            tasks: buildOperatorTaskCatalog(config, state).filter(
+              (task) => !task.internalOnly && task.publicTriggerable !== false,
+            ),
           }),
         });
       } catch (error: any) {
@@ -12874,6 +12995,9 @@ async function bootstrap() {
                 pendingCount: pendingApprovals.length,
                 pending: [],
               },
+              maintenance: {
+                checks: buildDashboardMaintenanceChecks(state),
+              },
               selfHealing: {
                 model: "partial-runtime",
                 autoPolicies: ["doc-drift", "task-retry-recovery"],
@@ -12886,7 +13010,7 @@ async function bootstrap() {
                   state.incidentLedger,
                 ),
               },
-              recentTasks: state.taskHistory.slice(-20),
+              recentTasks: filterVisibleTaskHistory(state.taskHistory).slice(-20),
             };
           },
         });
@@ -13152,6 +13276,9 @@ async function bootstrap() {
         const type = typeof req.query.type === "string" ? req.query.type : undefined;
         const status =
           typeof req.query.status === "string" ? req.query.status : undefined;
+        const includeInternalQuery = String(req.query.includeInternal ?? "").toLowerCase();
+        const includeInternal =
+          includeInternalQuery === "true" || includeInternalQuery === "1";
         const limit = Number(req.query.limit ?? 50);
         const offset = Number(req.query.offset ?? 0);
         await respondWithCachedJson(req, res, {
@@ -13159,9 +13286,12 @@ async function bootstrap() {
           ttlSeconds: readCacheTtls.taskRuns,
           tags: ["runtime-state"],
           scope: "protected",
-          keyData: { type, status, limit, offset },
+          keyData: { type, status, includeInternal, limit, offset },
           compute: () => {
-            const filtered = state.taskExecutions.filter((execution) => {
+            const filtered = filterVisibleTaskExecutions(
+              state.taskExecutions,
+              includeInternal,
+            ).filter((execution) => {
               if (type && execution.type !== type) return false;
               if (status && execution.status !== status) return false;
               return true;
@@ -13174,7 +13304,13 @@ async function bootstrap() {
 
             return {
               generatedAt: new Date().toISOString(),
-              query: { type: type ?? null, status: status ?? null, limit, offset },
+              query: {
+                type: type ?? null,
+                status: status ?? null,
+                includeInternal,
+                limit,
+                offset,
+              },
               total: filtered.length,
               page: {
                 returned: page.length,

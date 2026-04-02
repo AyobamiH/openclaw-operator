@@ -50,7 +50,7 @@ Capability-access rule:
 - `rss-sweep`
 - `nightly-batch`
 - `send-digest`
-- `heartbeat`
+- internal `heartbeat`
 
 ### External / Community / Content
 
@@ -154,7 +154,7 @@ Approval column:
 | `rss-sweep` | `public-triggerable`; `externally dependent` | `dynamic-only` | `rssSweepHandler` | none | no | Depends on `rssConfigPath`, live feeds, and network availability; routing truth does not prove downstream feed success. |
 | `nightly-batch` | `public-triggerable`; `historical success observed 2026-03-06` | `dynamic-only` | `nightlyBatchHandler` | none | no | Also runs from cron; `/api/dashboard/overview.recentTasks` showed success on `2026-03-06`, but the task was not re-run in the `2026-03-07` safe sweep because it writes digest artifacts and emits delivery surfaces. It now derives `selectedForDraft` from existing RSS routing tags: only `priority` queue items are auto-selected for `reddit-response`; `manual-review` items create mandatory pending approvals; and the top `10` `draft` items create optional promotion approvals while staying unselected until an operator approves replay. |
 | `send-digest` | `public-triggerable`; `partially operational`; `externally dependent` | `dynamic-only` | `sendDigestHandler` | none | no | Historical success exists in protected recent-task data, but the `2026-03-07` safe sweep did not re-run it because the live config points at an outbound notification target. |
-| `heartbeat` | `public-triggerable`; `confirmed working` | `dynamic-only` | `heartbeatHandler` | none | no | Confirmed healthy control-plane path. |
+| `heartbeat` | `internal-only`; `confirmed working` | `dynamic-only` | `heartbeatHandler` | none | no | Internal 5-minute control-plane maintenance scheduler. It conditionally queues internal `system-monitor`, `security-audit`, and `qa-verification` checks and is no longer a normal operator-triggerable task. |
 | `agent-deploy` | `public-triggerable`; `approval-gated`; `confirmed working` | `default + dynamic` | `agentDeployHandler` | none | no | After approval, the handler now performs a real local deployment by copying the selected template into the runtime deployment directory, writing `DEPLOYMENT.json`, and persisting the deployment record in orchestrator state. |
 
 ## Public vs Internal Scope
@@ -204,8 +204,11 @@ Approval column:
 - `startup` records boot state and emits a startup milestone.
 - `doc-change` and `doc-sync` manage the doc-change buffer.
 - `drift-repair` can trigger doc-specialist work and emit milestone records.
-- `rss-sweep`, `nightly-batch`, `send-digest`, and `heartbeat` support
-  recurring operational flows.
+- `rss-sweep`, `nightly-batch`, and `send-digest` support recurring operational
+  flows.
+- `heartbeat` is the internal maintenance scheduler for those recurring checks
+  and for maintenance-only `system-monitor`, `security-audit`, and
+  `qa-verification` cadence.
 
 ### Worker / Agent Tasks
 

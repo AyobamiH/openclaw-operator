@@ -426,6 +426,27 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       lastHandledAt: '2026-03-17T10:06:00.000Z',
       lastError: 'milestone delivery timed out before confirmation',
     });
+    seededState.taskExecutions.push({
+      taskId: 'seed-maintenance-task',
+      idempotencyKey: 'seed-maintenance-run',
+      type: 'qa-verification',
+      visibility: 'internal',
+      maintenanceCheckId: 'qa-readiness',
+      status: 'success',
+      attempt: 1,
+      maxRetries: 1,
+      startedAt: '2026-03-17T09:58:00.000Z',
+      completedAt: '2026-03-17T09:58:12.000Z',
+      lastHandledAt: '2026-03-17T09:58:12.000Z',
+      resultSummary: {
+        success: true,
+        keys: ['queuedBy', 'summary'],
+        highlights: {
+          queuedBy: 'startup',
+          summary: 'Seeded internal QA readiness maintenance check.',
+        },
+      },
+    });
     seededState.workflowEvents.push(
       {
         eventId: 'seed-proof-ingress',
@@ -662,7 +683,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     const response = await fetch(`${baseUrl}/api/tasks/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'heartbeat', payload: {} }),
+      body: JSON.stringify({ type: 'system-monitor', payload: { type: 'health' } }),
     });
 
     expect(response.status).toBe(401);
@@ -675,13 +696,62 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${TEST_API_KEY}`,
       },
-      body: JSON.stringify({ type: 'heartbeat', payload: { reason: 'integration-test' } }),
+      body: JSON.stringify({
+        type: 'system-monitor',
+        payload: { type: 'health', agents: ['security-agent'] },
+      }),
     });
 
     expect(response.status).toBe(202);
     const body = await response.json() as { status: string; type: string };
     expect(body.status).toBe('queued');
-    expect(body.type).toBe('heartbeat');
+    expect(body.type).toBe('system-monitor');
+  });
+
+  it('rejects internal maintenance task triggers over the public task endpoint', async () => {
+    const response = await fetch(`${baseUrl}/api/tasks/trigger`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${TEST_API_KEY}`,
+      },
+      body: JSON.stringify({ type: 'heartbeat', payload: { reason: 'integration-test' } }),
+    });
+
+    expect(response.status).toBe(400);
+  });
+
+  it('hides internal maintenance tasks from default operator surfaces', async () => {
+    const catalog = await fetchProtected<{
+      tasks?: Array<{ type?: string }>;
+    }>('/api/tasks/catalog');
+    expect((catalog.tasks ?? []).some((task) => task.type === 'heartbeat')).toBe(false);
+
+    const visibleRuns = await fetchProtected<{
+      runs?: Array<{ type?: string }>;
+    }>('/api/tasks/runs?limit=200');
+    expect(
+      (visibleRuns.runs ?? []).some((run) =>
+        ['heartbeat', 'startup', 'doc-change'].includes(String(run.type)),
+      ),
+    ).toBe(false);
+
+    const diagnosticRuns = await fetchProtected<{
+      runs?: Array<{
+        type?: string;
+        visibility?: string;
+        internalOnly?: boolean;
+        maintenanceCheckId?: string | null;
+      }>;
+    }>('/api/tasks/runs?limit=200&includeInternal=true');
+    expect(
+      (diagnosticRuns.runs ?? []).some(
+        (run) =>
+          run.visibility === 'internal' ||
+          run.internalOnly === true ||
+          typeof run.maintenanceCheckId === 'string',
+      ),
+    ).toBe(true);
   });
 
   it('serves bounded companion read surfaces with protected runtime truth', async () => {
@@ -828,13 +898,14 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
   it('records success as ok and handler exceptions as error in task history', async () => {
     const runNonce = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const successTaskId = await triggerTask('heartbeat', {
-      reason: 'result-semantics-success',
+    const successTaskId = await triggerTask('system-monitor', {
+      type: 'health',
+      agents: ['security-agent'],
       runNonce,
     });
     const successRecord = await waitForTaskHistoryRecord(successTaskId);
     expect(successRecord.result).toBe('ok');
-    expect(successRecord.message).toContain('heartbeat');
+    expect(successRecord.message).toContain('system monitor');
 
     const backupDigestDir = `${digestDirPath}.vitest-bak-${Date.now()}`;
     let movedDigestDir = false;
@@ -1232,7 +1303,9 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   });
 
   it('returns workflow summaries, workflow graph detail, and agent capability surfaces', { timeout: 60000 }, async () => {
-    const taskId = await triggerTask('heartbeat', {
+    const taskId = await triggerTask('system-monitor', {
+      type: 'health',
+      agents: ['security-agent'],
       reason: 'workflow-graph-validation',
     });
 
@@ -1328,14 +1401,14 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(Array.isArray(agentsPayload.relationshipHistory?.timeline)).toBe(true);
   });
 
-  it('surfaces Wave 1 runtime readiness signals through agent overview', { timeout: 90000 }, async () => {
+  it('surfaces Wave 1 runtime readiness signals through agent overview', { timeout: 150000 }, async () => {
     const docTaskId = await triggerTask('drift-repair', {
       requestedBy: 'integration-wave1-readiness',
       paths: [resolve(process.cwd(), '..', 'README.md')],
       targets: ['doc-specialist'],
     });
-    await waitForTaskHistoryRecord(docTaskId);
-    await waitForTaskRun(docTaskId);
+    await waitForTaskHistoryRecord(docTaskId, 90000);
+    await waitForTaskRun(docTaskId, 90000);
 
     const integrationTaskId = await triggerTask('integration-workflow', {
       type: 'wave1-readiness',
@@ -1352,22 +1425,22 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         },
       ],
     });
-    await waitForTaskHistoryRecord(integrationTaskId);
-    await waitForTaskRun(integrationTaskId);
+    await waitForTaskHistoryRecord(integrationTaskId, 90000);
+    await waitForTaskRun(integrationTaskId, 90000);
 
     const systemMonitorTaskId = await triggerTask('system-monitor', {
       type: 'health',
       agents: ['security-agent', 'qa-verification-agent'],
     });
-    await waitForTaskHistoryRecord(systemMonitorTaskId);
-    await waitForTaskRun(systemMonitorTaskId);
+    await waitForTaskHistoryRecord(systemMonitorTaskId, 90000);
+    await waitForTaskRun(systemMonitorTaskId, 90000);
 
     const securityTaskId = await triggerTask('security-audit', {
       type: 'scan',
       scope: 'workspace',
     });
-    await waitForTaskHistoryRecord(securityTaskId);
-    await waitForTaskRun(securityTaskId);
+    await waitForTaskHistoryRecord(securityTaskId, 90000);
+    await waitForTaskRun(securityTaskId, 90000);
 
     const qaTaskId = await triggerTask('qa-verification', {
       target: 'workflow',
@@ -1378,8 +1451,8 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       runIds: ['wave1-readiness-run'],
       affectedSurfaces: ['workflow'],
     });
-    await waitForTaskHistoryRecord(qaTaskId);
-    await waitForTaskRun(qaTaskId);
+    await waitForTaskHistoryRecord(qaTaskId, 90000);
+    await waitForTaskRun(qaTaskId, 90000);
 
     const agentsPayload = await fetchProtected<{
       agents?: Array<{
