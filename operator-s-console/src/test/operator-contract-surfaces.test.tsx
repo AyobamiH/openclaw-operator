@@ -798,6 +798,7 @@ describe("operator contract surfaces", () => {
               lastAttemptAt: "2026-03-11T10:00:02.000Z",
             },
           ],
+          operatorPreview: null,
         }}
         runResult={{
           operatorSummary: "Prepared a local-only reddit draft with review posture because the knowledge pack is behind the docs mirror.",
@@ -896,6 +897,7 @@ describe("operator contract surfaces", () => {
           events: [],
           workflowGraph: null,
           proofLinks: [],
+          operatorPreview: null,
         }}
         runResult={{
           operatorSummary:

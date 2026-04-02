@@ -190,6 +190,18 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       } catch {
         // retry until timeout
       }
+
+      try {
+        const overview = await fetchProtected<{
+          recentTasks?: Array<{ id?: string; type?: string; result?: 'ok' | 'error'; message?: string }>;
+        }>('/api/dashboard/overview');
+        const recent = overview.recentTasks?.find((entry) => entry?.id === taskId);
+        if (recent) {
+          return recent;
+        }
+      } catch {
+        // retry until timeout
+      }
       await sleep(250);
     }
 
