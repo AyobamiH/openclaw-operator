@@ -420,7 +420,7 @@ shipped honestly in open source:
 
 | External Role | Queue Status | Intended Public Shape | Why It Belongs |
 |---|---|---|---|
-| DevOps Automator | adapt next | `deployment-ops-agent` | bounded deploy, rollback, release-ops, and service-runtime guidance fit the operator product directly |
+| DevOps Automator | implemented (`2026-04-02`) | `deployment-ops-agent` | bounded deploy, rollback, release-ops, and service-runtime guidance fit the operator product directly |
 | LSP/Index Engineer | adapt next | `code-index-agent` | searchable code and knowledge indexing is productizable, operator-visible, and useful beyond the maintainer's private lab |
 | Test Results Analyzer | adapt next | `test-intelligence-agent` | multi-suite test evidence synthesis is a real public control-plane workflow that complements, rather than duplicates, verification |
 | Legal Compliance Checker | adapt next | `compliance-agent` | bounded compliance, policy, and dependency-posture review is open-source shippable and useful for releases and operator decisions |
@@ -551,12 +551,14 @@ productize it end to end before opening the next one.
 
 Current recommended first candidate:
 
-- DevOps Automator -> `deployment-ops-agent`
+- LSP/Index Engineer -> `code-index-agent`
 
 Why first:
 
-- it strengthens public deployment and runtime operations directly
-- it fits the control-plane/operator theme cleanly
+- it strengthens code, docs, and knowledge retrieval without duplicating an
+  existing public lane
+- it fits the control-plane/operator theme cleanly as a bounded indexing and
+  search-quality lane
 - it has a clearer owned lane than the more abstract later candidates
 - it can produce operator-visible proof without flattening the current trust
   model

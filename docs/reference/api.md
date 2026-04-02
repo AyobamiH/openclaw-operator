@@ -375,6 +375,10 @@ Safe leaf fields to render:
   `operatorSummary`, `recommendedNextActions[]`, and
   `specialistContract.{role,workflowStage,deliverable,status,refusalReason,escalationReason}`
   when the owning agent emits them.
+- `GET /api/tasks/catalog` now includes the bounded `deployment-ops` lane in
+  the public task surface, and `POST /api/tasks/trigger` accepts the same lane
+  with a bounded `target` plus `rolloutMode` payload instead of treating
+  deployment posture as an implicit side effect of `release-readiness`.
 - `/health`: `status`, `timestamp`
 
 Auth persistence requirement:

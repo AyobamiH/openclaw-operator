@@ -1228,6 +1228,97 @@ function buildMarketResearchSignalDeck(raw: Record<string, unknown>): OperatorSi
   };
 }
 
+function buildDeploymentOpsSignalDeck(raw: Record<string, unknown>): OperatorSignalDeckVM | null {
+  const deploymentOps = asRecord(raw.deploymentOps);
+  if (!deploymentOps) return null;
+
+  const rollbackReadiness = asRecord(deploymentOps.rollbackReadiness);
+  const environmentDrift = asRecord(deploymentOps.environmentDrift);
+  const pipelinePosture = asRecord(deploymentOps.pipelinePosture);
+  const surfaceChecks = asRecord(deploymentOps.surfaceChecks);
+
+  const decision = str(deploymentOps.decision, "unknown");
+  const target = str(deploymentOps.target, "public-runtime");
+  const rolloutMode = str(deploymentOps.rolloutMode, "service");
+  const blockers = normalizeStringList(deploymentOps.blockers, 3);
+  const followups = normalizeStringList(deploymentOps.followups, 3);
+  const latestRuns = toArray<Record<string, unknown>>(pipelinePosture?.latestRuns);
+
+  return {
+    title: "Deployment Ops Signals",
+    summary:
+      str(deploymentOps.summary, "") ||
+      `Deployment posture is ${decision} for ${target} in ${rolloutMode} mode.`,
+    cards: [
+      {
+        id: "deployment-decision",
+        title: "Deployment Decision",
+        status:
+          decision === "ready" ? "ready" : decision === "watch" ? "watching" : "blocked",
+        summary: `Target ${target} is ${decision} for ${rolloutMode} rollout mode.`,
+        details: compactDetails([
+          blockers[0] ? `Blocker: ${blockers[0]}` : null,
+          followups[0] ? `Next: ${followups[0]}` : null,
+        ]),
+      },
+      {
+        id: "deployment-surfaces",
+        title: "Rollout Surfaces",
+        status:
+          surfaceChecks?.systemdService === true ||
+          surfaceChecks?.dockerCompose === true
+            ? "ready"
+            : "blocked",
+        summary: `Service unit ${surfaceChecks?.systemdService === true ? "present" : "missing"}, Docker compose ${surfaceChecks?.dockerCompose === true ? "present" : "missing"}, Dockerfile ${surfaceChecks?.dockerfile === true ? "present" : "missing"}.`,
+        details: compactDetails([
+          `Deploy workflow: ${surfaceChecks?.deployWorkflow === true ? "present" : "missing"}.`,
+          `Docker demo smoke workflow: ${surfaceChecks?.dockerDemoSmokeWorkflow === true ? "present" : "missing"}.`,
+        ]),
+      },
+      {
+        id: "deployment-rollback",
+        title: "Rollback Readiness",
+        status:
+          rollbackReadiness?.status === "ready"
+            ? "ready"
+            : rollbackReadiness?.status === "partial"
+              ? "watching"
+              : "blocked",
+        summary: `Rollback posture is ${str(rollbackReadiness?.status, "unknown")}.`,
+        details: compactDetails(normalizeStringList(rollbackReadiness?.signals, 3)),
+      },
+      {
+        id: "deployment-drift",
+        title: "Environment Drift",
+        status:
+          environmentDrift?.status === "aligned"
+            ? "ready"
+            : environmentDrift?.status === "watching"
+              ? "watching"
+              : "blocked",
+        summary: `Deployment/docs parity is ${str(environmentDrift?.status, "unknown")}.`,
+        details: compactDetails(normalizeStringList(environmentDrift?.signals, 3)),
+      },
+      {
+        id: "deployment-pipeline",
+        title: "Pipeline Evidence",
+        status:
+          pipelinePosture?.status === "healthy"
+            ? "ready"
+            : pipelinePosture?.status === "watching"
+              ? "watching"
+              : "blocked",
+        summary: `Pipeline posture is ${str(pipelinePosture?.status, "unknown")} across ${latestRuns.length} recent evidence run(s).`,
+        details: compactDetails(
+          latestRuns.slice(0, 3).map((run) =>
+            `${str(run.type, "unknown")} -> ${str(run.status, "unknown")} (${str(run.lastHandledAt, "no timestamp")})`,
+          ),
+        ),
+      },
+    ],
+  };
+}
+
 function buildOperatorSignalDeckVM(runType: string | null | undefined, runResult?: unknown) {
   const raw = asRecord(runResult);
   if (!runType || !raw) return null;
@@ -1241,6 +1332,7 @@ function buildOperatorSignalDeckVM(runType: string | null | undefined, runResult
   if (runType === "data-extraction") return buildDataExtractionSignalDeck(raw);
   if (runType === "normalize-data") return buildNormalizationSignalDeck(raw);
   if (runType === "market-research") return buildMarketResearchSignalDeck(raw);
+  if (runType === "deployment-ops") return buildDeploymentOpsSignalDeck(raw);
   if (runType === "qa-verification") return buildQaSignalDeck(raw);
   if (runType === "security-audit") return buildSecuritySignalDeck(raw);
   if (runType === "system-monitor") return buildSystemMonitorSignalDeck(raw);

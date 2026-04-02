@@ -54,6 +54,7 @@ export const ALLOWED_TASK_TYPES = [
   "doc-change",
   "doc-sync",
   "drift-repair",
+  "deployment-ops",
   "control-plane-brief",
   "incident-triage",
   "release-readiness",
@@ -121,6 +122,10 @@ const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
   "build-refactor": {
     agentId: "build-refactor-agent",
     skillId: "workspacePatch",
+  },
+  "deployment-ops": {
+    agentId: "deployment-ops-agent",
+    skillId: "documentParser",
   },
   "control-plane-brief": {
     agentId: "operations-analyst-agent",
@@ -244,6 +249,11 @@ const RUN_RESULT_HIGHLIGHT_PRIORITY = [
   "artifactCoverage",
   "comparisonReadiness",
   "deltaCapture",
+  "deploymentOps",
+  "rollbackReadiness",
+  "environmentDrift",
+  "pipelinePosture",
+  "surfaceChecks",
   "handoffPackage",
   "publicationPolicy",
   "claimDiscipline",
@@ -2662,6 +2672,59 @@ const controlPlaneBriefHandler: TaskHandler = async (task, context) => {
   }
 };
 
+const deploymentOpsHandler: TaskHandler = async (task, context) => {
+  await assertToolGatePermission(task, context, "deployment-ops");
+  const payload = {
+    id: randomUUID(),
+    type: "deployment-ops",
+    target:
+      typeof task.payload.target === "string"
+        ? task.payload.target
+        : undefined,
+    rolloutMode:
+      task.payload.rolloutMode === "service" ||
+      task.payload.rolloutMode === "docker-demo" ||
+      task.payload.rolloutMode === "dual"
+        ? task.payload.rolloutMode
+        : undefined,
+  };
+
+  try {
+    const result = await runSpawnedAgentJob(
+      "deployment-ops-agent",
+      payload,
+      "DEPLOYMENT_OPS_AGENT_RESULT_FILE",
+      context.logger,
+    );
+    recordTaskExecutionResultSummary(context, task, result);
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "deployment-ops-agent",
+      result,
+    });
+    const deploymentOps =
+      typeof result.deploymentOps === "object" &&
+      result.deploymentOps !== null
+        ? (result.deploymentOps as Record<string, unknown>)
+        : null;
+    if (result.success !== true && deploymentOps?.decision !== "watch") {
+      throw new Error(
+        typeof deploymentOps?.summary === "string"
+          ? deploymentOps.summary
+          : "deployment-ops reported blocked posture",
+      );
+    }
+    const decision =
+      deploymentOps && typeof deploymentOps.decision === "string"
+        ? deploymentOps.decision
+        : "unknown";
+    return `deployment ops complete (${decision})`;
+  } catch (error) {
+    throwTaskFailure("deployment ops", error);
+  }
+};
+
 const incidentTriageHandler: TaskHandler = async (task, context) => {
   await assertToolGatePermission(task, context, "incident-triage");
   const payload = {
@@ -3923,6 +3986,7 @@ export const taskHandlers: Record<string, TaskHandler> = {
   "doc-change": docChangeHandler,
   "doc-sync": docSyncHandler,
   "drift-repair": driftRepairHandler,
+  "deployment-ops": deploymentOpsHandler,
   "control-plane-brief": controlPlaneBriefHandler,
   "incident-triage": incidentTriageHandler,
   "release-readiness": releaseReadinessHandler,

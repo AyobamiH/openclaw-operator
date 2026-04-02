@@ -19,6 +19,8 @@ Telemetry helpers live under [`shared/`](./shared). New agents should start from
 - [`content-agent/`](./content-agent) - repository-backed content generation
 - [`data-extraction-agent/`](./data-extraction-agent) - structured extraction
   from local files
+- [`deployment-ops-agent/`](./deployment-ops-agent) - bounded deployment
+  posture synthesis across rollout, rollback, and docs parity evidence
 - [`integration-agent/`](./integration-agent) - multi-step workflow handoffs
 - [`market-research-agent/`](./market-research-agent) - approved external
   research collection
@@ -61,6 +63,7 @@ Current runtime truth:
 - **Service-available and spawned-worker capable, but worker path is still partial/degraded in the latest validation baseline:**
 - [`reddit-helper/`](./reddit-helper) (`reddit-response` still depends on provider health for the optional final polish pass, but the runtime now hardens token use with service-state dedupe, per-cycle throttles, daily LLM budgets, deterministic local scoring, local-first fallback drafting, mandatory operator approval for `manual-review` RSS leads, and operator promotion approvals for the top `10` `draft` leads. Spawned helper runs now inherit orchestrator-shared runtime dependencies via `NODE_PATH`, and real helper exceptions fail the task instead of reporting a false-green draft.)
 - **Focused contract-proven spawned workers in the current public expansion slice:**
+  - [`deployment-ops-agent/`](./deployment-ops-agent) (`2026-04-02`; bounded `deployment-ops` rollout posture proof)
   - [`operations-analyst-agent/`](./operations-analyst-agent) (`2026-04-02`; bounded `control-plane-brief` plus companion-overview proof)
   - [`release-manager-agent/`](./release-manager-agent) (`2026-04-02`; bounded `release-readiness` proof)
 - **Confirmed working as spawned workers in the latest validation sweep (service availability is separate from worker proof):**

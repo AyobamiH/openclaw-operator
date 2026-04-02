@@ -91,6 +91,8 @@ interface TaskDraftState {
   qaDryRun: boolean;
   qaConstraints: string;
   releaseTarget: string;
+  deploymentTarget: string;
+  deploymentRolloutMode: "service" | "docker-demo" | "dual";
   skillAuditIds: string;
   skillAuditDepth: string;
   skillAuditChecks: string;
@@ -162,6 +164,8 @@ const DEFAULT_TASK_DRAFT: TaskDraftState = {
   qaDryRun: true,
   qaConstraints: "",
   releaseTarget: "main",
+  deploymentTarget: "public-runtime",
+  deploymentRolloutMode: "service",
   skillAuditIds: "",
   skillAuditDepth: "standard",
   skillAuditChecks: "",
@@ -220,6 +224,7 @@ function categorizeTask(taskType: string): TaskCategory {
     "skill-audit": "Governance",
     "normalize-data": "Governance",
     "release-readiness": "Governance",
+    "deployment-ops": "Governance",
     "reddit-response": "Sensitive",
     "agent-deploy": "Sensitive",
   };
@@ -486,6 +491,15 @@ function buildTaskPayload(taskType: string, draft: TaskDraftState): Record<strin
     };
   }
 
+  if (taskType === "deployment-ops") {
+    return {
+      ...(draft.deploymentTarget.trim()
+        ? { target: draft.deploymentTarget.trim() }
+        : {}),
+      rolloutMode: draft.deploymentRolloutMode,
+    };
+  }
+
   if (taskType === "skill-audit") {
     const skillIds = parseLines(draft.skillAuditIds);
     const checks = parseLines(draft.skillAuditChecks);
@@ -554,6 +568,10 @@ function buildExecutionPathCopy(task: TaskRowVM, draft: TaskDraftState) {
     return "Submission enters the orchestrator queue, the release-manager worker fuses verification, security, monitor, build, incident, approval, and proof freshness evidence into a bounded go, hold, or block release posture.";
   }
 
+  if (task.type === "deployment-ops") {
+    return "Submission enters the orchestrator queue, the deployment-ops worker inspects rollout surfaces, rollback posture, pipeline evidence, and docs parity, then returns a bounded ready, watch, or blocked deployment posture.";
+  }
+
   return "Submission enters the orchestrator queue, pauses for approval when required, then continues to worker execution and downstream result handling.";
 }
 
@@ -582,6 +600,10 @@ function buildNextStepCopy(task: TaskRowVM, draft: TaskDraftState) {
 
   if (task.type === "release-readiness") {
     return "Use this before a real cutover or public claim. Keep the release target honest, and treat hold or block posture as real gating evidence rather than optional commentary.";
+  }
+
+  if (task.type === "deployment-ops") {
+    return "Use this when you need rollout posture rather than release posture alone. Pick service, Docker demo, or dual mode based on the surface you are actually preparing to operate.";
   }
 
   if (task.operationalStatus === "partially-operational") {
@@ -1463,6 +1485,51 @@ function renderTaskFields(
             className="bg-panel-inset border-border font-mono text-sm"
             placeholder="main"
           />
+        </div>
+      </>
+    );
+  }
+
+  if (task.type === "deployment-ops") {
+    return (
+      <>
+        <div className="console-inset p-3 rounded-sm">
+          <p className="text-[10px] font-mono text-foreground leading-relaxed">
+            This lane produces a bounded deployment posture across rollout surfaces, rollback readiness, pipeline evidence, and documentation parity. It does not deploy or restart anything directly.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+              Deployment Target
+            </label>
+            <Input
+              value={draft.deploymentTarget}
+              onChange={(event) => updateDraft({ deploymentTarget: event.target.value })}
+              className="bg-panel-inset border-border font-mono text-sm"
+              placeholder="public-runtime"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+              Rollout Mode
+            </label>
+            <Select
+              value={draft.deploymentRolloutMode}
+              onValueChange={(value: "service" | "docker-demo" | "dual") =>
+                updateDraft({ deploymentRolloutMode: value })
+              }
+            >
+              <SelectTrigger className="bg-panel-inset border-border font-mono text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="service">service</SelectItem>
+                <SelectItem value="docker-demo">docker-demo</SelectItem>
+                <SelectItem value="dual">dual</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </>
     );

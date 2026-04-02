@@ -140,6 +140,7 @@ must be substantially true:
 | `data-extraction-agent` | ingestion | Strong foundation | extraction now carries provenance, confidence, normalization handoff data, explicit artifact records across multiple artifact classes, and artifact-coverage summaries, and that artifact coverage remains surfaced in readiness output | complete | Wave 2 |
 | `normalization-agent` | ingestion | Strong foundation | normalization now emits canonical ids, dedupe keys, uncertainty flags, explainable schema mismatches, and explicit comparison-ready handoff posture, and that comparison readiness remains surfaced in readiness output | complete | Wave 2 |
 | `market-research-agent` | ingestion | Strong foundation | query and URL lanes now emit change-intelligence, internal durable signal packs, structured change packs, and explicit delta-capture posture, and that delta-capture posture remains surfaced in readiness output | complete | Wave 2 |
+| `deployment-ops-agent` | trust | Focused bounded lane | deployment-ops synthesis now emits explicit `ready` / `watch` / `blocked` posture across rollout surfaces, rollback readiness, pipeline evidence, and docs parity with targeted contract proof | active | Wave 4 |
 | `operations-analyst-agent` | truth | Focused bounded lane | control-plane brief synthesis now emits mode, dominant move, pressure story, proof posture, and portable companion-facing summaries with targeted contract proof | active | Wave 4 |
 | `release-manager-agent` | trust | Focused bounded lane | release-readiness synthesis now emits explicit `go` / `hold` / `block` posture across verification, security, system, incident, approval, and proof evidence with targeted contract proof | active | Wave 4 |
 | `build-refactor-agent` | code | Strong foundation | build lane now emits bounded scope contracts, surgery profiles, rollback/verification context, verifier handoff relationships, and repair-linked verification-loop evidence, and those governance signals are now surfaced end-to-end through agent overview with live proof | complete | Wave 3 |
@@ -613,6 +614,38 @@ All waves remain in scope. This is ordering only.
 2. dominant operator move ranking
 3. portable companion-overview payload
 4. bounded service and proof synthesis
+
+### deployment-ops-agent
+
+**Current runtime truth**
+
+- The focused public deployment-ops lane is now live for the current runtime
+  slice.
+- It emits explicit `ready` / `watch` / `blocked` posture, blocker summaries,
+  follow-up actions, rollback readiness, environment drift, pipeline posture,
+  and rollout-surface checks across the public service and Docker demo paths.
+- The lane remains bounded: it summarizes deployment posture but does not
+  itself deploy, restart, or bypass approval policy.
+
+**Missing ultra behaviors**
+
+- Broader deployment-process adoption is still ahead, but the current runtime
+  slice already proves the bounded deployment-synthesis contract.
+
+**Promotion gate**
+
+- Deployment posture is evidence-backed rather than optimistic.
+- Missing rollout surfaces or blocked verification/security/runtime evidence
+  can all block the lane.
+- Operators can act on rollback, drift, and pipeline guidance without
+  reconstructing deployment posture from multiple routes and docs.
+
+**First implementation slices**
+
+1. deployment posture contract
+2. rollback readiness synthesis
+3. docs and workflow drift review
+4. bounded rollout follow-up guidance
 
 ### release-manager-agent
 

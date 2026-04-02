@@ -1,0 +1,33 @@
+{
+  "id": "deployment-ops-agent",
+  "orchestratorTask": "deployment-ops",
+  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "serviceStatePath": "../../logs/deployment-ops-agent-service.json",
+  "name": "Deployment Ops Agent",
+  "description": "Synthesizes bounded deployment posture across rollout surfaces, rollback readiness, pipeline evidence, and docs parity.",
+  "version": "1.0.0",
+  "model": {
+    "primary": "claude-3-5-sonnet",
+    "fallback": "gpt-4o-mini",
+    "tier": "balanced",
+    "temperature": 0.2,
+    "maxTokens": 2048
+  },
+  "maxConcurrentTasks": 2,
+  "permissions": {
+    "skills": {
+      "documentParser": {
+        "allowed": true,
+        "maxCalls": 40,
+        "reason": "Parse deployment docs and bounded runtime evidence."
+      }
+    },
+    "network": {
+      "allowed": false
+    }
+  },
+  "constraints": {
+    "timeoutSec": 90,
+    "maxRetries": 1
+  }
+}

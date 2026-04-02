@@ -22,6 +22,7 @@ const TASK_TYPE_ENUM = [
   "send-digest",
   "agent-deploy",
   "doc-sync",
+  "deployment-ops",
   "control-plane-brief",
   "incident-triage",
   "release-readiness",

@@ -65,6 +65,7 @@ Capability-access rule:
 
 - `control-plane-brief`
 - `incident-triage`
+- `deployment-ops`
 - `release-readiness`
 - `security-audit`
 - `system-monitor`
@@ -136,6 +137,7 @@ Approval column:
 | `doc-change` | `internal-only` | `dynamic-only` | `docChangeHandler` | none | no | Internal doc-watch buffer path; not publicly triggerable. When buffered drift reaches the runtime threshold (`25` pending paths), the orchestrator now uses shared coordination to claim a doc-repair lock, auto-enqueue a deterministic `drift-repair` run id, record bounded repair state, and apply a same-doc-set cooldown without multi-process repair churn. |
 | `doc-sync` | `public-triggerable`; `confirmed working` | `dynamic-only` | `docSyncHandler` | none | no | Public schema allows it, and the current operator task profile treats it as a confirmed control-plane path. Most useful when pending doc changes exist. |
 | `drift-repair` | `public-triggerable`; `confirmed working (2026-03-29 live repair refresh)` | `dynamic-only` | `driftRepairHandler` | `doc-specialist` | no | Custom helper spawn path, not ToolGate-preflighted. `POST /api/tasks/trigger` produced a first-class run record, verified a knowledge pack on disk, and surfaced repair evidence in `/api/tasks/runs`, `/api/dashboard/overview.selfHealing`, and `/api/health/extended.repairs`. The live `2026-03-29` repair refresh now also persists doc-specialist runtime-signal highlights into the operator readiness surface, and the service-expected `doc-specialist.service` user unit has been synced so host service coverage can be proven from the operator overview. Runtime now uses explicit idempotency only, so normal trigger calls fall back to the task id as the run id unless a payload supplies `idempotencyKey`. Phase 2 adaptation also standardizes operator-summary, next-action, and specialist-contract output on top of the existing knowledge-pack, contradiction, and repair-draft rails. |
+| `deployment-ops` | `public-triggerable`; `confirmed working (2026-04-02 focused contract proof)` | `dynamic-only` | `deploymentOpsHandler` | `deployment-ops-agent` | yes | Focused public deployment-governance lane. It synthesizes `ready` / `watch` / `blocked` posture from rollout surfaces, rollback readiness, pipeline evidence, and docs parity, but it does not itself deploy, restart, or bypass approval policy. |
 | `control-plane-brief` | `public-triggerable`; `confirmed working (2026-04-02 focused contract proof)` | `dynamic-only` | `controlPlaneBriefHandler` | `operations-analyst-agent` | yes | Focused public synthesis lane. The handler fuses queue, approval, incident, service, and public-proof truth into one bounded control-plane brief, emits explicit operator summary and next actions, and now powers the companion `/api/companion/overview` surface instead of forcing external clients to scrape operator-only routes. |
 | `incident-triage` | `public-triggerable`; `confirmed working (2026-04-02 focused contract proof)` | `dynamic-only` | `incidentTriageHandler` | `system-monitor-agent` | yes | Focused public triage lane. The worker turns open-incident pressure into a ranked queue with ownership, acknowledgement, remediation, and verification posture, and the same bounded triage contract now feeds the companion incident summary surface. |
 | `release-readiness` | `public-triggerable`; `confirmed working (2026-04-02 focused contract proof)` | `dynamic-only` | `releaseReadinessHandler` | `release-manager-agent` | yes | Focused public release-governance lane. It synthesizes `go` / `hold` / `block` posture from the latest verification, security, system-monitor, build, incident, approval, and proof-freshness evidence, but it does not itself deploy or bypass approval policy. |
@@ -217,6 +219,7 @@ These route work to specialized agents or helper flows:
 - `reddit-response`
 - `control-plane-brief`
 - `incident-triage`
+- `deployment-ops`
 - `release-readiness`
 - `security-audit`
 - `summarize-content`

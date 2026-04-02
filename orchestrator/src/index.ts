@@ -918,6 +918,27 @@ const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
     ],
   },
   {
+    type: "deployment-ops",
+    label: "Deployment Ops",
+    purpose: "Produce a bounded deployment posture across rollout surfaces, rollback readiness, pipeline evidence, and docs parity.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "worker",
+    baselineConfidence: "medium",
+    dependencyRequirements: [
+      "deployment-ops worker",
+      "deployment surface files",
+      "release and verification evidence",
+    ],
+    exposeInV1: true,
+    caveats: [
+      "This lane summarizes deployment posture; it does not deploy, restart, or mutate the runtime directly.",
+      "Treat watch or blocked output as rollout guidance, not as a background advisory.",
+    ],
+  },
+  {
     type: "reddit-response",
     label: "Reddit Response",
     purpose: "Draft community-safe responses with doctrine checks, provider posture, and downstream follow-up guidance.",
@@ -1293,6 +1314,7 @@ const AGENT_CAPABILITY_RUNTIME_SIGNAL_KEYS: Partial<Record<string, string[]>> = 
   "data-extraction-agent": ["artifactCoverage"],
   "normalization-agent": ["comparisonReadiness"],
   "market-research-agent": ["deltaCapture"],
+  "deployment-ops-agent": ["deploymentOps"],
   "operations-analyst-agent": ["controlPlaneBrief"],
   "release-manager-agent": ["releaseReadiness"],
 };
@@ -1313,6 +1335,10 @@ const TASK_AGENT_SKILL_REQUIREMENTS: Record<
   "build-refactor": {
     agentId: "build-refactor-agent",
     skillId: "workspacePatch",
+  },
+  "deployment-ops": {
+    agentId: "deployment-ops-agent",
+    skillId: "documentParser",
   },
   "content-generate": { agentId: "content-agent", skillId: "documentParser" },
   "integration-workflow": {
@@ -1361,6 +1387,12 @@ const TASK_IMPACT_SURFACES: Record<string, string[]> = {
   "send-digest": ["digest-artifacts", "notification-channel", "external-network"],
   "rss-sweep": ["rss-feeds", "demand-queue", "draft-scoring"],
   "agent-deploy": ["agent-runtime", "deployment-filesystem", "worker-templates"],
+  "deployment-ops": [
+    "deployment-filesystem",
+    "release-posture",
+    "service-runtime",
+    "docs-parity",
+  ],
   "control-plane-brief": ["dashboard-overview", "incident-ledger", "public-proof"],
   "incident-triage": ["incident-ledger", "workflow-evidence", "repair-queue"],
   "release-readiness": [
@@ -1375,6 +1407,7 @@ const TASK_IMPACT_SURFACES: Record<string, string[]> = {
 
 const CONFIRMED_WORKER_AGENTS = new Set([
   "build-refactor-agent",
+  "deployment-ops-agent",
   "market-research-agent",
   "reddit-helper",
 ]);
@@ -1518,6 +1551,17 @@ const AGENT_CAPABILITY_TARGETS: Record<
       "external change detection",
       "signal-to-pack handoff",
       "source evidence capture",
+    ],
+  },
+  "deployment-ops-agent": {
+    role: "Deployment posture synthesizer",
+    spine: "trust",
+    targetCapabilities: [
+      "deploy-readiness synthesis",
+      "rollback posture review",
+      "deployment surface parity",
+      "pipeline evidence review",
+      "bounded rollout follow-up guidance",
     ],
   },
   "operations-analyst-agent": {
@@ -3172,6 +3216,34 @@ function summarizeAgentCapabilityRuntimeSignal(args: {
       `degraded-count:${degradedCount}`,
       `unreachable-count:${unreachableCount}`,
     ];
+  } else if (agentId === "deployment-ops-agent" && key === "deploymentOps") {
+    const deploymentOps = record as Record<string, any>;
+    const decision =
+      typeof deploymentOps?.decision === "string" ? deploymentOps.decision : "unknown";
+    const target =
+      typeof deploymentOps?.target === "string"
+        ? deploymentOps.target
+        : "public-runtime";
+    const rolloutMode =
+      typeof deploymentOps?.rolloutMode === "string"
+        ? deploymentOps.rolloutMode
+        : "service";
+    const rollbackStatus =
+      typeof deploymentOps?.rollbackReadiness?.status === "string"
+        ? deploymentOps.rollbackReadiness.status
+        : "unknown";
+    const driftStatus =
+      typeof deploymentOps?.environmentDrift?.status === "string"
+        ? deploymentOps.environmentDrift.status
+        : "unknown";
+    summary = `Deployment ops is ${decision} for ${target} (${rolloutMode}) with rollback ${rollbackStatus} and drift ${driftStatus}.`;
+    evidence = [
+      `decision:${decision}`,
+      `target:${target}`,
+      `rollout-mode:${rolloutMode}`,
+      `rollback-status:${rollbackStatus}`,
+      `drift-status:${driftStatus}`,
+    ];
   } else if (agentId === "operations-analyst-agent" && key === "controlPlaneBrief") {
     const brief = record as Record<string, any>;
     const mode =
@@ -3719,6 +3791,36 @@ export function buildAgentCapabilityReadiness(args: {
               ...(runtimeSignals.length >= 3
                 ? []
                 : ["promoted trust posture, policy handoff, and telemetry handoff"]),
+            ],
+    });
+  }
+
+  if (agent.id === "deployment-ops-agent") {
+    const deploymentOpsRuns = countSuccessfulExecutionsForTypes(["deployment-ops"]);
+    pushEvidenceProfile({
+      area: "deployment-governance-depth",
+      status:
+        deploymentOpsRuns > 0 && runtimeSignals.length >= 1
+          ? "strong"
+          : deploymentOpsRuns > 0 || runtimeSignals.length > 0
+            ? "partial"
+            : "missing",
+      summary:
+        deploymentOpsRuns > 0 || runtimeSignals.length > 0
+          ? `${deploymentOpsRuns} successful deployment-ops run(s) and ${runtimeSignals.length} promoted deployment posture signal(s) support deployment-governance depth.`
+          : "deployment-ops has not yet produced promoted deployment-governance evidence.",
+      evidence: [
+        `successful deployment-ops runs: ${deploymentOpsRuns}`,
+        ...runtimeSignalSummaries,
+      ],
+      missing:
+        deploymentOpsRuns > 0 && runtimeSignals.length >= 1
+          ? []
+          : [
+              ...(deploymentOpsRuns > 0 ? [] : ["successful deployment-ops runs"]),
+              ...(runtimeSignals.length >= 1
+                ? []
+                : ["promoted deployment posture, rollback posture, and drift guidance"]),
             ],
     });
   }
