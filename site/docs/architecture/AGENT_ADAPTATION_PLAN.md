@@ -373,6 +373,124 @@ For each candidate:
 4. validate tests, docs, and runtime behavior
 5. only then treat it as part of the public shipped agent catalog
 
+## External Catalog Candidate Board
+
+The external catalog remains useful, but the public repo does not treat it as a
+bulk-import backlog.
+
+The practical public rule is:
+
+- keep the original adaptation borrow targets as already-absorbed role patterns
+- only create new public agents from external roles the repo does not already
+  cover
+- keep a small explicit queue of productizable candidates instead of promising
+  the whole catalog
+
+### Already Absorbed Into The Current Public Portfolio
+
+These external roles are already represented in the current public product as
+adapted patterns or covered spines and should not be reintroduced as separate
+public agents unless the bounded lane genuinely changes:
+
+- Workflow Architect
+- Agents Orchestrator
+- Reality Checker
+- Security Engineer
+- SRE
+- Incident Response Commander
+- Technical Writer
+- Content Creator
+- Executive Summary Generator
+- Reddit Community Builder
+- ZK Steward
+- Frontend Developer
+- Backend Architect
+- Code Reviewer
+- Trend Researcher
+- AI Citation Strategist
+- Email Intelligence Engineer
+- Data Consolidation Agent
+- MCP Builder
+
+### Planned Future Public Adaptation Queue
+
+These are the current external-catalog roles we plan to adapt one by one into
+new public agents or lanes because they are not already covered and can be
+shipped honestly in open source:
+
+| External Role | Queue Status | Intended Public Shape | Why It Belongs |
+|---|---|---|---|
+| DevOps Automator | adapt next | `deployment-ops-agent` | bounded deploy, rollback, release-ops, and service-runtime guidance fit the operator product directly |
+| LSP/Index Engineer | adapt next | `code-index-agent` | searchable code and knowledge indexing is productizable, operator-visible, and useful beyond the maintainer's private lab |
+| Test Results Analyzer | adapt next | `test-intelligence-agent` | multi-suite test evidence synthesis is a real public control-plane workflow that complements, rather than duplicates, verification |
+| Legal Compliance Checker | adapt next | `compliance-agent` | bounded compliance, policy, and dependency-posture review is open-source shippable and useful for releases and operator decisions |
+| Support Responder | adapt next | `support-operations-agent` | support and FAQ response quality can be productized without turning the public repo into a private customer-ops layer |
+| Sprint Prioritizer | adapt next | `backlog-prioritization-agent` | bounded sequencing, scoping, and priority guidance is productizable for open-source workflow management |
+| UX Researcher | maybe later | `ux-research-agent` | operator and docs usability review is valuable, but it should follow the stronger operational lanes above |
+| Feedback Synthesizer | maybe later | `feedback-intelligence-agent` | structured community and operator-feedback synthesis is useful once more public usage volume exists |
+| Experiment Tracker | maybe later | `experiment-governance-agent` | experiment posture and result tracking can become a real lane after deployment and release workflows deepen |
+| Workflow Optimizer | maybe later | `workflow-optimization-agent` | useful once workflow telemetry matures further, but too abstract to jump ahead of the more bounded candidates |
+| Data Analytics Reporter | maybe later | `analytics-intelligence-agent` | durable metrics narration could be strong, but it should follow stronger deployment, test, and support surfaces |
+| Analytics Reporter | maybe later | `analytics-brief-agent` | likely useful as a compact reporting lane, but not ahead of the more operationally critical candidates |
+
+### Explicit Public Deferrals
+
+These external roles are not current public backlog because they are too
+duplicative, too marketing- or channel-specific, too design-heavy for the
+current product focus, or too private/specialized to justify immediate public
+productization:
+
+- Mobile App Builder
+- AI Engineer
+- Rapid Prototyper
+- Senior Developer
+- UI Designer
+- UX Architect
+- Brand Guardian
+- Visual Storyteller
+- Whimsy Injector
+- Growth Hacker
+- Twitter Engager
+- TikTok Strategist
+- Instagram Curator
+- App Store Optimizer
+- Social Media Strategist
+- Studio Producer
+- Project Shepherd
+- Studio Operations
+- Senior Project Manager
+- Evidence Collector
+- Performance Benchmarker
+- API Tester
+- Tool Evaluator
+- Finance Tracker
+- Infrastructure Maintainer
+- XR Interface Architect
+- macOS Spatial/Metal Engineer
+- XR Immersive Developer
+- XR Cockpit Interaction Specialist
+- visionOS Spatial Engineer
+- Terminal Integration Specialist
+
+### Next Practical Move
+
+The next practical move after this board is not to add all candidates at once.
+
+It is to take the first `adapt next` candidate, define its bounded lane, and
+productize it end to end before opening the next one.
+
+Current recommended first candidate:
+
+- DevOps Automator -> `deployment-ops-agent`
+
+Why first:
+
+- it strengthens public deployment and runtime operations directly
+- it fits the control-plane/operator theme cleanly
+- it has a clearer owned lane than the more abstract later candidates
+- it can produce operator-visible proof without flattening the current trust
+  model
+
 ### Sprint 1: Trust And Governance Adoption
 
 Public refinement sprint 1 is complete.
