@@ -315,6 +315,64 @@ Current agreed order after the adaptation implementation:
 4. then add richer OpenClaw companion or plugin metadata
 5. then tighten channel or runtime integration
 
+### What "Broader Agent Portfolio Growth" Means
+
+This phrase is now explicit and should not be interpreted loosely.
+
+It means:
+
+- use strong external agent catalogs or prose role repositories as a source of
+  candidate agents the public repo does not already have
+- select one candidate at a time
+- turn each selected candidate into a real OpenClaw public agent with the same
+  quality bar as the existing shipped agents
+
+It does not mean:
+
+- bulk-importing a whole external catalog
+- adding vague or overlapping assistants just because the source repo lists
+  them
+- treating prose descriptions as enough to claim a new public agent exists
+
+The standard for each new public agent is the same one used for the current
+portfolio:
+
+- a bounded mission
+- an owned task lane
+- governed access and least-privilege manifests
+- operator-visible evidence and truthful exposure
+- tests, docs, and productized runtime behavior
+
+### External-Catalog Selection Rule
+
+When choosing the next public agent from an external catalog, prefer candidates
+that are:
+
+- not already covered by an existing public agent or lane
+- clearly productizable into a bounded open-source workflow
+- safe to expose publicly without relying on private-lab assumptions
+- useful to operators and external users, not only to the maintainer's
+  personal workflow
+
+Reject or defer candidates that are:
+
+- mostly duplicates of current spines
+- too private, machine-specific, or one-off to justify public productization
+- too broad to own a bounded lane honestly
+- dependent on permissions that would flatten the current trust model
+
+### Delivery Rule
+
+Broader portfolio growth happens one agent at a time.
+
+For each candidate:
+
+1. define the owned lane and bounded mission
+2. implement the runtime agent and governed access
+3. expose truthful operator-facing evidence
+4. validate tests, docs, and runtime behavior
+5. only then treat it as part of the public shipped agent catalog
+
 ### Sprint 1: Trust And Governance Adoption
 
 Public refinement sprint 1 is complete.

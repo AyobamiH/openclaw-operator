@@ -49,6 +49,17 @@ Capability-access boundary:
 - missing access should be documented as a real implementation gap until the
   manifest, ToolGate, policy, and runtime evidence all support the expansion
 
+Portfolio-growth boundary:
+
+- broader public agent growth is now defined as one-by-one productization of
+  usable external agent ideas or role catalogs that the repo does not already
+  cover
+- each new agent must earn the same standard as the current shipped agents:
+  bounded mission, owned lane, governed access, runtime evidence, operator
+  truth, tests, and docs
+- external prose or repo presence alone is never enough to count an agent as
+  part of the public portfolio
+
 ## Documentation Maintenance
 
 Update this matrix whenever any of the following changes materially:

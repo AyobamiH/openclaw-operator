@@ -68,6 +68,13 @@ what an operator can credibly rely on, update this file together with:
 If the backend becomes broader than the current frontend on purpose, say that
 explicitly here rather than leaving the difference implicit.
 
+Future portfolio-growth note:
+
+- when the public repo grows beyond the current catalog, new agents should come
+  in one by one from deliberate external-catalog selection, not by bulk-import
+- no candidate should appear in operator surfaces until it owns a bounded lane
+  and has operator-visible runtime evidence that justifies honest exposure
+
 ## Decision Labels
 
 - `Expose now`
