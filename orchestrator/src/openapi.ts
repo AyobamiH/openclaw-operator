@@ -23,6 +23,9 @@ const TASK_TYPE_ENUM = [
   "heartbeat",
   "agent-deploy",
   "doc-sync",
+  "control-plane-brief",
+  "incident-triage",
+  "release-readiness",
 ] as const;
 
 const INCIDENT_CLASSIFICATION_ENUM = [
@@ -1050,6 +1053,92 @@ const components = {
       type: "object",
       additionalProperties: true,
     },
+    CompanionOverviewResponse: {
+      type: "object",
+      required: [
+        "generatedAt",
+        "controlPlaneMode",
+        "primaryOperatorMove",
+        "pressureStory",
+        "queue",
+        "approvals",
+        "incidents",
+        "publicProof",
+        "services",
+        "freshnessTimestamp",
+      ],
+      properties: {
+        generatedAt: { type: "string", format: "date-time" },
+        controlPlaneMode: schemaRef("GenericObject"),
+        primaryOperatorMove: schemaRef("GenericObject"),
+        pressureStory: schemaRef("GenericObject"),
+        queue: schemaRef("GenericObject"),
+        approvals: schemaRef("GenericObject"),
+        incidents: schemaRef("GenericObject"),
+        publicProof: schemaRef("GenericObject"),
+        services: schemaRef("GenericObject"),
+        freshnessTimestamp: { type: "string", format: "date-time" },
+      },
+    },
+    CompanionCatalogResponse: {
+      type: "object",
+      required: ["generatedAt", "total", "tasks"],
+      properties: {
+        generatedAt: { type: "string", format: "date-time" },
+        total: { type: "integer", minimum: 0 },
+        tasks: {
+          type: "array",
+          items: schemaRef("GenericObject"),
+        },
+      },
+    },
+    CompanionIncidentsResponse: {
+      type: "object",
+      required: ["generatedAt", "summary", "topClassifications", "topQueue"],
+      properties: {
+        generatedAt: { type: "string", format: "date-time" },
+        summary: schemaRef("GenericObject"),
+        topClassifications: {
+          type: "array",
+          items: schemaRef("GenericObject"),
+        },
+        topQueue: {
+          type: "array",
+          items: schemaRef("GenericObject"),
+        },
+      },
+    },
+    CompanionRunsResponse: {
+      type: "object",
+      required: ["generatedAt", "total", "runs"],
+      properties: {
+        generatedAt: { type: "string", format: "date-time" },
+        total: { type: "integer", minimum: 0 },
+        runs: {
+          type: "array",
+          items: schemaRef("GenericObject"),
+        },
+      },
+    },
+    CompanionApprovalsResponse: {
+      type: "object",
+      required: ["generatedAt", "count", "dominantLanes", "oldestWaiting", "items"],
+      properties: {
+        generatedAt: { type: "string", format: "date-time" },
+        count: { type: "integer", minimum: 0 },
+        dominantLanes: {
+          type: "array",
+          items: schemaRef("GenericObject"),
+        },
+        oldestWaiting: {
+          oneOf: [schemaRef("GenericObject"), { type: "null" }],
+        },
+        items: {
+          type: "array",
+          items: schemaRef("GenericObject"),
+        },
+      },
+    },
     WebhookAlertsRequest: {
       type: "object",
       required: ["alerts"],
@@ -1423,6 +1512,139 @@ export function buildOpenApiSpec(port: string | number = 3000) {
           "200": jsonResponse(
             "Operator task catalog payload.",
             "TaskCatalogResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/companion/overview": {
+      get: {
+        tags: ["Operator", "Companion"],
+        summary: "Companion control-plane overview",
+        description:
+          "Bounded read-only companion view over current control-plane mode, primary operator move, pressure story, and proof posture.",
+        operationId: "getCompanionOverview",
+        security: [{ bearerAuth: [] }],
+        "x-openclaw-access": {
+          ...protectedAccess("viewer", "viewer-read", "companion.overview.read"),
+          companionView: "status",
+          responseCache: "protected",
+        },
+        responses: {
+          "200": jsonResponse(
+            "Companion overview payload.",
+            "CompanionOverviewResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/companion/catalog": {
+      get: {
+        tags: ["Operator", "Companion"],
+        summary: "Companion task catalog",
+        description:
+          "Bounded read-only companion view over the operator task catalog with readiness, approval posture, and dependency caveats.",
+        operationId: "getCompanionCatalog",
+        security: [{ bearerAuth: [] }],
+        "x-openclaw-access": {
+          ...protectedAccess("viewer", "viewer-read", "companion.catalog.read"),
+          companionView: "tasks",
+          responseCache: "protected",
+        },
+        responses: {
+          "200": jsonResponse(
+            "Companion catalog payload.",
+            "CompanionCatalogResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/companion/incidents": {
+      get: {
+        tags: ["Operator", "Companion"],
+        summary: "Companion incident summary",
+        description:
+          "Bounded read-only companion view over incident classification pressure, acknowledgement posture, remediation posture, and the ranked queue.",
+        operationId: "getCompanionIncidents",
+        security: [{ bearerAuth: [] }],
+        parameters: [parameterRef("Limit")],
+        "x-openclaw-access": {
+          ...protectedAccess("viewer", "viewer-read", "companion.incidents.read"),
+          companionView: "incidents",
+          responseCache: "protected",
+        },
+        responses: {
+          "200": jsonResponse(
+            "Companion incident summary payload.",
+            "CompanionIncidentsResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/companion/runs": {
+      get: {
+        tags: ["Operator", "Companion"],
+        summary: "Companion recent run briefs",
+        description:
+          "Bounded read-only companion view over recent run posture, operator summaries, next actions, and freshness/watch cues.",
+        operationId: "getCompanionRuns",
+        security: [{ bearerAuth: [] }],
+        parameters: [parameterRef("Limit")],
+        "x-openclaw-access": {
+          ...protectedAccess("viewer", "viewer-read", "companion.runs.read"),
+          companionView: "runs",
+          responseCache: "protected",
+        },
+        responses: {
+          "200": jsonResponse(
+            "Companion recent runs payload.",
+            "CompanionRunsResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/companion/approvals": {
+      get: {
+        tags: ["Operator", "Companion"],
+        summary: "Companion approval summary",
+        description:
+          "Bounded read-only companion view over dominant pending approval lanes, oldest waiting posture, and top approval items.",
+        operationId: "getCompanionApprovals",
+        security: [{ bearerAuth: [] }],
+        parameters: [parameterRef("Limit")],
+        "x-openclaw-access": {
+          ...protectedAccess("operator", "viewer-read", "companion.approvals.read"),
+          companionView: "approvals",
+          responseCache: "protected",
+        },
+        responses: {
+          "200": jsonResponse(
+            "Companion approvals payload.",
+            "CompanionApprovalsResponse",
             protectedReadHeaders,
           ),
           "401": responseRef("Unauthorized"),

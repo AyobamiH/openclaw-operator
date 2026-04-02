@@ -23,8 +23,12 @@ Telemetry helpers live under [`shared/`](./shared). New agents should start from
 - [`market-research-agent/`](./market-research-agent) - approved external
   research collection
 - [`normalization-agent/`](./normalization-agent) - data normalization
+- [`operations-analyst-agent/`](./operations-analyst-agent) - bounded
+  control-plane synthesis and companion-facing operational briefs
 - [`qa-verification-agent/`](./qa-verification-agent) - verification and QA
   evidence
+- [`release-manager-agent/`](./release-manager-agent) - bounded release posture
+  synthesis across verification, security, and system evidence
 - [`security-agent/`](./security-agent) - security review and remediation
   guidance
 - [`skill-audit-agent/`](./skill-audit-agent) - skill reliability and behavior
@@ -49,11 +53,14 @@ Use these terms separately:
 Current runtime truth:
 
 - **Real long-running service implementations available in repo (`src/service.ts` present):**
-  - all 13 declared runtime agents; `serviceAvailableCount` should now be read as `13`
+  - all 15 declared runtime agents; `serviceAvailableCount` should now be read as `15`
 - **Service-available and also spawned-worker capable, with live worker proof in the current runtime:**
   - [`doc-specialist/`](./doc-specialist) (`2026-03-07`; `drift-repair` live smoke `run_id=auto-8ef2eb1a3ff49ddd4237ee019d646b4810f9418c699b3a2a1de7682e388fd502`, knowledge-pack verification recorded in `/api/tasks/runs` and `/api/memory/recall`)
 - **Service-available and spawned-worker capable, but worker path is still partial/degraded in the latest validation baseline:**
 - [`reddit-helper/`](./reddit-helper) (`reddit-response` still depends on provider health for the optional final polish pass, but the runtime now hardens token use with service-state dedupe, per-cycle throttles, daily LLM budgets, deterministic local scoring, local-first fallback drafting, mandatory operator approval for `manual-review` RSS leads, and operator promotion approvals for the top `10` `draft` leads. Spawned helper runs now inherit orchestrator-shared runtime dependencies via `NODE_PATH`, and real helper exceptions fail the task instead of reporting a false-green draft.)
+- **Focused contract-proven spawned workers in the current public expansion slice:**
+  - [`operations-analyst-agent/`](./operations-analyst-agent) (`2026-04-02`; bounded `control-plane-brief` plus companion-overview proof)
+  - [`release-manager-agent/`](./release-manager-agent) (`2026-04-02`; bounded `release-readiness` proof)
 - **Confirmed working as spawned workers in the latest validation sweep (service availability is separate from worker proof):**
   - [`build-refactor-agent/`](./build-refactor-agent)
   - [`market-research-agent/`](./market-research-agent) (query-only mode)

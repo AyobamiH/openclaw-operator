@@ -52,6 +52,9 @@ export const ALLOWED_TASK_TYPES = [
   "doc-change",
   "doc-sync",
   "drift-repair",
+  "control-plane-brief",
+  "incident-triage",
+  "release-readiness",
   "reddit-response",
   "security-audit",
   "summarize-content",
@@ -89,7 +92,15 @@ const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
     agentId: "build-refactor-agent",
     skillId: "workspacePatch",
   },
+  "control-plane-brief": {
+    agentId: "operations-analyst-agent",
+    skillId: "documentParser",
+  },
   "content-generate": { agentId: "content-agent", skillId: "documentParser" },
+  "incident-triage": {
+    agentId: "system-monitor-agent",
+    skillId: "documentParser",
+  },
   "integration-workflow": {
     agentId: "integration-agent",
     skillId: "documentParser",
@@ -106,6 +117,10 @@ const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
   "qa-verification": {
     agentId: "qa-verification-agent",
     skillId: "testRunner",
+  },
+  "release-readiness": {
+    agentId: "release-manager-agent",
+    skillId: "documentParser",
   },
   "skill-audit": { agentId: "skill-audit-agent", skillId: "documentParser" },
 };
@@ -2443,6 +2458,101 @@ const summarizeContentHandler: TaskHandler = async (task, context) => {
   }
 };
 
+const controlPlaneBriefHandler: TaskHandler = async (task, context) => {
+  await assertToolGatePermission(task, context, "control-plane-brief");
+  const queueSnapshot = context.getQueueSnapshot?.() ?? {
+    queued: [],
+    processing: [],
+  };
+  const payload = {
+    id: randomUUID(),
+    type: "control-plane-brief",
+    focus:
+      typeof task.payload.focus === "string" ? task.payload.focus : undefined,
+    queueSnapshot,
+    pendingApprovalsCount: context.state.approvals.filter(
+      (entry) => entry.status === "pending",
+    ).length,
+  };
+
+  try {
+    const result = await runSpawnedAgentJob(
+      "operations-analyst-agent",
+      payload,
+      "OPERATIONS_ANALYST_AGENT_RESULT_FILE",
+      context.logger,
+    );
+    recordTaskExecutionResultSummary(context, task, result);
+    assertSpawnedAgentReportedSuccess(result, "control-plane brief");
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "operations-analyst-agent",
+      result,
+    });
+    const mode =
+      typeof result.controlPlaneBrief === "object" &&
+      result.controlPlaneBrief !== null &&
+      typeof (result.controlPlaneBrief as Record<string, unknown>).mode === "object" &&
+      (result.controlPlaneBrief as Record<string, unknown>).mode !== null
+        ? ((result.controlPlaneBrief as Record<string, unknown>)
+            .mode as Record<string, unknown>)
+        : null;
+    const label =
+      mode && typeof mode.label === "string" ? mode.label : "control-plane";
+    return `control-plane brief complete (${label})`;
+  } catch (error) {
+    throwTaskFailure("control-plane brief", error);
+  }
+};
+
+const incidentTriageHandler: TaskHandler = async (task, context) => {
+  await assertToolGatePermission(task, context, "incident-triage");
+  const payload = {
+    id: randomUUID(),
+    type: "incident-triage",
+    classification:
+      typeof task.payload.classification === "string"
+        ? task.payload.classification
+        : undefined,
+    limit:
+      typeof task.payload.limit === "number"
+        ? task.payload.limit
+        : undefined,
+    agents: Array.isArray(task.payload.agents)
+      ? (task.payload.agents as string[])
+      : undefined,
+  };
+
+  try {
+    const result = await runSpawnedAgentJob(
+      "system-monitor-agent",
+      payload,
+      "SYSTEM_MONITOR_AGENT_RESULT_FILE",
+      context.logger,
+    );
+    recordTaskExecutionResultSummary(context, task, result);
+    assertSpawnedAgentReportedSuccess(result, "incident triage");
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "system-monitor-agent",
+      result,
+    });
+    const triageQueue =
+      typeof result.incidentTriage === "object" &&
+      result.incidentTriage !== null &&
+      Array.isArray((result.incidentTriage as Record<string, unknown>).triageQueue)
+        ? ((result.incidentTriage as Record<string, unknown>).triageQueue as unknown[])
+        : [];
+    return `incident triage complete (${triageQueue.length} queued priority item${
+      triageQueue.length === 1 ? "" : "s"
+    })`;
+  } catch (error) {
+    throwTaskFailure("incident triage", error);
+  }
+};
+
 const systemMonitorHandler: TaskHandler = async (task, context) => {
   await assertToolGatePermission(task, context, "system-monitor");
   const payload = {
@@ -2490,6 +2600,53 @@ const systemMonitorHandler: TaskHandler = async (task, context) => {
     return `system monitor complete (${alerts} alerts)`;
   } catch (error) {
     throwTaskFailure("system monitor", error);
+  }
+};
+
+const releaseReadinessHandler: TaskHandler = async (task, context) => {
+  await assertToolGatePermission(task, context, "release-readiness");
+  const payload = {
+    id: randomUUID(),
+    type: "release-readiness",
+    releaseTarget:
+      typeof task.payload.releaseTarget === "string"
+        ? task.payload.releaseTarget
+        : undefined,
+  };
+
+  try {
+    const result = await runSpawnedAgentJob(
+      "release-manager-agent",
+      payload,
+      "RELEASE_MANAGER_AGENT_RESULT_FILE",
+      context.logger,
+    );
+    recordTaskExecutionResultSummary(context, task, result);
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "release-manager-agent",
+      result,
+    });
+    const readiness =
+      typeof result.releaseReadiness === "object" &&
+      result.releaseReadiness !== null
+        ? (result.releaseReadiness as Record<string, unknown>)
+        : null;
+    if (result.success !== true && readiness?.decision !== "hold") {
+      throw new Error(
+        typeof readiness?.summary === "string"
+          ? readiness.summary
+          : "release-readiness reported blocked posture",
+      );
+    }
+    const decision =
+      readiness && typeof readiness.decision === "string"
+        ? readiness.decision
+        : "unknown";
+    return `release readiness complete (${decision})`;
+  } catch (error) {
+    throwTaskFailure("release readiness", error);
   }
 };
 
@@ -3532,6 +3689,9 @@ export const taskHandlers: Record<string, TaskHandler> = {
   "doc-change": docChangeHandler,
   "doc-sync": docSyncHandler,
   "drift-repair": driftRepairHandler,
+  "control-plane-brief": controlPlaneBriefHandler,
+  "incident-triage": incidentTriageHandler,
+  "release-readiness": releaseReadinessHandler,
   "reddit-response": redditResponseHandler,
   "security-audit": securityAuditHandler,
   "summarize-content": summarizeContentHandler,

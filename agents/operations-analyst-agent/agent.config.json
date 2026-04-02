@@ -1,0 +1,37 @@
+{
+  "id": "operations-analyst-agent",
+  "orchestratorTask": "control-plane-brief",
+  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "serviceStatePath": "../../logs/operations-analyst-agent-service.json",
+  "name": "Operations Analyst Agent",
+  "description": "Produces bounded control-plane summaries, dominant pressure briefs, and operator-facing operational synthesis.",
+  "version": "1.0.0",
+  "model": {
+    "primary": "gpt-4o-mini",
+    "fallback": "gpt-4o-mini",
+    "tier": "cheap",
+    "temperature": 0.2,
+    "maxTokens": 2048
+  },
+  "maxConcurrentTasks": 2,
+  "permissions": {
+    "skills": {
+      "documentParser": {
+        "allowed": true,
+        "maxCalls": 40,
+        "reason": "Parse runtime state, service-state evidence, and bounded control-plane summaries."
+      }
+    },
+    "network": {
+      "allowed": false
+    }
+  },
+  "constraints": {
+    "timeoutSec": 60,
+    "maxRetries": 1
+  },
+  "heartbeat": {
+    "interval": "5m",
+    "checks": ["control_plane_truth", "companion_summary"]
+  }
+}

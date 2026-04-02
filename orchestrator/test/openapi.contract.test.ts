@@ -19,6 +19,11 @@ describe("OpenAPI contract", () => {
     expect(spec.paths["/api/incidents/{id}/acknowledge"]?.post).toBeTruthy();
     expect(spec.paths["/api/incidents/{id}/owner"]?.post).toBeTruthy();
     expect(spec.paths["/api/incidents/{id}/remediate"]?.post).toBeTruthy();
+    expect(spec.paths["/api/companion/overview"]?.get).toBeTruthy();
+    expect(spec.paths["/api/companion/catalog"]?.get).toBeTruthy();
+    expect(spec.paths["/api/companion/incidents"]?.get).toBeTruthy();
+    expect(spec.paths["/api/companion/runs"]?.get).toBeTruthy();
+    expect(spec.paths["/api/companion/approvals"]?.get).toBeTruthy();
   });
 
   it("captures role and limiter metadata for protected routes", () => {
@@ -46,6 +51,15 @@ describe("OpenAPI contract", () => {
       rateLimitBucket: "admin-export",
       action: "persistence.export.read",
     });
+
+    expect(
+      spec.paths["/api/companion/overview"].get["x-openclaw-access"],
+    ).toMatchObject({
+      requiredRole: "viewer",
+      rateLimitBucket: "viewer-read",
+      action: "companion.overview.read",
+      companionView: "status",
+    });
   });
 
   it("documents request bodies and path/query parameters for live operator actions", () => {
@@ -57,6 +71,13 @@ describe("OpenAPI contract", () => {
     expect(triggerRequest.$ref).toBe("#/components/schemas/TaskTriggerRequest");
     expect(spec.components.schemas.TaskTriggerRequest.properties.type.enum).toContain(
       "build-refactor",
+    );
+    expect(spec.components.schemas.TaskTriggerRequest.properties.type.enum).toEqual(
+      expect.arrayContaining([
+        "control-plane-brief",
+        "incident-triage",
+        "release-readiness",
+      ]),
     );
 
     const remediationRequest =
@@ -88,6 +109,13 @@ describe("OpenAPI contract", () => {
     expect(taskRunSchema.properties.latency.type).toBe("number");
     expect(taskRunSchema.properties.accounting.$ref).toBe(
       "#/components/schemas/GenericObject",
+    );
+
+    const companionRunParameters = spec.paths["/api/companion/runs"].get.parameters.map(
+      (parameter: any) => parameter.$ref,
+    );
+    expect(companionRunParameters).toEqual(
+      expect.arrayContaining(["#/components/parameters/Limit"]),
     );
   });
 

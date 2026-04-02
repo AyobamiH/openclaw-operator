@@ -76,6 +76,9 @@ export const SkillsAuditQuerySchema = z.object({
 export const TaskTriggerSchema = z.object({
   type: z.enum([
     'drift-repair',
+    'control-plane-brief',
+    'incident-triage',
+    'release-readiness',
     'reddit-response',
     'security-audit',
     'summarize-content',

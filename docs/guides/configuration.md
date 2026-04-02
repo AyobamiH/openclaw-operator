@@ -112,7 +112,17 @@ Minimal enablement example:
         "enabled": true,
         "config": {
           "baseUrl": "http://127.0.0.1:3312",
+          "allowedViews": [
+            "status",
+            "tasks",
+            "incidents",
+            "runs",
+            "approvals"
+          ],
           "allowedTasks": [
+            "control-plane-brief",
+            "incident-triage",
+            "release-readiness",
             "drift-repair",
             "reddit-response",
             "security-audit",
@@ -139,6 +149,16 @@ Minimal enablement example:
   }
 }
 ```
+
+Read-first bridge behavior:
+
+- `allowedViews` controls which bounded companion read surfaces the bridge may
+  expose through `/orch status`, `/orch tasks`, `/orch incidents`,
+  `/orch runs`, and `/orch approvals`
+- `allowedTasks` controls which explicit write-side task dispatches remain
+  available through `/orch run <task-type>` or `/orch <task-type>`
+- the bridge should use `/api/companion/*` for reads and keep
+  `POST /api/tasks/trigger` as the only write path
 
 If you set `plugins.allow`, remember it is global. Include every plugin id you
 still expect to load, including stock plugins such as `telegram` or

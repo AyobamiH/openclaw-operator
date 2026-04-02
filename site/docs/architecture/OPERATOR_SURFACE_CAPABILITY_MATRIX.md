@@ -105,6 +105,9 @@ Normal operator UIs should follow the matrix below rather than the raw allowlist
 | `doc-sync` | Yes | confirmed control-plane path; most useful when pending changes exist | Yes | Yes | Expose now | Safe low-side-effect queue action. |
 | `nightly-batch` | Yes | historical success exists; scheduler and downstream feeds still matter | Yes | Yes | Expose now | Keep schedule/duplication caveat visible in both UIs. |
 | `drift-repair` | Yes | local smoke proved with real knowledge-pack and repair evidence | Yes | Yes | Expose now | Operator-facing repair lane is live; keep doc-health caveats visible rather than hiding the repair posture. |
+| `control-plane-brief` | Yes | focused contract proof for bounded control-plane synthesis | Yes | Yes | Expose now | Companion-facing synthesis lane. Keep it bounded and machine-readable rather than turning it into a free-form dashboard scrape. |
+| `incident-triage` | Yes | focused contract proof for ranked incident queue synthesis | Yes | Yes | Expose now | Expose now as the bounded incident-priority lane rather than forcing operators to cluster incident pressure by hand. |
+| `release-readiness` | Yes | focused contract proof for bounded release posture synthesis | Yes | Yes | Expose now | Expose now as a release-governance lane. Keep the summary explicit about `go`, `hold`, or `block` and do not overstate it as deploy authority. |
 | `reddit-response` | Yes | confirmed-working drafting lane with deterministic local fallback and optional provider polish | Yes | Yes | Expose now | Allow manual queue payloads, and keep the optional provider-polish caveat explicit without understating the core drafting lane. |
 | `send-digest` | Yes | partial; externally dependent | Yes | Yes | Expose now | Operator-facing now, but outbound channel dependency remains real. |
 | `rss-sweep` | Yes | externally dependent | Yes | Yes | Expose now | Exposed with config/network caveats, not as a guaranteed-success lane. |
@@ -156,6 +159,11 @@ This matrix is about backend route exposure, not current frontend implementation
 | `GET /api/openapi.json` | public | Optional | Optional | Observe-only | Useful for engineers and diagnostics, not a primary operator panel. |
 | `GET /api/auth/me` | viewer | Yes | Yes | Expose now | Auth identity and role context. |
 | `GET /api/dashboard/overview` | viewer | Yes | Yes | Expose now | Aggregate operator summary. Useful, but not stronger than its source routes. |
+| `GET /api/companion/overview` | viewer | Yes | Yes | Expose now | Canonical read-first companion status surface for plugins and channel clients. |
+| `GET /api/companion/catalog` | viewer | Yes | Yes | Expose now | Canonical read-first companion task catalog surface. |
+| `GET /api/companion/incidents` | viewer | Yes | Yes | Expose now | Canonical read-first companion incident summary surface. |
+| `GET /api/companion/runs` | viewer | Yes | Yes | Expose now | Canonical read-first companion recent-run brief surface. |
+| `GET /api/companion/approvals` | operator | Yes | Yes | Expose now | Canonical read-first companion approval summary surface. Keep operator role requirement explicit. |
 | `GET /api/health/extended` | viewer | Yes | Yes | Expose now | Authoritative protected operator-health surface. |
 | `GET /api/tasks/catalog` | viewer | Yes | Yes | Expose now | Canonical operator capability endpoint for task surfacing. |
 | `POST /api/tasks/trigger` | operator | Yes | Yes | Expose now | Curated tasks only. Frontends should not assume the full allowlist is user-facing. |
@@ -213,10 +221,12 @@ long-term excuse for permanent partial maturity.
 | `integration-agent` | `integration-workflow` | Present | Wave 1 gate closed for the current runtime slice; broader workflow productization remains roadmap | Summary only | Full readiness / evidence | Expose now | Strong observability target; task exposure should follow clearer workflow productization. |
 | `build-refactor-agent` | `build-refactor` | Present | Wave 3 gate closed for the current runtime slice; deeper applied-edit proof remains roadmap | Summary only | Full readiness / evidence | Expose now | Backing lane for one of the main operator tasks; current readiness now carries code-governance signals rather than a flat confirmed-worker label only. |
 | `market-research-agent` | `market-research` | Present | confirmed worker path, external dependency caveats, and readiness now carries delta-capture evidence | Summary only | Full readiness / evidence | Expose now | Backing lane for one of the main operator tasks. |
+| `operations-analyst-agent` | `control-plane-brief` | Present | focused bounded synthesis lane with companion-facing contract proof | Summary only | Full readiness / evidence | Expose now | Best surfaced as the reusable control-plane brief source for operator, bridge, and channel consumers. |
 | `reddit-helper` | `reddit-response` | Present | service/helper exists, community path is still degraded/external, and readiness now carries provider-posture evidence | Summary only | Full readiness / evidence | Expose now | Keep queue/provider caveats explicit and treat reply drafting as a dependency-sensitive workflow, not a flat always-green lane. |
 | `content-agent` | `content-generate` | Present | backend lane proven with bounded operator profile, and readiness now carries publication-policy evidence | Summary only | Full readiness / evidence | Expose now | Expose the bounded generation lane now, while keeping publishing and evidence caveats explicit. |
 | `data-extraction-agent` | `data-extraction` | Present | partial by lane; inline source proven; readiness now carries artifact-coverage evidence | Summary only | Full readiness / evidence | Expose now | Good visibility target; do not imply all artifact lanes are equally proven. |
 | `normalization-agent` | `normalize-data` | Present | backend lane proven, and readiness now carries comparison-readiness evidence | Summary only | Full readiness / evidence | Expose now | Surface readiness first. |
+| `release-manager-agent` | `release-readiness` | Present | focused bounded synthesis lane with release-governance contract proof | Summary only | Full readiness / evidence | Expose now | Best surfaced as a release posture lane, not as a generic deploy button or unbounded release oracle. |
 | `summarization-agent` | `summarize-content` | Present | backend lane proven, and readiness now carries operational-compression evidence | Summary only | Full readiness / evidence | Expose now | Surface readiness first. |
 | `skill-audit-agent` | `skill-audit` | Present | Wave 3 gate closed for the current runtime slice; broader operator adoption remains roadmap | Summary only | Full readiness / evidence | Expose now | Best surfaced with governance/tool audit views. |
 

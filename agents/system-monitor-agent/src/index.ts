@@ -22,6 +22,8 @@ interface Task {
   id: string;
   type: string;
   agents?: string[];
+  classification?: string;
+  limit?: number;
 }
 
 interface AgentConfig {
@@ -133,6 +135,33 @@ interface Result {
       };
     };
     alerts: string[];
+  };
+  incidentTriage?: {
+    summary: {
+      openCount: number;
+      criticalCount: number;
+      unownedCount: number;
+      ackPendingCount: number;
+      remediationCount: number;
+      verificationCount: number;
+    };
+    classificationBuckets: Array<{
+      classification: string;
+      count: number;
+      activeCount: number;
+      watchingCount: number;
+      highestSeverity: string;
+    }>;
+    triageQueue: Array<{
+      incidentId: string;
+      priorityScore: number;
+      severity: string;
+      owner: string | null;
+      recommendedOwner: string | null;
+      nextAction: string;
+      remediationTaskType: string | null;
+      blockers: string[];
+    }>;
   };
   relationships: Array<{
     from: string;
@@ -845,6 +874,99 @@ function buildSystemMonitorSpecialistFields(args: {
   });
 }
 
+function buildIncidentTriageClassificationBuckets(
+  incidents: RuntimeIncidentLedgerRecord[],
+) {
+  const grouped = new Map<
+    string,
+    {
+      classification: string;
+      count: number;
+      activeCount: number;
+      watchingCount: number;
+      highestSeverity: "info" | "warning" | "critical";
+    }
+  >();
+  const severityRank: Record<"info" | "warning" | "critical", number> = {
+    info: 1,
+    warning: 2,
+    critical: 3,
+  };
+
+  for (const incident of incidents) {
+    const current = grouped.get(incident.classification) ?? {
+      classification: incident.classification,
+      count: 0,
+      activeCount: 0,
+      watchingCount: 0,
+      highestSeverity: incident.severity,
+    };
+    current.count += 1;
+    if (incident.status === "active") current.activeCount += 1;
+    if (incident.status === "watching") current.watchingCount += 1;
+    if (severityRank[incident.severity] > severityRank[current.highestSeverity]) {
+      current.highestSeverity = incident.severity;
+    }
+    grouped.set(incident.classification, current);
+  }
+
+  return [...grouped.values()].sort((left, right) => {
+    const byCount = right.count - left.count;
+    if (byCount !== 0) return byCount;
+    return severityRank[right.highestSeverity] - severityRank[left.highestSeverity];
+  });
+}
+
+function buildIncidentTriageSpecialistFields(args: {
+  openCount: number;
+  criticalCount: number;
+  classificationLabel: string | null;
+  triageQueue: Array<{ nextAction: string }>;
+  summary: {
+    unownedCount: number;
+    ackPendingCount: number;
+    remediationCount: number;
+    verificationCount: number;
+  };
+}) {
+  const status =
+    args.criticalCount > 0
+      ? "escalate"
+      : args.summary.unownedCount > 0 || args.summary.ackPendingCount > 0
+        ? "watching"
+        : "completed";
+
+  return buildSpecialistOperatorFields({
+    role: "Incident Triage Analyst",
+    workflowStage:
+      status === "completed"
+        ? "triage-ordered"
+        : status === "watching"
+          ? "triage-watch"
+          : "triage-escalation",
+    deliverable:
+      "ranked incident queue with ownership, acknowledgement, remediation, and verification priorities",
+    status,
+    operatorSummary:
+      args.classificationLabel
+        ? `${args.classificationLabel} is currently the dominant incident class across ${args.openCount} open incident(s).`
+        : `${args.openCount} open incident(s) were ranked into a bounded triage queue.`,
+    recommendedNextActions: [
+      ...args.triageQueue.slice(0, 3).map((entry) => entry.nextAction),
+      ...(args.summary.unownedCount > 0
+        ? [`Assign owners for ${args.summary.unownedCount} unowned prioritized incident(s).`]
+        : []),
+      ...(args.summary.ackPendingCount > 0
+        ? [`Acknowledge ${args.summary.ackPendingCount} incident(s) that are still waiting on operator acknowledgement.`]
+        : []),
+    ].slice(0, 4),
+    escalationReason:
+      status === "escalate"
+        ? "Escalate because critical incidents remain open in the triage queue."
+        : null,
+  });
+}
+
 async function handleTask(task: Task): Promise<Result> {
   const startTime = Date.now();
 
@@ -972,8 +1094,20 @@ async function handleTask(task: Task): Promise<Result> {
       agentHealthEntries.map((entry) => [entry.descriptor.id, entry.serviceState] as const),
     );
     const taskExecutionSummary = summarizeTaskExecutions(state.taskExecutions ?? []);
+    const openIncidentRecords = (state.incidentLedger ?? []).filter(
+      (incident) => incident.status !== "resolved",
+    );
+    const filteredIncidentRecords =
+      typeof task.classification === "string" && task.classification.trim().length > 0
+        ? openIncidentRecords.filter(
+            (incident) => incident.classification === task.classification?.trim(),
+          )
+        : openIncidentRecords;
     const incidentSummary = summarizeIncidents(state.incidentLedger ?? []);
-    const remediationQueue = buildIncidentPriorityQueue(state.incidentLedger ?? []).slice(0, 8);
+    const remediationQueue = buildIncidentPriorityQueue(filteredIncidentRecords).slice(
+      0,
+      Number.isFinite(task.limit) ? Math.max(1, Math.min(Number(task.limit), 12)) : 8,
+    );
     const pendingApprovalCount = (state.approvals ?? []).filter(
       (entry) => entry.status === "pending",
     ).length;
@@ -1451,6 +1585,26 @@ async function handleTask(task: Task): Promise<Result> {
       remediationTaskType: incident.remediationTaskType,
       blockers: incident.blockers,
     }));
+    const incidentTriageSummary = {
+      openCount: filteredIncidentRecords.length,
+      criticalCount: filteredIncidentRecords.filter(
+        (incident) => incident.severity === "critical",
+      ).length,
+      unownedCount: filteredIncidentRecords.filter((incident) => !incident.owner).length,
+      ackPendingCount: filteredIncidentRecords.filter((incident) => !incident.acknowledgedAt)
+        .length,
+      remediationCount: filteredIncidentRecords.filter(
+        (incident) => incident.remediation.status !== "resolved",
+      ).length,
+      verificationCount: filteredIncidentRecords.filter(
+        (incident) => incident.verification.status !== "not-required",
+      ).length,
+    };
+    const incidentTriage = {
+      summary: incidentTriageSummary,
+      classificationBuckets: buildIncidentTriageClassificationBuckets(filteredIncidentRecords),
+      triageQueue: serializedRemediationQueue,
+    };
     const operatorClosureEvidence = buildOperatorClosureEvidence({
       incidentSummary,
       operatorActions,
@@ -1465,6 +1619,16 @@ async function handleTask(task: Task): Promise<Result> {
       operatorActions,
       earlyWarnings,
     });
+    const incidentTriageFields =
+      task.type === "incident-triage"
+        ? buildIncidentTriageSpecialistFields({
+            openCount: incidentTriageSummary.openCount,
+            criticalCount: incidentTriageSummary.criticalCount,
+            classificationLabel: incidentTriage.classificationBuckets[0]?.classification ?? null,
+            triageQueue: serializedRemediationQueue,
+            summary: incidentTriageSummary,
+          })
+        : null;
     const proofTransitions: Result["proofTransitions"] = [
       {
         transport: "milestone",
@@ -1564,6 +1728,7 @@ async function handleTask(task: Task): Promise<Result> {
         },
         alerts,
       },
+      ...(task.type === "incident-triage" ? { incidentTriage } : {}),
       relationships,
       toolInvocations,
       diagnoses,
@@ -1579,7 +1744,7 @@ async function handleTask(task: Task): Promise<Result> {
       operationalDiagnosis,
       trendSummary,
       operatorClosureEvidence,
-      ...specialistFields,
+      ...(incidentTriageFields ?? specialistFields),
       executionTime: Date.now() - startTime,
     };
   } catch (error) {

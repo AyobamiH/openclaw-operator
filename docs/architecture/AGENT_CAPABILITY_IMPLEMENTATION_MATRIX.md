@@ -117,6 +117,8 @@ must be substantially true:
 | `data-extraction-agent` | ingestion | Strong foundation | extraction now carries provenance, confidence, normalization handoff data, explicit artifact records across multiple artifact classes, and artifact-coverage summaries, and that artifact coverage remains surfaced in readiness output | complete | Wave 2 |
 | `normalization-agent` | ingestion | Strong foundation | normalization now emits canonical ids, dedupe keys, uncertainty flags, explainable schema mismatches, and explicit comparison-ready handoff posture, and that comparison readiness remains surfaced in readiness output | complete | Wave 2 |
 | `market-research-agent` | ingestion | Strong foundation | query and URL lanes now emit change-intelligence, internal durable signal packs, structured change packs, and explicit delta-capture posture, and that delta-capture posture remains surfaced in readiness output | complete | Wave 2 |
+| `operations-analyst-agent` | truth | Focused bounded lane | control-plane brief synthesis now emits mode, dominant move, pressure story, proof posture, and portable companion-facing summaries with targeted contract proof | active | Wave 4 |
+| `release-manager-agent` | trust | Focused bounded lane | release-readiness synthesis now emits explicit `go` / `hold` / `block` posture across verification, security, system, incident, approval, and proof evidence with targeted contract proof | active | Wave 4 |
 | `build-refactor-agent` | code | Strong foundation | build lane now emits bounded scope contracts, surgery profiles, rollback/verification context, verifier handoff relationships, and repair-linked verification-loop evidence, and those governance signals are now surfaced end-to-end through agent overview with live proof | complete | Wave 3 |
 | `skill-audit-agent` | trust | Strong foundation | governance lane now promotes trust posture, policy handoff, and telemetry handoff into runtime readiness with governed-skill depth, and those signals remain proven end-to-end through the control-plane readiness surface | complete | Wave 3 |
 
@@ -125,6 +127,7 @@ Wave meaning:
 - Wave 1: truth / trust / execution core
 - Wave 2: communication and ingestion expansion
 - Wave 3: code-governance hardening and final uplift
+- Wave 4: companion-facing synthesis and release-governance expansion
 
 All waves remain in scope. This is ordering only.
 
@@ -555,6 +558,70 @@ All waves remain in scope. This is ordering only.
 2. doc-specialist handoff for external change packs
 3. structured vendor/policy/API delta capture
 4. stronger query-only default with graceful URL degradation
+
+### operations-analyst-agent
+
+**Current runtime truth**
+
+- The focused public control-plane brief lane is now live for the current
+  runtime slice.
+- It emits bounded control-plane mode, ranked primary operator move, pressure
+  story, queue posture, incident pressure, service posture, and public-proof
+  posture in one reusable contract.
+- The same bounded brief now feeds the companion overview surface, so external
+  bridge and channel clients do not need to scrape operator-only payloads.
+
+**Missing ultra behaviors**
+
+- Broader live adoption is still ahead, but the current runtime slice already
+  proves the bounded synthesis contract.
+
+**Promotion gate**
+
+- The brief stays machine-readable and bounded.
+- Operator move ranking is grounded in live queue, approval, incident, and
+  proof signals.
+- External clients can reuse the contract without inventing their own control
+  plane summary logic.
+
+**First implementation slices**
+
+1. control-plane mode contract
+2. dominant operator move ranking
+3. portable companion-overview payload
+4. bounded service and proof synthesis
+
+### release-manager-agent
+
+**Current runtime truth**
+
+- The focused public release-readiness lane is now live for the current runtime
+  slice.
+- It emits explicit `go` / `hold` / `block` posture, blocker summaries,
+  follow-up actions, and evidence-window details across verification,
+  security, system-monitor, build, incident, approval, and proof-freshness
+  inputs.
+- The lane remains bounded: it summarizes release posture but does not itself
+  deploy or bypass approval gates.
+
+**Missing ultra behaviors**
+
+- Broader release-process adoption is still ahead, but the current runtime
+  slice already proves the bounded release-synthesis contract.
+
+**Promotion gate**
+
+- Release posture is evidence-backed rather than optimistic.
+- Verification, security, system, and approval pressure can all block the lane.
+- Operators can act on the returned blockers and follow-up guidance without
+  reconstructing the release story from multiple routes.
+
+**First implementation slices**
+
+1. release posture contract
+2. blocker and follow-up synthesis
+3. evidence-window aggregation
+4. bounded operator-visible release guidance
 
 ### skill-audit-agent
 

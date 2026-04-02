@@ -265,6 +265,14 @@ flattening the remaining gap to "fully capable."
   uncertainty markers for downstream comparison work.
 - `market-research-agent` now emits change-intelligence and handoff signals even
   for query-only runs.
+- `operations-analyst-agent` now emits a bounded `controlPlaneBrief` contract
+  that synthesizes control-plane mode, dominant operator move, pressure story,
+  queue posture, incident pressure, service health, and public-proof posture
+  without requiring external clients to scrape operator-only payloads.
+- `release-manager-agent` now emits a bounded `releaseReadiness` contract that
+  fuses verification, security, system-monitor, build, incident, approval, and
+  proof-freshness evidence into an explicit `go` / `hold` / `block` release
+  posture with follow-up guidance.
 - `build-refactor-agent` now emits bounded scope contracts, surgery profiles,
   rollback/verification context, verifier handoff relationships, and low-
   confidence refusal for overly broad scopes.
@@ -598,6 +606,42 @@ flattening the remaining gap to "fully capable."
 - Turn raw external research into internal operational knowledge
 - Feed doc-specialist and integration-agent with change intelligence
 
+### operations-analyst-agent
+
+**Role**
+
+- Control-plane synthesizer
+
+**Current Strength**
+
+- New bounded public lane with focused contract proof
+
+**Ultra Target**
+
+- Fuse queue, approval, incident, service, and proof truth into one portable
+  control-plane brief
+- Rank the dominant operator move without scraping frontend-only state
+- Feed companion and channel read surfaces with machine-readable operational
+  synthesis
+
+### release-manager-agent
+
+**Role**
+
+- Release posture synthesizer
+
+**Current Strength**
+
+- New bounded public lane with focused contract proof
+
+**Ultra Target**
+
+- Turn verification, security, system health, and governed build evidence into
+  explicit release gating
+- Distinguish `go`, `hold`, and `block` with reasons and follow-up actions
+- Preserve release posture as evidence-backed operator truth, not a vibes-only
+  summary
+
 ### skill-audit-agent
 
 **Role**
@@ -625,6 +669,8 @@ This is the intended high-level shape once the agent layer matures.
 - `doc-specialist` = truth spine
 - `system-monitor-agent` + `security-agent` + `qa-verification-agent` = trust spine
 - `integration-agent` = execution spine
+- `operations-analyst-agent` = control-plane synthesis spine
+- `release-manager-agent` = release-governance synthesis spine
 - `reddit-helper` + `content-agent` + `summarization-agent` = communication spine
 - `data-extraction-agent` + `normalization-agent` = ingestion boundary
 
@@ -644,6 +690,8 @@ This is the intended high-level shape once the agent layer matures.
 | normalization-agent | Medium | High | Low | Medium | Medium | Partial |
 | build-refactor-agent | High | Very High | Medium | Low | Very High | Strong |
 | market-research-agent | Medium | Medium | Medium | Very High | Medium | Partial |
+| operations-analyst-agent | High | High | Medium | Low | High | Active |
+| release-manager-agent | High | Very High | Medium | Low | Very High | Active |
 | skill-audit-agent | Medium | Very High | Medium | Low | Very High | Strong |
 
 ## Phased Rollout

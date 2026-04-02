@@ -1,0 +1,37 @@
+{
+  "id": "release-manager-agent",
+  "orchestratorTask": "release-readiness",
+  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "serviceStatePath": "../../logs/release-manager-agent-service.json",
+  "name": "Release Manager Agent",
+  "description": "Synthesizes release posture across verification, security, system health, and governed build evidence.",
+  "version": "1.0.0",
+  "model": {
+    "primary": "claude-3-5-sonnet",
+    "fallback": "gpt-4o-mini",
+    "tier": "balanced",
+    "temperature": 0.2,
+    "maxTokens": 2048
+  },
+  "maxConcurrentTasks": 2,
+  "permissions": {
+    "skills": {
+      "documentParser": {
+        "allowed": true,
+        "maxCalls": 40,
+        "reason": "Parse runtime evidence and release posture inputs."
+      }
+    },
+    "network": {
+      "allowed": false
+    }
+  },
+  "constraints": {
+    "timeoutSec": 90,
+    "maxRetries": 1
+  },
+  "heartbeat": {
+    "interval": "10m",
+    "checks": ["release_truth", "verification_posture"]
+  }
+}

@@ -8,11 +8,17 @@ import type { AuthenticatedRequest } from './auth.js';
  */
 
 const ONE_MINUTE_MS = 60 * 1000;
+const IS_TEST_ENV = process.env.NODE_ENV === 'test';
 type RateLimitedRequest = Request & {
   rateLimit?: {
     resetTime?: Date;
   };
 };
+
+function scaleRateLimit(limit: number): number {
+  if (!IS_TEST_ENV) return limit;
+  return Math.max(limit, limit * 20);
+}
 
 function appendRetryAfterHeader(req: Request, res: Response, defaultWindowMs: number) {
   const rateLimitedReq = req as RateLimitedRequest;
@@ -50,7 +56,7 @@ function buildRateLimitHandler(message: string, windowMs: number) {
  */
 export const webhookLimiter = rateLimit({
   windowMs: ONE_MINUTE_MS,
-  max: 100,
+  max: scaleRateLimit(100),
   message: 'Too many webhook requests, please retry after a minute',
   standardHeaders: true, // Return rate limit info in RateLimit-* headers
   legacyHeaders: false, // Disable X-RateLimit-* headers
@@ -66,7 +72,7 @@ export const webhookLimiter = rateLimit({
  */
 export const apiLimiter = rateLimit({
   windowMs: ONE_MINUTE_MS,
-  max: 30,
+  max: scaleRateLimit(30),
   message: 'Too many requests, please retry after a minute',
   standardHeaders: true,
   legacyHeaders: false,
@@ -84,7 +90,7 @@ export const apiLimiter = rateLimit({
  */
 export const authLimiter = rateLimit({
   windowMs: ONE_MINUTE_MS,
-  max: 300,
+  max: scaleRateLimit(300),
   message: 'Too many authentication attempts, please retry after a minute',
   standardHeaders: true,
   legacyHeaders: false,
@@ -116,7 +122,7 @@ function resolveAuthenticatedKey(req: Request, bucket: string): string {
  */
 export const viewerReadLimiter = rateLimit({
   windowMs: ONE_MINUTE_MS,
-  limit: 120,
+  limit: scaleRateLimit(120),
   keyGenerator: (req: Request) => resolveAuthenticatedKey(req, 'viewer-read'),
   message: 'Viewer read rate limit exceeded, please retry after a minute',
   standardHeaders: true,
@@ -133,7 +139,7 @@ export const viewerReadLimiter = rateLimit({
  */
 export const operatorWriteLimiter = rateLimit({
   windowMs: ONE_MINUTE_MS,
-  limit: 30,
+  limit: scaleRateLimit(30),
   keyGenerator: (req: Request) => resolveAuthenticatedKey(req, 'operator-write'),
   message: 'Operator write rate limit exceeded, please retry after a minute',
   standardHeaders: true,
@@ -150,7 +156,7 @@ export const operatorWriteLimiter = rateLimit({
  */
 export const adminExportLimiter = rateLimit({
   windowMs: ONE_MINUTE_MS,
-  limit: 10,
+  limit: scaleRateLimit(10),
   keyGenerator: (req: Request) => resolveAuthenticatedKey(req, 'admin-export'),
   message: 'Admin export rate limit exceeded, please retry after a minute',
   standardHeaders: true,
@@ -167,7 +173,7 @@ export const adminExportLimiter = rateLimit({
  */
 export const healthLimiter = rateLimit({
   windowMs: ONE_MINUTE_MS,
-  max: 1000,
+  max: scaleRateLimit(1000),
   // Don't send response for health checks, just let through
   skip: () => false,
 });

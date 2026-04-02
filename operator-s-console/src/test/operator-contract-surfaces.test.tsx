@@ -1610,6 +1610,86 @@ describe("operator contract surfaces", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders the new companion-facing public lanes with bounded guidance", () => {
+    vi.mocked(consoleHooks.useTaskCatalog).mockReturnValue({
+      data: {
+        generatedAt: "2026-04-02T10:00:00.000Z",
+        tasks: [
+          {
+            type: "control-plane-brief",
+            label: "Control Plane Brief",
+            purpose: "Produce a bounded control-plane summary with dominant pressure, primary operator move, and proof posture.",
+            operationalStatus: "confirmed-working",
+            approvalGated: false,
+            exposeInV1: true,
+            dependencyClass: "worker",
+            dependencyRequirements: ["operations-analyst worker", "dashboard truth"],
+            baselineConfidence: "medium",
+            caveats: ["Use it when you need a portable operator brief for downstream clients or channel surfaces."],
+            telemetryOverlay: { totalRuns: 2, successRate: 1 },
+          },
+          {
+            type: "incident-triage",
+            label: "Incident Triage",
+            purpose: "Cluster incident pressure into a ranked operator queue with ownership, acknowledgement, remediation, and verification priorities.",
+            operationalStatus: "confirmed-working",
+            approvalGated: false,
+            exposeInV1: true,
+            dependencyClass: "worker",
+            dependencyRequirements: ["system-monitor worker", "incident ledger"],
+            baselineConfidence: "medium",
+            caveats: ["Use the ranked queue as an operator ordering surface, not as automatic closure proof."],
+            telemetryOverlay: { totalRuns: 1, successRate: 1 },
+          },
+          {
+            type: "release-readiness",
+            label: "Release Readiness",
+            purpose: "Produce a bounded go, hold, or block release posture from verification, security, monitor, and build evidence.",
+            operationalStatus: "confirmed-working",
+            approvalGated: false,
+            exposeInV1: true,
+            dependencyClass: "worker",
+            dependencyRequirements: ["release-manager worker", "verification evidence"],
+            baselineConfidence: "medium",
+            caveats: ["Treat hold or block output as operator guidance, not a background advisory."],
+            telemetryOverlay: { totalRuns: 1, successRate: 1 },
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useTaskCatalog>);
+
+    render(
+      <MemoryRouter>
+        <TasksPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByText("Control Plane Brief"));
+    expect(
+      screen.getByText(
+        /bounded machine-readable and operator-readable control-plane brief/i,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/operations-analyst worker fuses dashboard, queue, incident, approval, service, and proof truth/i),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Incident Triage"));
+    expect(
+      screen.getByText(/ranked triage queue with acknowledgement, ownership, remediation, and verification posture/i),
+    ).toBeInTheDocument();
+    expect(screen.getByDisplayValue("8")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Release Readiness"));
+    expect(
+      screen.getAllByText(/bounded go, hold, or block release posture/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByDisplayValue("main")).toBeInTheDocument();
+  });
+
   it("renders reddit-response as a freshness-aware knowledge-pack lane", () => {
     vi.mocked(consoleHooks.useTaskCatalog).mockReturnValue({
       data: {

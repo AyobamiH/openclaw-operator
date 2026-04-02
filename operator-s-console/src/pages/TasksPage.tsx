@@ -35,6 +35,7 @@ interface TaskRowVM {
 
 interface TaskDraftState {
   heartbeatReason: string;
+  controlPlaneFocus: string;
   buildMode: "autonomous" | "explicit";
   buildType: string;
   buildScope: string;
@@ -68,6 +69,8 @@ interface TaskDraftState {
   summarizeConstraints: string;
   monitorType: string;
   monitorAgents: string;
+  incidentTriageClassification: string;
+  incidentTriageLimit: string;
   contentType: string;
   contentSourceName: string;
   contentSourceDescription: string;
@@ -88,6 +91,7 @@ interface TaskDraftState {
   qaTestCommand: string;
   qaDryRun: boolean;
   qaConstraints: string;
+  releaseTarget: string;
   skillAuditIds: string;
   skillAuditDepth: string;
   skillAuditChecks: string;
@@ -103,6 +107,7 @@ interface TaskDraftState {
 
 const DEFAULT_TASK_DRAFT: TaskDraftState = {
   heartbeatReason: "operator-station",
+  controlPlaneFocus: "",
   buildMode: "autonomous",
   buildType: "refactor",
   buildScope: "orchestrator/src",
@@ -136,6 +141,8 @@ const DEFAULT_TASK_DRAFT: TaskDraftState = {
   summarizeConstraints: "",
   monitorType: "health",
   monitorAgents: "",
+  incidentTriageClassification: "",
+  incidentTriageLimit: "8",
   contentType: "readme",
   contentSourceName: "Project",
   contentSourceDescription: "Generated content",
@@ -156,6 +163,7 @@ const DEFAULT_TASK_DRAFT: TaskDraftState = {
   qaTestCommand: "",
   qaDryRun: true,
   qaConstraints: "",
+  releaseTarget: "main",
   skillAuditIds: "",
   skillAuditDepth: "standard",
   skillAuditChecks: "",
@@ -201,9 +209,11 @@ function categorizeTask(taskType: string): TaskCategory {
     "nightly-batch": "Routine",
     "send-digest": "Routine",
     "integration-workflow": "Routine",
+    "control-plane-brief": "Routine",
     "drift-repair": "Repair",
     "qa-verification": "Repair",
     "system-monitor": "Repair",
+    "incident-triage": "Repair",
     "build-refactor": "Sensitive",
     "market-research": "Research",
     "summarize-content": "Research",
@@ -212,6 +222,7 @@ function categorizeTask(taskType: string): TaskCategory {
     "security-audit": "Governance",
     "skill-audit": "Governance",
     "normalize-data": "Governance",
+    "release-readiness": "Governance",
     "reddit-response": "Sensitive",
     "agent-deploy": "Sensitive",
   };
@@ -290,6 +301,14 @@ function buildTaskPayload(taskType: string, draft: TaskDraftState): Record<strin
   if (taskType === "heartbeat") {
     return {
       reason: draft.heartbeatReason.trim() || "operator-station",
+    };
+  }
+
+  if (taskType === "control-plane-brief") {
+    return {
+      ...(draft.controlPlaneFocus.trim()
+        ? { focus: draft.controlPlaneFocus.trim() }
+        : {}),
     };
   }
 
@@ -400,6 +419,16 @@ function buildTaskPayload(taskType: string, draft: TaskDraftState): Record<strin
     };
   }
 
+  if (taskType === "incident-triage") {
+    const parsedLimit = Number.parseInt(draft.incidentTriageLimit, 10);
+    return {
+      ...(draft.incidentTriageClassification.trim()
+        ? { classification: draft.incidentTriageClassification.trim() }
+        : {}),
+      ...(Number.isFinite(parsedLimit) && parsedLimit > 0 ? { limit: parsedLimit } : {}),
+    };
+  }
+
   if (taskType === "content-generate") {
     const style = draft.contentStyle.trim();
     const length = draft.contentLength.trim();
@@ -458,6 +487,14 @@ function buildTaskPayload(taskType: string, draft: TaskDraftState): Record<strin
     };
   }
 
+  if (taskType === "release-readiness") {
+    return {
+      ...(draft.releaseTarget.trim()
+        ? { releaseTarget: draft.releaseTarget.trim() }
+        : {}),
+    };
+  }
+
   if (taskType === "skill-audit") {
     const skillIds = parseLines(draft.skillAuditIds);
     const checks = parseLines(draft.skillAuditChecks);
@@ -500,6 +537,10 @@ function buildTaskPayload(taskType: string, draft: TaskDraftState): Record<strin
 }
 
 function buildExecutionPathCopy(task: TaskRowVM, draft: TaskDraftState) {
+  if (task.type === "control-plane-brief") {
+    return "Submission enters the orchestrator queue, the operations-analyst worker fuses dashboard, queue, incident, approval, service, and proof truth into a bounded control-plane brief for operator or companion consumption.";
+  }
+
   if (task.type === "build-refactor") {
     return draft.buildMode === "explicit"
       ? "Submission enters the orchestrator queue, pauses for approval, then the worker applies your exact bounded changes[] patch set and records rollback plus verification evidence."
@@ -514,10 +555,22 @@ function buildExecutionPathCopy(task: TaskRowVM, draft: TaskDraftState) {
     return "Submission enters the orchestrator queue, the reddit-helper worker pulls the latest knowledge pack plus runtime doctrine, drafts a bounded reply, and marks the run for review when provider posture or knowledge freshness is not green.";
   }
 
+  if (task.type === "incident-triage") {
+    return "Submission enters the orchestrator queue, the system-monitor worker clusters current incident pressure into acknowledgement, ownership, remediation, and verification priorities, then returns a ranked triage queue instead of a generic runtime monitor blob.";
+  }
+
+  if (task.type === "release-readiness") {
+    return "Submission enters the orchestrator queue, the release-manager worker fuses verification, security, monitor, build, incident, approval, and proof freshness evidence into a bounded go, hold, or block release posture.";
+  }
+
   return "Submission enters the orchestrator queue, pauses for approval when required, then continues to worker execution and downstream result handling.";
 }
 
 function buildNextStepCopy(task: TaskRowVM, draft: TaskDraftState) {
+  if (task.type === "control-plane-brief") {
+    return "Use this when you need a portable control-plane summary instead of a full dashboard walkthrough. Add a focus string only when you want the resulting brief to emphasize one bounded angle such as incidents, approvals, or proof.";
+  }
+
   if (task.type === "build-refactor") {
     return draft.buildMode === "explicit"
       ? "Use explicit mode when you already know the exact diff. Keep the scope tight, keep the file budget honest, and attach a real verification command when code paths are affected."
@@ -530,6 +583,14 @@ function buildNextStepCopy(task: TaskRowVM, draft: TaskDraftState) {
 
   if (task.type === "reddit-response") {
     return "Use the queue shortcut for the next selected draft, or supply a bounded manual queue payload. If the resulting run says the docs mirror is ahead of the latest pack, run Drift Repair before you reuse the reply broadly.";
+  }
+
+  if (task.type === "incident-triage") {
+    return "Use this when the incident queue feels noisy and you need a ranked operator order. Add a classification only when you want to isolate one dominant incident family instead of the full open ledger.";
+  }
+
+  if (task.type === "release-readiness") {
+    return "Use this before a real cutover or public claim. Keep the release target honest, and treat hold or block posture as real gating evidence rather than optional commentary.";
   }
 
   if (task.operationalStatus === "partially-operational") {
@@ -564,6 +625,29 @@ function renderTaskFields(
           className="bg-panel-inset border-border font-mono text-sm"
         />
       </div>
+    );
+  }
+
+  if (task.type === "control-plane-brief") {
+    return (
+      <>
+        <div className="console-inset p-3 rounded-sm">
+          <p className="text-[10px] font-mono text-foreground leading-relaxed">
+            This lane produces a bounded machine-readable and operator-readable control-plane brief. Leave focus blank for a general brief, or narrow it to one concern like incidents, approvals, proof, or queue posture.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+            Focus
+          </label>
+          <Input
+            value={draft.controlPlaneFocus}
+            onChange={(event) => updateDraft({ controlPlaneFocus: event.target.value })}
+            className="bg-panel-inset border-border font-mono text-sm"
+            placeholder="incidents"
+          />
+        </div>
+      </>
     );
   }
 
@@ -1064,6 +1148,48 @@ function renderTaskFields(
     );
   }
 
+  if (task.type === "incident-triage") {
+    return (
+      <>
+        <div className="console-inset p-3 rounded-sm">
+          <p className="text-[10px] font-mono text-foreground leading-relaxed">
+            This lane turns the open incident ledger into a ranked triage queue with acknowledgement, ownership, remediation, and verification posture. Leave classification blank to rank the full queue.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="space-y-2">
+            <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+              Classification
+            </label>
+            <Input
+              value={draft.incidentTriageClassification}
+              onChange={(event) =>
+                updateDraft({ incidentTriageClassification: event.target.value })
+              }
+              className="bg-panel-inset border-border font-mono text-sm"
+              placeholder="proof-delivery"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+              Queue Limit
+            </label>
+            <Input
+              type="number"
+              min="1"
+              max="12"
+              value={draft.incidentTriageLimit}
+              onChange={(event) =>
+                updateDraft({ incidentTriageLimit: event.target.value })
+              }
+              className="bg-panel-inset border-border font-mono text-sm"
+            />
+          </div>
+        </div>
+      </>
+    );
+  }
+
   if (task.type === "content-generate") {
     return (
       <>
@@ -1337,6 +1463,29 @@ function renderTaskFields(
             value={draft.qaConstraints}
             onChange={(event) => updateDraft({ qaConstraints: event.target.value })}
             className="bg-panel-inset border-border font-mono text-sm min-h-[90px]"
+          />
+        </div>
+      </>
+    );
+  }
+
+  if (task.type === "release-readiness") {
+    return (
+      <>
+        <div className="console-inset p-3 rounded-sm">
+          <p className="text-[10px] font-mono text-foreground leading-relaxed">
+            This lane produces a bounded go, hold, or block release posture from the latest verification, security, monitor, build, incident, approval, and proof freshness evidence.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+            Release Target
+          </label>
+          <Input
+            value={draft.releaseTarget}
+            onChange={(event) => updateDraft({ releaseTarget: event.target.value })}
+            className="bg-panel-inset border-border font-mono text-sm"
+            placeholder="main"
           />
         </div>
       </>

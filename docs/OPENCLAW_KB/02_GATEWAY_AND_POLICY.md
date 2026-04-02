@@ -19,6 +19,11 @@ Last updated: 2026-03-02
 | `/health` | Public | None | healthLimiter |
 | `/api/knowledge/summary` | Public | None | apiLimiter |
 | `/api/persistence/health` | Public | None | healthLimiter |
+| `/api/companion/overview` | Bearer | query parsing only | apiLimiter + authLimiter + viewerReadLimiter |
+| `/api/companion/catalog` | Bearer | query parsing only | apiLimiter + authLimiter + viewerReadLimiter |
+| `/api/companion/incidents` | Bearer | bounded `limit` query parsing | apiLimiter + authLimiter + viewerReadLimiter |
+| `/api/companion/runs` | Bearer | bounded `limit` query parsing | apiLimiter + authLimiter + viewerReadLimiter |
+| `/api/companion/approvals` | Bearer | bounded `limit` query parsing | apiLimiter + authLimiter + viewerReadLimiter |
 | `/api/tasks/trigger` | Bearer | TaskTriggerSchema | apiLimiter + authLimiter |
 | `/webhook/alerts` | HMAC | AlertManagerWebhookSchema | webhookLimiter + authLimiter |
 | `/api/knowledge/query` | Bearer | KBQuerySchema | apiLimiter + authLimiter |
@@ -74,15 +79,21 @@ Current boundary:
   bridge-local allowlist. The current local install now mirrors the full
   approved public task enum rather than a reduced starter subset, while still
   relying on orchestrator approval gates for sensitive lanes.
-- The command forwards only to the existing protected orchestrator operator
-  routes on `http://127.0.0.1:3312`.
+- Read surfaces are separately limited by
+  `plugins.entries.orchestrator-bridge.config.allowedViews`, which gates the
+  bounded companion read family.
+- The bridge now uses read-first companion routes on `http://127.0.0.1:3312`
+  (`/api/companion/*`) and keeps `POST /api/tasks/trigger` as the only write
+  path.
 - Auth defaults to a local operator-key discovery path from
   `workspace/orchestrator/.env`, with explicit `apiKey` or `apiKeyEnv` override
   support when needed.
 
 Operational intent:
 
-- Use `/orch list` to view the currently bridge-allowed tasks.
-- Use `/orch <task-type> [json payload]` for explicit task dispatch.
+- Use `/orch status`, `/orch tasks`, `/orch incidents`, `/orch runs`, and
+  `/orch approvals` for bounded read-first operational truth.
+- Use `/orch <task-type> [json payload]` or
+  `/orch run <task-type> [json payload]` for explicit task dispatch.
 - Keep high-risk tasks approval-gated in orchestrator even when the bridge
   allowlist includes them.

@@ -64,6 +64,11 @@ Protected operator routes (bearer token):
 
 - `GET /api/auth/me`
 - `GET /api/dashboard/overview`
+- `GET /api/companion/overview`
+- `GET /api/companion/catalog`
+- `GET /api/companion/incidents`
+- `GET /api/companion/runs`
+- `GET /api/companion/approvals`
 - `GET /api/tasks/catalog`
 - `POST /api/tasks/trigger`
 - `GET /api/tasks/runs`
@@ -127,6 +132,12 @@ Operator Console contract truth:
 - `GET /api/dashboard/overview`: protected operator aggregation only. Useful
   for queue, approvals, governance, and recent-task visibility, but not
   authoritative system health.
+- `GET /api/companion/overview`, `GET /api/companion/catalog`,
+  `GET /api/companion/incidents`, `GET /api/companion/runs`, and
+  `GET /api/companion/approvals`: protected, bounded, read-only companion
+  summaries for bridge and channel clients. These are the canonical external
+  read surfaces; do not scrape operator-only payloads to recreate the same
+  summary layer.
 - `GET /health`: shallow public liveness only. It returns helper URLs for
   metrics, knowledge summary, and persistence health using the request host;
   the metrics helper uses the configured Prometheus port.
@@ -536,6 +547,28 @@ The route contract above is authoritative for operator-console integration.
 Generic handler/type sketches lower in this file are legacy orientation only;
 runtime code wins if those examples diverge.
 
+## Companion Read Contract
+
+The companion route family is the canonical read-first contract for OpenClaw
+plugins and channel clients.
+
+Use these bounded routes instead of scraping `/operator` or reconstructing the
+control plane from multiple operator-only payloads:
+
+- `GET /api/companion/overview`
+- `GET /api/companion/catalog`
+- `GET /api/companion/incidents`
+- `GET /api/companion/runs`
+- `GET /api/companion/approvals`
+
+These routes are intentionally:
+
+- read-only
+- bounded
+- explicit about role and rate-limit posture through `x-openclaw-access`
+- suitable for read-first channel integration while keeping
+  `POST /api/tasks/trigger` as the explicit write path
+
 ## Machine-Readable Contract
 
 - `GET /api/openapi.json` is the machine-readable companion to this document.
@@ -546,6 +579,10 @@ runtime code wins if those examples diverge.
 - Protected operations also carry explicit role and limiter metadata in the
   `x-openclaw-access` extension so RBAC and bucket policy stay attached to the
   route contract instead of being implied only by prose.
+- Companion operations also carry explicit `companionView` metadata in the
+  same `x-openclaw-access` extension so bridge and channel clients can bind to
+  the canonical external view contract rather than infer it from route names
+  alone.
 - Current supporting clients (`operator-s-console/src/lib/api.ts`) are aligned
   to those same authoritative routes, and `operator-s-console/` is the
   canonical tracked `/operator` client in this repo.
@@ -603,6 +640,11 @@ Current cached read surfaces:
   - `GET /api/openapi.json`
   - `GET /api/persistence/health`
 - Protected:
+  - `GET /api/companion/overview`
+  - `GET /api/companion/catalog`
+  - `GET /api/companion/incidents`
+  - `GET /api/companion/runs`
+  - `GET /api/companion/approvals`
   - `GET /api/tasks/catalog`
   - `GET /api/approvals/pending`
   - `GET /api/incidents`
@@ -639,7 +681,8 @@ Current runtime limiter policy:
   - pre-auth abuse guard: `300 requests / 60s / IP`
   - bucket A (`viewer-read`): `120 requests / 60s` per authenticated actor/key
     label for protected read routes (`GET` visibility endpoints including
-    `/api/skills/audit`, `/api/health/extended`, `/api/persistence/summary`)
+    `/api/skills/audit`, `/api/health/extended`, `/api/persistence/summary`,
+    and the read-first `/api/companion/*` summaries)
   - bucket B (`operator-write`): `30 requests / 60s` per authenticated
     actor/key label for protected write routes
     (`POST /api/tasks/trigger`, `POST /api/approvals/:id/decision`,

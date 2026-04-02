@@ -650,6 +650,10 @@ export interface TaskHandlerContext {
   state: OrchestratorState;
   saveState: () => Promise<void>;
   enqueueTask: (type: string, payload: Record<string, unknown>) => Task;
+  getQueueSnapshot?: () => {
+    queued: Task[];
+    processing: Task[];
+  };
   logger: Console;
   appendIncidentHistoryEvent?: (
     incidentId: string,

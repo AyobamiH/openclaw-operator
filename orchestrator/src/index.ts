@@ -69,6 +69,7 @@ import { knowledgeIntegration } from "./knowledge/integration.js";
 import { PersistenceIntegration } from "./persistence/index.js";
 import { getAgentRegistry } from "./agentRegistry.js";
 import { getToolGate } from "./toolGate.js";
+import { buildIncidentPriorityQueue } from "./incident-priority.js";
 import {
   assertApprovalIfRequired,
   decideApproval,
@@ -922,6 +923,71 @@ const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
     ],
   },
   {
+    type: "control-plane-brief",
+    label: "Control Plane Brief",
+    purpose: "Produce a bounded control-plane summary with dominant pressure, primary operator move, and proof posture.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "worker",
+    baselineConfidence: "medium",
+    dependencyRequirements: [
+      "operations-analyst worker",
+      "dashboard truth",
+      "incident ledger",
+      "public proof posture",
+    ],
+    exposeInV1: true,
+    caveats: [
+      "This lane synthesizes current control-plane truth; it does not replace the live overview.",
+      "Use it when you need a portable operator brief for downstream clients or channel surfaces.",
+    ],
+  },
+  {
+    type: "incident-triage",
+    label: "Incident Triage",
+    purpose: "Cluster incident pressure into a ranked operator queue with ownership, acknowledgement, remediation, and verification priorities.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "worker",
+    baselineConfidence: "medium",
+    dependencyRequirements: [
+      "system-monitor worker",
+      "incident ledger",
+      "workflow evidence",
+    ],
+    exposeInV1: true,
+    caveats: [
+      "This lane clusters current incident pressure; it does not acknowledge or remediate incidents by itself.",
+      "Use the ranked queue as an operator ordering surface, not as automatic closure proof.",
+    ],
+  },
+  {
+    type: "release-readiness",
+    label: "Release Readiness",
+    purpose: "Produce a bounded go, hold, or block release posture from verification, security, monitor, and build evidence.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "worker",
+    baselineConfidence: "medium",
+    dependencyRequirements: [
+      "release-manager worker",
+      "verification evidence",
+      "security evidence",
+      "system health evidence",
+    ],
+    exposeInV1: true,
+    caveats: [
+      "This lane summarizes current release posture; it does not cut a release or override blocked evidence.",
+      "Treat hold or block output as operator guidance, not a background advisory.",
+    ],
+  },
+  {
     type: "send-digest",
     label: "Send Digest",
     purpose: "Send digest notifications for queued lead work.",
@@ -1162,6 +1228,8 @@ const AGENT_CAPABILITY_RUNTIME_SIGNAL_KEYS: Partial<Record<string, string[]>> = 
   "data-extraction-agent": ["artifactCoverage"],
   "normalization-agent": ["comparisonReadiness"],
   "market-research-agent": ["deltaCapture"],
+  "operations-analyst-agent": ["controlPlaneBrief"],
+  "release-manager-agent": ["releaseReadiness"],
 };
 
 const TASK_AGENT_SKILL_REQUIREMENTS: Record<
@@ -1203,6 +1271,18 @@ const TASK_AGENT_SKILL_REQUIREMENTS: Record<
     skillId: "testRunner",
   },
   "skill-audit": { agentId: "skill-audit-agent", skillId: "documentParser" },
+  "control-plane-brief": {
+    agentId: "operations-analyst-agent",
+    skillId: "documentParser",
+  },
+  "incident-triage": {
+    agentId: "system-monitor-agent",
+    skillId: "documentParser",
+  },
+  "release-readiness": {
+    agentId: "release-manager-agent",
+    skillId: "documentParser",
+  },
 };
 
 const TASK_IMPACT_SURFACES: Record<string, string[]> = {
@@ -1216,6 +1296,14 @@ const TASK_IMPACT_SURFACES: Record<string, string[]> = {
   "send-digest": ["digest-artifacts", "notification-channel", "external-network"],
   "rss-sweep": ["rss-feeds", "demand-queue", "draft-scoring"],
   "agent-deploy": ["agent-runtime", "deployment-filesystem", "worker-templates"],
+  "control-plane-brief": ["dashboard-overview", "incident-ledger", "public-proof"],
+  "incident-triage": ["incident-ledger", "workflow-evidence", "repair-queue"],
+  "release-readiness": [
+    "verification-evidence",
+    "security-evidence",
+    "system-health",
+    "release-posture",
+  ],
   startup: ["control-plane"],
   "doc-change": ["document-watchers", "pending-doc-buffer"],
 };
@@ -1365,6 +1453,28 @@ const AGENT_CAPABILITY_TARGETS: Record<
       "external change detection",
       "signal-to-pack handoff",
       "source evidence capture",
+    ],
+  },
+  "operations-analyst-agent": {
+    role: "Control-plane synthesizer",
+    spine: "truth",
+    targetCapabilities: [
+      "control-plane mode synthesis",
+      "pressure-story summarization",
+      "operator move ranking",
+      "proof posture briefings",
+      "portable runtime brief generation",
+    ],
+  },
+  "release-manager-agent": {
+    role: "Release posture synthesizer",
+    spine: "trust",
+    targetCapabilities: [
+      "release gating synthesis",
+      "verification posture review",
+      "security posture review",
+      "proof freshness release checks",
+      "bounded release follow-up guidance",
     ],
   },
   "skill-audit-agent": {
@@ -2991,6 +3101,46 @@ function summarizeAgentCapabilityRuntimeSignal(args: {
       `degraded-count:${degradedCount}`,
       `unreachable-count:${unreachableCount}`,
     ];
+  } else if (agentId === "operations-analyst-agent" && key === "controlPlaneBrief") {
+    const brief = record as Record<string, any>;
+    const mode =
+      typeof brief?.mode?.label === "string" ? brief.mode.label : "unknown";
+    const primaryMove =
+      typeof brief?.primaryOperatorMove?.title === "string"
+        ? brief.primaryOperatorMove.title
+        : "unknown";
+    const queueQueued = Number(brief?.queue?.queued ?? 0);
+    const openIncidents = Number(brief?.incidents?.openCount ?? 0);
+    const pendingApprovals = Number(brief?.approvals?.pendingCount ?? 0);
+    summary = `Control-plane brief reports ${mode} mode with primary move "${primaryMove}", ${openIncidents} open incident(s), ${pendingApprovals} pending approval(s), and ${queueQueued} queued task(s).`;
+    evidence = [
+      `mode:${mode}`,
+      `primary-move:${primaryMove}`,
+      `open-incidents:${openIncidents}`,
+      `pending-approvals:${pendingApprovals}`,
+      `queued:${queueQueued}`,
+    ];
+  } else if (agentId === "release-manager-agent" && key === "releaseReadiness") {
+    const readiness = record as Record<string, any>;
+    const decision =
+      typeof readiness?.decision === "string" ? readiness.decision : "unknown";
+    const target =
+      typeof readiness?.releaseTarget === "string"
+        ? readiness.releaseTarget
+        : "workspace";
+    const openIncidents = Number(readiness?.evidenceWindow?.openIncidents ?? 0);
+    const pendingApprovals = Number(readiness?.evidenceWindow?.pendingApprovals ?? 0);
+    const summaryLine =
+      typeof readiness?.summary === "string"
+        ? readiness.summary
+        : "No release summary recorded.";
+    summary = `Release readiness is ${decision} for ${target}. ${summaryLine}`;
+    evidence = [
+      `decision:${decision}`,
+      `release-target:${target}`,
+      `open-incidents:${openIncidents}`,
+      `pending-approvals:${pendingApprovals}`,
+    ];
   } else if (record) {
     evidence = Object.entries(record)
       .slice(0, 5)
@@ -4425,6 +4575,365 @@ function buildOperatorTaskCatalog(
   });
 }
 
+function buildCompanionControlPlaneMode(args: {
+  openIncidentCount: number;
+  criticalIncidentCount: number;
+  pendingApprovalsCount: number;
+  queueQueued: number;
+  queueProcessing: number;
+  proofStatus: "healthy" | "watching" | "degraded";
+  dominantClassification: string | null;
+}) {
+  if (args.criticalIncidentCount > 0 || args.openIncidentCount >= 5) {
+    return {
+      label: "Incident Storm",
+      route: "/incidents",
+      tone: "warning" as const,
+      detail: args.dominantClassification
+        ? `${args.dominantClassification} is dominating the runtime, so incident ownership, remediation, and verification outrank smaller backlog concerns.`
+        : "Incident pressure is dominating the runtime, so incident ownership, remediation, and verification outrank smaller backlog concerns.",
+    };
+  }
+
+  if (args.pendingApprovalsCount > 0) {
+    return {
+      label: "Review-Gated",
+      route: "/approvals",
+      tone: "info" as const,
+      detail:
+        "Execution truth is live, but the next bounded work is paused behind operator review.",
+    };
+  }
+
+  if (args.proofStatus !== "healthy") {
+    return {
+      label: "Proof Lag",
+      route: "/public-proof",
+      tone: "info" as const,
+      detail:
+        "Internal runtime truth is ahead of the public evidence surface, so proof reconciliation outranks external claims.",
+    };
+  }
+
+  if (args.queueQueued > 0 || args.queueProcessing > 0) {
+    return {
+      label: "Active Queue",
+      route: "/task-runs",
+      tone: "healthy" as const,
+      detail:
+        "The control plane is actively processing bounded work without a stronger failure mode outranking the run ledger.",
+    };
+  }
+
+  return {
+    label: "Steady State",
+    route: "/tasks",
+    tone: "healthy" as const,
+    detail:
+      "No dominant operator intervention is currently outranking routine bounded work.",
+  };
+}
+
+function buildCompanionPrimaryMove(args: {
+  mode: string;
+  openIncidentCount: number;
+  criticalIncidentCount: number;
+  pendingApprovalsCount: number;
+  topIncident: ReturnType<typeof buildIncidentPriorityQueue>[number] | null;
+  queuePressure: ReturnType<typeof buildDashboardQueuePressure>;
+  queueQueued: number;
+  queueProcessing: number;
+}) {
+  if (args.mode === "Incident Storm") {
+    return {
+      title: "Stabilize the incident queue first",
+      detail: args.topIncident
+        ? `${args.topIncident.severity} incident ${args.topIncident.incidentId} is currently outranking the rest of the control plane.`
+        : "Incidents are currently dominating the control plane, so clear ownership and remediation before treating smaller backlog as the main story.",
+      route: "/incidents",
+      tone: "warning" as const,
+      supportingSignals: [
+        `${args.openIncidentCount} open incident${args.openIncidentCount === 1 ? "" : "s"}`,
+        `${args.criticalIncidentCount} critical`,
+      ],
+    };
+  }
+
+  if (args.mode === "Review-Gated") {
+    return {
+      title: "Clear the approval inbox first",
+      detail: `${args.pendingApprovalsCount} approval decision(s) are pausing work that is already ready to continue once reviewed.`,
+      route: "/approvals",
+      tone: "warning" as const,
+      supportingSignals: [
+        `${args.pendingApprovalsCount} pending approval${args.pendingApprovalsCount === 1 ? "" : "s"}`,
+        `${args.queueQueued + args.queueProcessing} queued or processing`,
+      ],
+    };
+  }
+
+  if (args.mode === "Proof Lag") {
+    return {
+      title: "Reconcile public proof before external claims",
+      detail:
+        "Internal runtime truth is ahead of the public evidence surface, so confirm proof freshness before you rely on outward-facing status.",
+      route: "/public-proof",
+      tone: "info" as const,
+      supportingSignals: [
+        `${args.openIncidentCount} open incident${args.openIncidentCount === 1 ? "" : "s"}`,
+        `${args.queueQueued + args.queueProcessing} active queue item${args.queueQueued + args.queueProcessing === 1 ? "" : "s"}`,
+      ],
+    };
+  }
+
+  if (args.mode === "Active Queue") {
+    return {
+      title: "Work the run ledger",
+      detail:
+        "The control plane is live and the queue is the best next read surface for bounded progress and failure signals.",
+      route: "/task-runs",
+      tone: "healthy" as const,
+      supportingSignals: [`${args.queueQueued} queued`, `${args.queueProcessing} processing`],
+    };
+  }
+
+  const hottestQueue = args.queuePressure[0] ?? null;
+  return {
+    title: hottestQueue ? `Check ${hottestQueue.label} pressure` : "Launch the next bounded task",
+    detail: hottestQueue
+      ? `${hottestQueue.source} is the hottest queue source right now, so confirm whether it is normal churn or the start of backlog growth.`
+      : "No stronger interruption is currently outranking routine bounded work, so the task catalog is the best next control surface.",
+    route: hottestQueue ? "/task-runs" : "/tasks",
+    tone: hottestQueue ? ("info" as const) : ("healthy" as const),
+    supportingSignals: hottestQueue
+      ? [`${hottestQueue.queuedCount} queued`, `${hottestQueue.processingCount} processing`]
+      : ["Queue is quiet", "No dominant incident or approval pressure"],
+  };
+}
+
+function buildCompanionPressureStory(args: {
+  queuePressure: ReturnType<typeof buildDashboardQueuePressure>;
+  classifications: ReturnType<typeof buildDashboardIncidentClassifications>;
+  pendingApprovalsCount: number;
+  proofStatus: "healthy" | "watching" | "degraded";
+}) {
+  const topClassification = args.classifications[0] ?? null;
+  const hottestQueue = args.queuePressure[0] ?? null;
+  const signals: string[] = [];
+
+  if (topClassification) {
+    signals.push(
+      `${topClassification.count} ${topClassification.label.toLowerCase()} incident${topClassification.count === 1 ? "" : "s"}`,
+    );
+  }
+  if (args.pendingApprovalsCount > 0) {
+    signals.push(
+      `${args.pendingApprovalsCount} pending approval${args.pendingApprovalsCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (hottestQueue) {
+    signals.push(
+      `${hottestQueue.label} owns ${hottestQueue.totalCount} queued or processing item${hottestQueue.totalCount === 1 ? "" : "s"}`,
+    );
+  }
+  if (args.proofStatus !== "healthy") {
+    signals.push(`public proof is ${args.proofStatus}`);
+  }
+
+  return {
+    headline: topClassification
+      ? `${topClassification.label} is currently shaping the control-plane story.`
+      : hottestQueue
+        ? `${hottestQueue.label} is the hottest bounded queue lane right now.`
+        : args.pendingApprovalsCount > 0
+          ? "Approvals are pausing otherwise ready work."
+          : "No single interruption is dominating the control plane right now.",
+    detail: [
+      topClassification
+        ? `${topClassification.label} is currently the leading incident class.`
+        : null,
+      hottestQueue
+        ? `${hottestQueue.source} is the hottest queue source.`
+        : null,
+      args.pendingApprovalsCount > 0
+        ? "Approval backlog is real operator work, not background noise."
+        : null,
+      args.proofStatus !== "healthy"
+        ? "Public proof posture still needs reconciliation before external claims."
+        : null,
+    ]
+      .filter((entry): entry is string => typeof entry === "string")
+      .join(" "),
+    signals,
+  };
+}
+
+function buildCompanionCatalogPayload(
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  state: OrchestratorState,
+) {
+  const tasks = buildOperatorTaskCatalog(config, state)
+    .filter((task) => task.exposeInV1 !== false && !task.internalOnly)
+    .map((task) => ({
+      type: task.type,
+      label: task.label,
+      purpose: task.purpose,
+      operationalStatus: task.operationalStatus,
+      approvalGated: task.approvalGated,
+      dependencyClass: task.dependencyClass,
+      dependencyRequirements: task.dependencyRequirements,
+      baselineConfidence: task.baselineConfidence,
+      caveats: task.caveats,
+      telemetryOverlay: task.telemetryOverlay,
+    }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    total: tasks.length,
+    tasks,
+  };
+}
+
+function buildCompanionApprovalsPayload(
+  state: OrchestratorState,
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  limit: number = 8,
+) {
+  const pending = listPendingApprovals(state)
+    .slice()
+    .sort((left, right) => left.requestedAt.localeCompare(right.requestedAt));
+  const grouped = new Map<string, number>();
+  for (const approval of pending) {
+    grouped.set(approval.type, (grouped.get(approval.type) ?? 0) + 1);
+  }
+  const dominantLanes = [...grouped.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .slice(0, 5)
+    .map(([type, count]) => ({
+      type,
+      label: getOperatorTaskProfile(type)?.label ?? humanizeHyphenLabel(type),
+      count,
+    }));
+  const oldest = pending[0] ?? null;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    count: pending.length,
+    dominantLanes,
+    oldestWaiting: oldest
+      ? {
+          taskId: oldest.taskId,
+          type: oldest.type,
+          label: getOperatorTaskProfile(oldest.type)?.label ?? humanizeHyphenLabel(oldest.type),
+          requestedAt: oldest.requestedAt,
+        }
+      : null,
+    items: pending.slice(0, limit).map((approval) => ({
+      ...approval,
+      impact: buildApprovalImpactMetadata(approval, config),
+      payloadPreview: summarizePayloadPreview(approval.payload),
+    })),
+  };
+}
+
+function buildCompanionIncidentsPayload(
+  state: OrchestratorState,
+  limit: number = 8,
+) {
+  const open = state.incidentLedger.filter((record) => record.status !== "resolved");
+  const classifications = buildDashboardIncidentClassifications(state.incidentLedger, 5);
+  const triageQueue = buildIncidentPriorityQueue(state.incidentLedger)
+    .slice(0, limit)
+    .map((incident) => ({
+      incidentId: incident.incidentId,
+      priorityScore: incident.priorityScore,
+      severity: incident.severity,
+      owner: incident.owner,
+      recommendedOwner: incident.recommendedOwner,
+      nextAction: incident.nextAction,
+      remediationTaskType: incident.remediationTaskType,
+      blockers: incident.blockers,
+    }));
+
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: {
+      openCount: open.length,
+      criticalCount: open.filter((record) => record.severity === "critical").length,
+      unownedCount: open.filter((record) => !record.owner).length,
+      ackPendingCount: open.filter((record) => !record.acknowledgedAt).length,
+      remediationCount: open.filter((record) => record.remediation.status !== "resolved").length,
+      verificationCount: open.filter((record) => record.verification.status !== "not-required").length,
+    },
+    topClassifications: classifications,
+    topQueue: triageQueue,
+  };
+}
+
+function buildCompanionRunsPayload(
+  state: OrchestratorState,
+  config: Awaited<ReturnType<typeof loadConfig>>,
+  limit: number = 10,
+) {
+  const runs = [...state.taskExecutions]
+    .sort((left, right) => right.lastHandledAt.localeCompare(left.lastHandledAt))
+    .slice(0, limit)
+    .map((execution) => {
+      const run = buildRunRecord(execution, state, config);
+      const result =
+        run.result && typeof run.result === "object"
+          ? (run.result as Record<string, unknown>)
+          : null;
+      const specialistContract =
+        result?.specialistContract && typeof result.specialistContract === "object"
+          ? (result.specialistContract as Record<string, unknown>)
+          : null;
+      const knowledgeFreshness =
+        result?.knowledgeFreshness && typeof result.knowledgeFreshness === "object"
+          ? (result.knowledgeFreshness as Record<string, unknown>)
+          : null;
+      const recommendedNextActions = Array.isArray(
+        specialistContract?.recommendedNextActions ?? result?.recommendedNextActions,
+      )
+        ? (
+            (specialistContract?.recommendedNextActions ??
+              result?.recommendedNextActions) as unknown[]
+          )
+            .filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+            .slice(0, 3)
+        : [];
+
+      return {
+        runId: run.runId,
+        taskId: run.taskId,
+        type: run.type,
+        status: run.status,
+        lastHandledAt: run.lastHandledAt ?? null,
+        operatorSummary:
+          (typeof specialistContract?.operatorSummary === "string"
+            ? specialistContract.operatorSummary
+            : null) ??
+          (typeof result?.operatorSummary === "string" ? result.operatorSummary : null) ??
+          run.resultSummary?.keys?.join(", ") ??
+          null,
+        recommendedNextActions,
+        freshnessStatus:
+          typeof knowledgeFreshness?.status === "string" ? knowledgeFreshness.status : null,
+        reviewRecommended: knowledgeFreshness?.reviewRecommended === true,
+        workflowStage:
+          typeof specialistContract?.workflowStage === "string"
+            ? specialistContract.workflowStage
+            : null,
+      };
+    });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    total: runs.length,
+    runs,
+  };
+}
+
 function normalizeIsoTimestamp(value?: string | null) {
   if (typeof value !== "string" || value.trim().length === 0) return null;
   const parsed = Date.parse(value);
@@ -5668,6 +6177,11 @@ function buildRunRecord(
   state: OrchestratorState,
   config: Awaited<ReturnType<typeof loadConfig>>,
 ) {
+  const resultHighlights =
+    execution.resultSummary?.highlights &&
+    typeof execution.resultSummary.highlights === "object"
+      ? (execution.resultSummary.highlights as Record<string, unknown>)
+      : null;
   const relatedHistory = state.taskHistory.filter((entry) => entry.id === execution.taskId);
   const sortedHistory = [...relatedHistory].sort((a, b) =>
     a.handledAt.localeCompare(b.handledAt),
@@ -5766,6 +6280,7 @@ function buildRunRecord(
     lastError: execution.lastError ?? null,
     result_summary: execution.resultSummary ?? null,
     resultSummary: execution.resultSummary ?? null,
+    result: resultHighlights,
     history: sortedHistory,
     approval: relatedApproval
       ? {
@@ -9831,6 +10346,7 @@ async function bootstrap() {
     saveState: flushState,
     enqueueTask: (type: string, payload: Record<string, unknown>) =>
       queue.enqueue(type, payload),
+    getQueueSnapshot: () => queue.getSnapshot(),
     logger: console,
     appendIncidentHistoryEvent: (
       incidentId: string,
@@ -11583,6 +12099,237 @@ async function bootstrap() {
             generatedAt: new Date().toISOString(),
             tasks: buildOperatorTaskCatalog(config, state),
           }),
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/companion/overview",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("companion.overview.read"),
+    async (req, res) => {
+      try {
+        await respondWithCachedJson(req, res, {
+          namespace: "companion.overview",
+          ttlSeconds: readCacheTtls.dashboardOverview,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { docIndexVersion: state.docIndexVersion },
+          compute: async () => {
+            const pendingApprovals = listPendingApprovals(state);
+            const governance = summarizeGovernanceVisibility(state);
+            const queueSnapshot = queue.getSnapshot();
+            const queueQueued = queue.getQueuedCount();
+            const queueProcessing = queue.getPendingCount();
+            const queuePressure = buildDashboardQueuePressure(queueSnapshot);
+            const knowledgeRuntime = buildKnowledgeRuntimeSignals({
+              summary: knowledgeIntegration.getSummary(),
+              config,
+              state,
+            });
+            const [persistence, agents, proofSnapshot] = await Promise.all([
+              PersistenceIntegration.healthCheck(),
+              buildAgentOperationalOverview(state),
+              buildPublicProofSnapshot(),
+            ]);
+            const incidents = buildRuntimeIncidentModel({
+              config,
+              state,
+              fastStartMode,
+              persistence,
+              agents,
+              governance,
+              pendingApprovalsCount: pendingApprovals.length,
+              knowledgeRuntime,
+              githubWorkflowMonitor,
+              includeIncidentDetails: false,
+              reconcileLedger: false,
+            }).model;
+            const classifications = buildDashboardIncidentClassifications(
+              state.incidentLedger,
+              5,
+            );
+            const dominantClassification = classifications[0]?.label ?? null;
+            const proofStatus =
+              proofSnapshot.deadLetter.length > 0 || proofSnapshot.overview.riskCounts.blocked > 0
+                ? "degraded"
+                : proofSnapshot.overview.stale || proofSnapshot.overview.riskCounts.atRisk > 0
+                  ? "watching"
+                  : "healthy";
+            const mode = buildCompanionControlPlaneMode({
+              openIncidentCount: incidents.openCount,
+              criticalIncidentCount: incidents.bySeverity.critical,
+              pendingApprovalsCount: pendingApprovals.length,
+              queueQueued,
+              queueProcessing,
+              proofStatus,
+              dominantClassification,
+            });
+            const primaryOperatorMove = buildCompanionPrimaryMove({
+              mode: mode.label,
+              openIncidentCount: incidents.openCount,
+              criticalIncidentCount: incidents.bySeverity.critical,
+              pendingApprovalsCount: pendingApprovals.length,
+              topIncident: buildIncidentPriorityQueue(state.incidentLedger)[0] ?? null,
+              queuePressure,
+              queueQueued,
+              queueProcessing,
+            });
+            return {
+              generatedAt: new Date().toISOString(),
+              controlPlaneMode: mode,
+              primaryOperatorMove,
+              pressureStory: buildCompanionPressureStory({
+                queuePressure,
+                classifications,
+                pendingApprovalsCount: pendingApprovals.length,
+                proofStatus,
+              }),
+              queue: {
+                queued: queueQueued,
+                processing: queueProcessing,
+                pressure: queuePressure,
+              },
+              approvals: {
+                pendingCount: pendingApprovals.length,
+              },
+              incidents: {
+                openCount: incidents.openCount,
+                criticalCount: incidents.bySeverity.critical,
+                topClassifications: classifications,
+              },
+              publicProof: {
+                status: proofStatus,
+                stale: proofSnapshot.overview.stale,
+                latestTimestamp: proofSnapshot.overview.latest?.timestampUtc ?? null,
+                deadLetterCount: proofSnapshot.deadLetter.length,
+                blockedCount: proofSnapshot.overview.riskCounts.blocked,
+                atRiskCount: proofSnapshot.overview.riskCounts.atRisk,
+              },
+              services: {
+                declaredCount: agents.length,
+                serviceExpectedCount: agents.filter((agent) => agent.serviceExpected).length,
+                serviceRunningCount: agents.filter((agent) => agent.serviceRunning === true).length,
+                serviceAvailableCount: agents.filter((agent) => agent.serviceAvailable).length,
+              },
+              freshnessTimestamp:
+                proofSnapshot.overview.latest?.timestampUtc ??
+                state.updatedAt ??
+                new Date().toISOString(),
+            };
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/companion/catalog",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("companion.catalog.read"),
+    async (req, res) => {
+      try {
+        await respondWithCachedJson(req, res, {
+          namespace: "companion.catalog",
+          ttlSeconds: readCacheTtls.tasksCatalog,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: {
+            approvalRequiredTaskTypes: config.approvalRequiredTaskTypes ?? [],
+          },
+          compute: () => buildCompanionCatalogPayload(config, state),
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/companion/incidents",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("companion.incidents.read"),
+    async (req, res) => {
+      try {
+        const requestedLimit = Number.parseInt(String(req.query.limit ?? "8"), 10);
+        const limit = Number.isFinite(requestedLimit)
+          ? Math.min(Math.max(requestedLimit, 1), 20)
+          : 8;
+        await respondWithCachedJson(req, res, {
+          namespace: "companion.incidents",
+          ttlSeconds: readCacheTtls.incidents,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { limit },
+          compute: () => buildCompanionIncidentsPayload(state, limit),
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/companion/runs",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("companion.runs.read"),
+    async (req, res) => {
+      try {
+        const requestedLimit = Number.parseInt(String(req.query.limit ?? "10"), 10);
+        const limit = Number.isFinite(requestedLimit)
+          ? Math.min(Math.max(requestedLimit, 1), 25)
+          : 10;
+        await respondWithCachedJson(req, res, {
+          namespace: "companion.runs",
+          ttlSeconds: readCacheTtls.taskRuns,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { limit },
+          compute: () => buildCompanionRunsPayload(state, config, limit),
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/companion/approvals",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("operator"),
+    auditProtectedAction("companion.approvals.read"),
+    async (req, res) => {
+      try {
+        const requestedLimit = Number.parseInt(String(req.query.limit ?? "8"), 10);
+        const limit = Number.isFinite(requestedLimit)
+          ? Math.min(Math.max(requestedLimit, 1), 20)
+          : 8;
+        await respondWithCachedJson(req, res, {
+          namespace: "companion.approvals",
+          ttlSeconds: readCacheTtls.approvalsPending,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { limit },
+          compute: () => buildCompanionApprovalsPayload(state, config, limit),
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
