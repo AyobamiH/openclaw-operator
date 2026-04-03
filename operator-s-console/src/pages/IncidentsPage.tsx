@@ -75,6 +75,93 @@ function buildIncidentAttentionReason(incident: ReturnType<typeof buildIncidentR
   return `${incident.classification} lane`;
 }
 
+type IncidentDetailView = NonNullable<ReturnType<typeof buildIncidentDetail>>;
+
+function getRelevantRemediationTask(incident: IncidentDetailView) {
+  return [...incident.remediationTasks].sort((left, right) => {
+    const leftUpdated =
+      parseTimestamp(left.lastUpdatedAt) ??
+      parseTimestamp(left.executionCompletedAt) ??
+      parseTimestamp(left.executionStartedAt) ??
+      parseTimestamp(left.createdAt) ??
+      0;
+    const rightUpdated =
+      parseTimestamp(right.lastUpdatedAt) ??
+      parseTimestamp(right.executionCompletedAt) ??
+      parseTimestamp(right.executionStartedAt) ??
+      parseTimestamp(right.createdAt) ??
+      0;
+    return rightUpdated - leftUpdated;
+  })[0] ?? null;
+}
+
+function buildIncidentActionPlaybook(
+  incident: IncidentDetailView,
+  currentActor: string | null | undefined,
+) {
+  const currentTask = getRelevantRemediationTask(incident);
+  const recommendedLane = incident.policy.remediationTaskType ?? "system-monitor";
+  const items: string[] = [];
+
+  if (!incident.acknowledgedAt) {
+    items.push("Click Acknowledge first so the incident shows real operator attention before anything else changes.");
+  } else {
+    items.push(
+      `Acknowledgement is already recorded by ${incident.acknowledgedBy ?? "operator"}, so Acknowledge is not the next click anymore.`,
+    );
+  }
+
+  if (isUnowned(incident.owner)) {
+    items.push("Click Assign Me only if you are explicitly taking manual ownership of this incident.");
+  } else if (currentActor && incident.owner === currentActor) {
+    items.push("Ownership is already yours, so Assign Me is not the next move here.");
+  } else {
+    items.push(
+      `Owner is already ${incident.owner}. Leave ownership alone unless you intentionally want to take it over from ${incident.owner}.`,
+    );
+  }
+
+  if (!currentTask) {
+    items.push(
+      `Leave remediation on Auto and click Create Remediation. Auto maps to ${recommendedLane} for this incident.`,
+    );
+  } else if (currentTask.status === "failed" || currentTask.blockers.length > 0) {
+    const blockerPreview =
+      currentTask.blockers[0] && currentTask.blockers[0].length > 0
+        ? ` Current blocker: ${currentTask.blockers[0]}.`
+        : "";
+    items.push(
+      `A remediation task already exists (${currentTask.taskType}, ${currentTask.status}). Review its blocker or run record before queuing another remediation.${blockerPreview}`,
+    );
+  } else {
+    items.push(
+      `A remediation task is already in flight (${currentTask.taskType}, ${currentTask.status}). Wait for that lane to settle before creating another one unless you are deliberately escalating.`,
+    );
+  }
+
+  if (incident.classification === "repair" && recommendedLane === "qa-verification") {
+    items.push(
+      "Do not jump to build-refactor by default. For repair incidents like this one, qa-verification is the intended first lane and code surgery should wait for stronger code-level evidence.",
+    );
+  }
+
+  if (incident.verification.required && incident.verification.status !== "verified") {
+    items.push("Acknowledgement and ownership do not close this incident. Verification still has to pass before closure is credible.");
+  }
+
+  return {
+    currentTask,
+    recommendedLane,
+    items,
+    tone:
+      incident.escalation.status === "breached" ||
+      incident.escalation.status === "escalated" ||
+      currentTask?.status === "failed"
+        ? "warning"
+        : "tip",
+  } as const;
+}
+
 export default function IncidentsPage() {
   const { user, hasRole } = useAuth();
   const isOperator = hasRole("operator");
@@ -173,31 +260,10 @@ export default function IncidentsPage() {
     ? "Refreshing incident feeds..."
     : `${filteredIncidents.length} incident record${filteredIncidents.length === 1 ? "" : "s"}`;
 
-  const actionGuidance = useMemo(() => {
-    if (!selectedIncident) return [];
-
-    const guidance: string[] = [];
-
-    if (!selectedIncident.acknowledgedAt) {
-      guidance.push("Acknowledge first if you want an audit record that an operator has seen this incident.");
-    }
-
-    if (!selectedIncident.owner || selectedIncident.owner === "unowned") {
-      guidance.push("Assign an owner before remediation if this incident needs a named operator to follow it through.");
-    }
-
-    if (selectedIncident.remediationTasks.length === 0) {
-      guidance.push("No remediation task has been queued yet. Use Create Remediation to start a bounded recovery lane.");
-    } else if (selectedIncident.remediationTasks.some((task) => task.status !== "resolved" && !task.verifiedAt)) {
-      guidance.push("A remediation lane already exists. Review its blockers before creating another task to avoid duplicate work.");
-    }
-
-    if (selectedIncident.verification.required && !selectedIncident.verification.verifiedAt) {
-      guidance.push("This incident still requires verification before it can credibly close.");
-    }
-
-    return guidance;
-  }, [selectedIncident]);
+  const actionPlaybook = useMemo(
+    () => (selectedIncident ? buildIncidentActionPlaybook(selectedIncident, user?.actor) : null),
+    [selectedIncident, user?.actor],
+  );
 
   const effectiveRemediationTaskType =
     remediationTaskType === "auto"
@@ -225,6 +291,32 @@ export default function IncidentsPage() {
     }
     return lanePrefix;
   }, [effectiveRemediationTaskType, remediationTaskType, selectedIncident]);
+
+  const remediationRecommendation = useMemo(() => {
+    if (!selectedIncident || !actionPlaybook) {
+      return "Recommended right now: wait for incident detail to load before choosing a remediation lane.";
+    }
+
+    if (!actionPlaybook.currentTask) {
+      return `Recommended right now: keep the selector on Auto so it queues ${actionPlaybook.recommendedLane}.`;
+    }
+
+    if (
+      actionPlaybook.currentTask.status === "failed" ||
+      actionPlaybook.currentTask.blockers.length > 0
+    ) {
+      return `Recommended right now: review the existing ${actionPlaybook.currentTask.taskType} blocker before queuing another remediation lane.`;
+    }
+
+    return `Recommended right now: wait on the existing ${actionPlaybook.currentTask.taskType} remediation before creating another task.`;
+  }, [actionPlaybook, selectedIncident]);
+
+  const ownerButtonLabel = useMemo(() => {
+    if (!selectedIncident) return "Assign Me";
+    if (user?.actor && selectedIncident.owner === user.actor) return "Owned by Me";
+    if (!isUnowned(selectedIncident.owner)) return "Take Ownership";
+    return "Assign Me";
+  }, [selectedIncident, user?.actor]);
 
   const hasRemediationTasks = Boolean(selectedIncident?.remediationTasks.length);
   const hasHistory = Boolean(selectedIncident?.history.length);
@@ -457,12 +549,16 @@ export default function IncidentsPage() {
                     </div>
                   </div>
 
-                  <GuidancePanel title="Recommended operator action" eyebrow="Do This Next" tone="tip">
+                  <GuidancePanel
+                    title="Recommended operator action"
+                    eyebrow="Do This Next"
+                    tone={actionPlaybook?.tone ?? "tip"}
+                  >
                     <p>{selectedIncident.nextAction}</p>
                     <p className="pt-1 text-[10px] font-mono text-muted-foreground">
                       Current triage reason: {buildIncidentAttentionReason(selectedIncident)}.
                     </p>
-                    <GuidanceList items={actionGuidance} className="pt-1" />
+                    <GuidanceList items={actionPlaybook?.items ?? []} className="pt-1" />
                   </GuidancePanel>
 
                   <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
@@ -544,6 +640,9 @@ export default function IncidentsPage() {
                             <p className="text-[9px] font-mono text-muted-foreground leading-relaxed">
                               {remediationHint}
                             </p>
+                            <p className="text-[9px] font-mono text-primary leading-relaxed">
+                              {remediationRecommendation}
+                            </p>
                           </div>
                           <Button
                             type="button"
@@ -566,7 +665,12 @@ export default function IncidentsPage() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            disabled={assignIncidentOwner.isPending || !user?.actor || !isOperator}
+                            disabled={
+                              assignIncidentOwner.isPending ||
+                              !user?.actor ||
+                              !isOperator ||
+                              selectedIncident.owner === user?.actor
+                            }
                             onClick={() =>
                               assignIncidentOwner.mutate({
                                 id: selectedIncident.id,
@@ -578,7 +682,7 @@ export default function IncidentsPage() {
                             className="h-10 font-mono text-[10px] uppercase tracking-wider"
                           >
                             {assignIncidentOwner.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <Wrench className="w-3 h-3 mr-1" />}
-                            Assign Me
+                            {ownerButtonLabel}
                           </Button>
                           <Button
                             type="button"

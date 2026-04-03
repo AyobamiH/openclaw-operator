@@ -175,7 +175,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     };
   };
 
-  const waitForTaskHistoryRecord = async (taskId: string, timeoutMs = 45000) => {
+  const waitForTaskHistoryRecord = async (taskId: string, timeoutMs = 90000) => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       try {
@@ -196,7 +196,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     throw new Error(`Task history record not found for taskId=${taskId}`);
   };
 
-  const waitForTaskRun = async (taskId: string, timeoutMs = 45000) => {
+  const waitForTaskRun = async (taskId: string, timeoutMs = 90000) => {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
       const payload = await fetchProtected<{

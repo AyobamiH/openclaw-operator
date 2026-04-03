@@ -729,6 +729,7 @@ function buildDocSpecialistSignalDeck(raw: Record<string, unknown>): OperatorSig
     (entry) => str(entry.freshness, "unknown") === "stale",
   ).length;
   const topRepairDraft = repairDrafts[0];
+  const topRepairDraftHandoff = asRecord(topRepairDraft?.handoff);
 
   return {
     title: "Knowledge Repair Deck",
@@ -758,7 +759,7 @@ function buildDocSpecialistSignalDeck(raw: Record<string, unknown>): OperatorSig
         )}.`,
         details: compactDetails([
           topRepairDraft
-            ? `Top draft routes ${str(topRepairDraft.handoff?.recommendedTaskType, "qa-verification")} for ${str(
+            ? `Top draft routes ${str(topRepairDraftHandoff?.recommendedTaskType, "qa-verification")} for ${str(
                 topRepairDraft.targetAgentId,
                 "target-agent",
               )}.`

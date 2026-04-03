@@ -798,6 +798,7 @@ describe("operator contract surfaces", () => {
               lastAttemptAt: "2026-03-11T10:00:02.000Z",
             },
           ],
+          operatorPreview: null,
         }}
         runResult={{
           operatorSummary: "Prepared a local-only reddit draft with review posture because the knowledge pack is behind the docs mirror.",
@@ -896,6 +897,7 @@ describe("operator contract surfaces", () => {
           events: [],
           workflowGraph: null,
           proofLinks: [],
+          operatorPreview: null,
         }}
         runResult={{
           operatorSummary:
@@ -1972,10 +1974,15 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText("Inspect demand delivery ledger")).toBeInTheDocument();
     expect(screen.getAllByText(/ack pending/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Current triage reason:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Click Acknowledge first so the incident shows real operator attention/i)).toBeInTheDocument();
+    expect(screen.getByText(/Click Assign Me only if you are explicitly taking manual ownership/i)).toBeInTheDocument();
+    expect(screen.getByText(/A remediation task already exists \(system-monitor, verifying\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Acknowledgement and ownership do not close this incident/i)).toBeInTheDocument();
+    expect(screen.getByText(/Recommended right now: review the existing system-monitor blocker before queuing another remediation lane/i)).toBeInTheDocument();
     expect(
       screen.getByText(/Runtime health check completed; waiting for proof retry outcome\./i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/public proof retry backlog/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/public proof retry backlog/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/approval-gated code surgery/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /create remediation/i }));
