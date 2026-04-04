@@ -29,9 +29,5 @@
   "constraints": {
     "timeoutSec": 60,
     "maxRetries": 1
-  },
-  "heartbeat": {
-    "interval": "5m",
-    "checks": ["control_plane_truth", "companion_summary"]
   }
 }

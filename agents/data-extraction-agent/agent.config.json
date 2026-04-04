@@ -52,11 +52,6 @@
     "memory": "1024M",
     "cpu": "1.0"
   },
-  "heartbeat": {
-    "enabled": true,
-    "interval": 300000,
-    "checks": ["liveness", "memory-usage", "skill-access"]
-  },
   "logging": {
     "level": "info",
     "format": "json",

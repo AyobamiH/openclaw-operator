@@ -20,7 +20,6 @@ const TASK_TYPE_ENUM = [
   "rss-sweep",
   "nightly-batch",
   "send-digest",
-  "heartbeat",
   "agent-deploy",
   "doc-sync",
   "control-plane-brief",
@@ -244,6 +243,14 @@ const components = {
         type: "string",
         enum: ["pending", "running", "success", "failed", "retrying"],
       },
+    },
+    IncludeInternal: {
+      name: "includeInternal",
+      in: "query",
+      required: false,
+      description:
+        "When true, internal maintenance runs such as heartbeat and startup remain in the ledger response.",
+      schema: { type: "boolean", default: false },
     },
     IncidentStatus: {
       name: "status",
@@ -1033,6 +1040,17 @@ const components = {
       },
       additionalProperties: true,
     },
+    RuntimeFactsResponse: {
+      type: "object",
+      required: ["generatedAt", "config", "controlPlane", "agents"],
+      properties: {
+        generatedAt: { type: "string", format: "date-time" },
+        config: schemaRef("GenericObject"),
+        controlPlane: schemaRef("GenericObject"),
+        agents: schemaRef("GenericObject"),
+      },
+      additionalProperties: true,
+    },
     CommandCenterOverviewResponse: {
       type: "object",
       additionalProperties: true,
@@ -1694,12 +1712,13 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         tags: ["Operator", "Tasks"],
         summary: "Paginated task run records",
         description:
-          "Protected run ledger with workflow, approval, proof-link, and repair metadata.",
+          "Protected run ledger with workflow, approval, proof-link, and repair metadata. Internal maintenance runs are hidden by default unless `includeInternal=true`.",
         operationId: "listTaskRuns",
         security: [{ bearerAuth: [] }],
         parameters: [
           parameterRef("TaskRunType"),
           parameterRef("TaskRunStatus"),
+          parameterRef("IncludeInternal"),
           parameterRef("Limit"),
           parameterRef("Offset"),
         ],
@@ -2048,6 +2067,32 @@ export function buildOpenApiSpec(port: string | number = 3000) {
           "200": jsonResponse(
             "Extended health payload.",
             "ExtendedHealthResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/runtime/facts": {
+      get: {
+        tags: ["Operator", "Runtime"],
+        summary: "Runtime facts and effective control-plane configuration",
+        description:
+          "Protected runtime facts surface with effective state-store target, scheduler truth, internal/public task exposure, and resident-worker inventory.",
+        operationId: "getRuntimeFacts",
+        security: [{ bearerAuth: [] }],
+        "x-openclaw-access": protectedAccess(
+          "viewer",
+          "viewer-read",
+          "runtime.facts.read",
+        ),
+        responses: {
+          "200": jsonResponse(
+            "Runtime facts payload.",
+            "RuntimeFactsResponse",
             protectedReadHeaders,
           ),
           "401": responseRef("Unauthorized"),

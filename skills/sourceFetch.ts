@@ -80,6 +80,14 @@ export const sourceFetchDefinition: SkillDefinition = {
   },
 };
 
+const SOURCE_FETCH_ALLOWED_HOSTS = Array.isArray(
+  sourceFetchDefinition.permissions?.networkAllowed,
+)
+  ? sourceFetchDefinition.permissions.networkAllowed
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.trim().toLowerCase())
+  : [];
+
 /**
  * Execute SourceFetch skill
  */
@@ -89,14 +97,15 @@ export async function executeSourceFetch(input: any): Promise<any> {
   const timeoutHandle = setTimeout(() => controller.abort(), timeout);
 
   try {
-    const response = await fetch(url, {
+    const parsedUrl = assertAllowedSourceFetchUrl(url);
+    const response = await fetch(parsedUrl, {
       signal: controller.signal,
     });
     const content = await response.text();
 
     return {
       success: response.ok,
-      url,
+      url: parsedUrl,
       statusCode: response.status,
       content: normalizeText ? normalizeContent(content, stripScripts) : stripScriptTags(content, stripScripts),
       contentType: response.headers.get('content-type'),
@@ -141,4 +150,33 @@ function normalizeContent(html: string, stripScripts: boolean): string {
     .trim();
   
   return content;
+}
+
+function assertAllowedSourceFetchUrl(rawUrl: unknown): string {
+  if (typeof rawUrl !== 'string' || rawUrl.trim().length === 0) {
+    throw new Error('sourceFetch requires a non-empty url string');
+  }
+
+  const parsed = new URL(rawUrl);
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error(`sourceFetch only allows http/https URLs: ${rawUrl}`);
+  }
+
+  const hostname = parsed.hostname.trim().toLowerCase();
+  if (!hostname) {
+    throw new Error(`sourceFetch URL is missing a hostname: ${rawUrl}`);
+  }
+
+  if (
+    SOURCE_FETCH_ALLOWED_HOSTS.length > 0 &&
+    !SOURCE_FETCH_ALLOWED_HOSTS.some((allowedHost) =>
+      hostname === allowedHost || hostname.endsWith(`.${allowedHost}`),
+    )
+  ) {
+    throw new Error(
+      `sourceFetch denied URL outside the allowlist: ${hostname}`,
+    );
+  }
+
+  return parsed.toString();
 }

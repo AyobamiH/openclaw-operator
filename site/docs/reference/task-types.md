@@ -154,15 +154,15 @@ Approval column:
 | `rss-sweep` | `public-triggerable`; `externally dependent` | `dynamic-only` | `rssSweepHandler` | none | no | Depends on `rssConfigPath`, live feeds, and network availability; routing truth does not prove downstream feed success. |
 | `nightly-batch` | `public-triggerable`; `historical success observed 2026-03-06` | `dynamic-only` | `nightlyBatchHandler` | none | no | Also runs from cron; `/api/dashboard/overview.recentTasks` showed success on `2026-03-06`, but the task was not re-run in the `2026-03-07` safe sweep because it writes digest artifacts and emits delivery surfaces. It now derives `selectedForDraft` from existing RSS routing tags: only `priority` queue items are auto-selected for `reddit-response`; `manual-review` items create mandatory pending approvals; and the top `10` `draft` items create optional promotion approvals while staying unselected until an operator approves replay. |
 | `send-digest` | `public-triggerable`; `partially operational`; `externally dependent` | `dynamic-only` | `sendDigestHandler` | none | no | Historical success exists in protected recent-task data, but the `2026-03-07` safe sweep did not re-run it because the live config points at an outbound notification target. |
-| `heartbeat` | `public-triggerable`; `confirmed working` | `dynamic-only` | `heartbeatHandler` | none | no | Confirmed healthy control-plane path. |
+| `heartbeat` | `internal-only`; `confirmed working` | `dynamic-only` | `heartbeatHandler` | none | no | Internal control-plane maintenance path. Scheduled every `5` minutes and hidden from normal operator task launch surfaces. Inspect through diagnostics or `/api/tasks/runs?includeInternal=true`. |
 | `agent-deploy` | `public-triggerable`; `approval-gated`; `confirmed working` | `default + dynamic` | `agentDeployHandler` | none | no | After approval, the handler now performs a real local deployment by copying the selected template into the runtime deployment directory, writing `DEPLOYMENT.json`, and persisting the deployment record in orchestrator state. |
 
 ## Public vs Internal Scope
 
 - Internal runtime allowlist (`ALLOWED_TASK_TYPES`) is broader than public
   trigger schema (`TaskTriggerSchema`).
-- `startup` and `doc-change` are internal-only even though they are in the
-  internal allowlist.
+- `startup`, `doc-change`, and `heartbeat` are internal-only even though they
+  are in the internal allowlist.
 - Any allowlisted task can become approval-gated dynamically when
   `payload.requiresApproval === true`; the default gate set is narrower.
 - Approval-gated does not mean risk-free:
@@ -180,6 +180,7 @@ Approval column:
 ## Operator API Truth for Task Capabilities
 
 - `GET /api/tasks/catalog` is the operator capability endpoint.
+- Internal tasks are filtered out of `GET /api/tasks/catalog`.
 - It returns hybrid truth fields:
   - static operational classification labels (from validated runtime policy), and
   - telemetry overlays (recent execution success/failure/retrying counts).
@@ -196,6 +197,8 @@ Approval column:
   allowed-domain network reachability drops.
 - `GET /api/tasks/runs` and `GET /api/tasks/runs/:runId` provide first-class run
   detail visibility for operator diagnostics.
+- `GET /api/tasks/runs` hides internal task types by default; use
+  `includeInternal=true` when you explicitly need maintenance-task visibility.
 
 ## Notes By Task Family
 
@@ -204,8 +207,9 @@ Approval column:
 - `startup` records boot state and emits a startup milestone.
 - `doc-change` and `doc-sync` manage the doc-change buffer.
 - `drift-repair` can trigger doc-specialist work and emit milestone records.
-- `rss-sweep`, `nightly-batch`, `send-digest`, and `heartbeat` support
-  recurring operational flows.
+- `rss-sweep`, `nightly-batch`, and `send-digest` support recurring
+  operational flows.
+- `heartbeat` is the internal scheduled maintenance tick for the control plane.
 
 ### Worker / Agent Tasks
 

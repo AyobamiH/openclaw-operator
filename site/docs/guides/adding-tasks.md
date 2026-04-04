@@ -131,7 +131,8 @@ tail -f logs/orchestrator.log | grep "my-task"
 View in state:
 
 ```bash
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="my-task")'
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=20&type=my-task" | jq '.runs'
 ```
 
 ---
@@ -338,8 +339,9 @@ npm start
 # Trigger task via code (add temp test)
 # or wait for scheduled time
 
-# Check state
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="my-task")'
+# Check runs
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=20&type=my-task" | jq '.runs'
 ```
 
 ### Unit Test

@@ -4,7 +4,7 @@
 // ── Dashboard Overview ──
 export interface DashboardOverview {
   generatedAt: string;
-  health: { status: string; fastStartMode?: boolean };
+  health: { status: string; fastStartMode?: boolean; lastHeartbeatAt?: string | null };
   persistence: { status: string; database?: string; collections?: unknown };
   memory: Record<string, unknown>;
   accounting?: {

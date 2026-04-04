@@ -170,7 +170,8 @@ If you are on a headless machine, open that URL in your browser manually.
 ### Check Task History
 
 ```bash
-cat orchestrator_state.json | jq '.taskHistory[-10:]'
+curl -fsS -H "Authorization: Bearer <your-api-key>" \
+  "http://127.0.0.1:3000/api/tasks/runs?limit=10" | jq '.runs'
 ```
 
 ## Where To Look For Output
@@ -223,14 +224,16 @@ ls -la logs/
 
 # Key files to watch:
 tail -f logs/orchestrator.log           # Main activity log
-cat orchestrator_state.json | jq        # Current state
+curl -fsS -H "Authorization: Bearer <your-api-key>" \
+  http://127.0.0.1:3000/api/runtime/facts | jq   # Effective runtime facts
 head -20 logs/reddit-drafts.jsonl  # Latest Reddit drafts
 ```
 
 Important note:
 
 - most `logs/*-service.json` files are heartbeat and last-run memory for an
-  agent, not the main deliverable
+  agent, but only `doc-specialist` and `reddit-helper` should be treated as
+  resident service-loop heartbeat sources
 - if you want the real result of a task, check `/operator/runs` first
 
 ### 3. Run Your First Task
@@ -254,7 +257,8 @@ Check the output:
 
 ```bash
 ls -la logs/knowledge-packs/
-cat orchestrator_state.json | jq '.driftRepairs[-1]'
+curl -fsS -H "Authorization: Bearer <your-api-key>" \
+  "http://127.0.0.1:3000/api/tasks/runs?limit=1&type=drift-repair" | jq '.runs[0]'
 ```
 
 Then look in the operator:
@@ -299,11 +303,12 @@ pkill -f "node.*orchestrator"
 
 ### "State file doesn't exist"
 
-This is normal on first run. The system creates it automatically:
+This is normal when the runtime is using the default Mongo-backed
+`stateFile`. A local file only appears if you explicitly configure one:
 
 ```bash
-# Check if it was created
-ls -la orchestrator_state.json
+# Check the effective configured target
+cat orchestrator_config.json | jq '.stateFile'
 ```
 
 ## Next Steps

@@ -1,8 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { dirname } from "node:path";
-import { mkdir } from "node:fs/promises";
-import { DataPersistence } from "./persistence/data-persistence.js";
+import { createStateStore, isMongoStateTarget } from "./state-store.js";
 import {
   IncidentAcknowledgementRecord,
   IncidentEscalationState,
@@ -35,22 +31,11 @@ const REPAIR_RECORD_LIMIT = 500;
 const INCIDENT_LEDGER_LIMIT = 1000;
 const WORKFLOW_EVENT_LIMIT = 20000;
 const RELATIONSHIP_OBSERVATION_LIMIT = 20000;
-const MONGO_STATE_PREFIX = "mongo:";
 type StateRetentionOptions = {
   taskHistoryLimit?: number;
 };
 
-export function isMongoStateTarget(target: string) {
-  return typeof target === "string" && target.startsWith(MONGO_STATE_PREFIX);
-}
-
-function resolveMongoStateKey(target: string) {
-  const key = target.slice(MONGO_STATE_PREFIX.length).trim();
-  if (!key) {
-    throw new Error("mongo state target must include a non-empty key");
-  }
-  return key;
-}
+export { isMongoStateTarget } from "./state-store.js";
 
 function normalizeTaskHistoryLimit(limit?: number): number {
   if (!Number.isFinite(limit)) return DEFAULT_HISTORY_LIMIT;
@@ -462,6 +447,7 @@ export async function loadState(
   options: StateRetentionOptions = {},
 ): Promise<OrchestratorState> {
   const historyLimit = normalizeTaskHistoryLimit(options.taskHistoryLimit);
+  const store = createStateStore<OrchestratorState>(path);
 
   const normalizeParsedState = (parsed: OrchestratorState) => {
     const {
@@ -504,28 +490,20 @@ export async function loadState(
     };
   };
 
-  if (isMongoStateTarget(path)) {
-    const key = resolveMongoStateKey(path);
-    const persisted = await DataPersistence.getSystemState(key);
-    if (!persisted || typeof persisted !== "object") {
+  try {
+    const parsed = await store.load();
+    if (!parsed || typeof parsed !== "object") {
       return createDefaultState();
     }
-    return normalizeParsedState(persisted as OrchestratorState);
-  }
-
-  if (!existsSync(path)) {
-    return createDefaultState();
-  }
-
-  const raw = await readFile(path, "utf-8");
-  try {
-    const parsed = JSON.parse(raw) as OrchestratorState;
-    return normalizeParsedState(parsed);
+    return normalizeParsedState(parsed as OrchestratorState);
   } catch (error) {
-    console.warn(
-      `[state] Failed to parse state file, starting fresh: ${(error as Error).message}`,
-    );
-    return createDefaultState();
+    if (!isMongoStateTarget(path)) {
+      console.warn(
+        `[state] Failed to parse state file, starting fresh: ${(error as Error).message}`,
+      );
+      return createDefaultState();
+    }
+    throw error;
   }
 }
 
@@ -539,7 +517,8 @@ export async function saveStateWithOptions(
   options: StateRetentionOptions = {},
 ) {
   const historyLimit = normalizeTaskHistoryLimit(options.taskHistoryLimit);
-  await mkdir(dirname(path), { recursive: true });
+  const store = createStateStore<OrchestratorState>(path);
+  await store.ensureReady();
   const prepared: OrchestratorState = {
     ...state,
     taskHistory: state.taskHistory.slice(-historyLimit),
@@ -565,12 +544,7 @@ export async function saveStateWithOptions(
     updatedAt: new Date().toISOString(),
   };
 
-  if (isMongoStateTarget(path)) {
-    await DataPersistence.saveSystemState(resolveMongoStateKey(path), prepared);
-    return;
-  }
-
-  await writeFile(path, JSON.stringify(prepared, null, 2), "utf-8");
+  await store.save(prepared);
 }
 
 export function createDefaultState(): OrchestratorState {

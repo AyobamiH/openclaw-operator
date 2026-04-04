@@ -53,7 +53,9 @@ Use these terms separately:
 Current runtime truth:
 
 - **Real long-running service implementations available in repo (`src/service.ts` present):**
-  - all 15 declared runtime agents; `serviceAvailableCount` should now be read as `15`
+  - [`doc-specialist/`](./doc-specialist)
+  - [`reddit-helper/`](./reddit-helper)
+  - `serviceAvailableCount` should now be read as `2`
 - **Service-available and also spawned-worker capable, with live worker proof in the current runtime:**
   - [`doc-specialist/`](./doc-specialist) (`2026-03-07`; `drift-repair` live smoke `run_id=auto-8ef2eb1a3ff49ddd4237ee019d646b4810f9418c699b3a2a1de7682e388fd502`, knowledge-pack verification recorded in `/api/tasks/runs` and `/api/memory/recall`)
 - **Service-available and spawned-worker capable, but worker path is still partial/degraded in the latest validation baseline:**
@@ -98,11 +100,11 @@ Operator API mapping:
 
 Important: manifest presence or systemd declaration does not by itself prove
 service-running runtime behavior.
-Important: every non-template agent here is a declared agent and now has a
-real service entrypoint, but current orchestrator truth still does not
-host-prove any of them as running; on the current host, no agent service units
-are installed yet, so `serviceInstalled=false` and `serviceRunning=false` are
-the correct per-agent truths.
+Important: every non-template agent here is a declared agent, but only
+`doc-specialist` and `reddit-helper` currently keep real resident
+`src/service.ts` entrypoints. The rest are worker-first task lanes, and
+current orchestrator truth still does not host-prove any service-expected unit
+as running unless host evidence exists.
 Important: "spawned-worker capable" is broader than "confirmed working in the
 latest sweep." A task entrypoint can exist and still remain unconfirmed until a
 real orchestrator task path is exercised successfully.

@@ -209,7 +209,8 @@ systemctl --user restart orchestrator
 
 - **rss_filter_config.json** - RSS feed configuration and scoring weights
 
-- **orchestrator_state.json** - Runtime state (auto-generated)
+- **stateFile target** - Runtime state target from `orchestrator_config.json`
+  (current default: `mongo:orchestrator-runtime-state`)
 
 ---
 
@@ -225,15 +226,16 @@ systemctl --user is-active orchestrator
 systemctl --user status orchestrator | grep "Restart"
 ```
 
-### File-based Health
+### Control-Plane Health
 
-The orchestrator creates `orchestrator_state.json` with:
-- `lastTask`: Last completed task timestamp
-- `alerts`: Any recent alerts
-- `taskQueue`: Pending tasks
+The orchestrator exposes runtime truth through its HTTP surfaces:
+- `/health`: shallow liveness
+- `/api/persistence/health`: persistence + coordination status
+- `/api/runtime/facts`: effective config, heartbeat schedule, and service model
+- `/api/tasks/runs?includeInternal=true`: visible task and maintenance history
 
 ```bash
-cat orchestrator_state.json | jq '.lastTask'
+curl -fsS http://127.0.0.1:3312/health | jq
 ```
 
 ### Manual Test
@@ -291,7 +293,7 @@ systemctl --user restart orchestrator
 
 ### Task failures
 
-1. Check alert logs in `orchestrator_state.json`
+1. Check recent runs in `/api/tasks/runs?includeInternal=true`
 2. View full logs: `journalctl --user -u orchestrator -f`
 3. Validate config: `cat orchestrator_config.json | jq`
 
@@ -307,7 +309,7 @@ systemctl --user restart orchestrator
 - [ ] Service starts cleanly: `systemctl start orchestrator`
 - [ ] Service auto-restarts: `systemctl --user is-active orchestrator`
 - [ ] Logs are being written: `journalctl --user -u orchestrator | head`
-- [ ] Tasks running on schedule: check orchestrator_state.json
+- [ ] Tasks running on schedule: check `/api/runtime/facts` and `/api/tasks/runs?includeInternal=true`
 
 ---
 

@@ -72,6 +72,9 @@ describe("OpenAPI contract", () => {
     expect(spec.components.schemas.TaskTriggerRequest.properties.type.enum).toContain(
       "build-refactor",
     );
+    expect(spec.components.schemas.TaskTriggerRequest.properties.type.enum).not.toContain(
+      "heartbeat",
+    );
     expect(spec.components.schemas.TaskTriggerRequest.properties.type.enum).toEqual(
       expect.arrayContaining([
         "control-plane-brief",
@@ -98,6 +101,7 @@ describe("OpenAPI contract", () => {
       expect.arrayContaining([
         "#/components/parameters/TaskRunType",
         "#/components/parameters/TaskRunStatus",
+        "#/components/parameters/IncludeInternal",
         "#/components/parameters/Limit",
         "#/components/parameters/Offset",
       ]),
@@ -117,6 +121,11 @@ describe("OpenAPI contract", () => {
     expect(companionRunParameters).toEqual(
       expect.arrayContaining(["#/components/parameters/Limit"]),
     );
+    expect(
+      spec.paths["/api/runtime/facts"].get.responses["200"].content[
+        "application/json"
+      ].schema.$ref,
+    ).toBe("#/components/schemas/RuntimeFactsResponse");
   });
 
   it("surfaces cutover, cors, and cache/rate-limit contract details in the spec", () => {

@@ -31,30 +31,18 @@ Look for startup errors.
 
 ---
 
-## Step 2: Check the State File
+## Step 2: Check the Effective State Target
 
 ```bash
-# Is state file being updated?
-ls -la logs/orchestrator.state.json
-stat logs/orchestrator.state.json | grep Modify
+# Check the configured persistence target
+cat orchestrator_config.json | jq '.stateFile'
 
-# Parse and inspect
-cat logs/orchestrator.state.json | jq . | head -50
+# Inspect effective runtime facts
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  http://127.0.0.1:3312/api/runtime/facts | jq '.config'
 
-# Is it valid JSON?
-cat logs/orchestrator.state.json | jq empty && echo "Valid JSON"
-```
-
-If state file is corrupted:
-```bash
-# Backup
-cp logs/orchestrator.state.json logs/orchestrator.state.json.backup
-
-# Reset
-echo '{}' > logs/orchestrator.state.json
-
-# Restart
-npm start
+# Inspect persistence health
+curl -fsS http://127.0.0.1:3312/api/persistence/health | jq
 ```
 
 ---
@@ -62,17 +50,13 @@ npm start
 ## Step 3: Check Recent Tasks
 
 ```bash
-# View all tasks
-cat logs/orchestrator.state.json | jq '.taskHistory'
+# View visible task runs
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=20" | jq '.runs'
 
-# View last task
-cat logs/orchestrator.state.json | jq '.taskHistory[-1]'
-
-# View failed tasks
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.status=="error")'
-
-# View specific task type
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="heartbeat")'
+# View internal maintenance runs too
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=20&includeInternal=true" | jq '.runs'
 ```
 
 ---
@@ -129,7 +113,7 @@ npm start
    {
      "docsPath": "./openclaw-docs",
      "logsDir": "./logs",
-     "stateFile": "./logs/orchestrator.state.json"
+     "stateFile": "mongo:orchestrator-runtime-state"
    }
    EOF
    ```
@@ -143,7 +127,8 @@ npm start
 **Diagnosis**:
 ```bash
 # Check when last heartbeat occurred
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="heartbeat") | .timestamp' | tail -1
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  http://127.0.0.1:3312/api/dashboard/overview | jq '.health.lastHeartbeatAt'
 
 # Check if process is actually running
 ps aux | grep -E 'node|tsx' | grep -v grep
@@ -157,7 +142,8 @@ ps aux | grep -E 'node|tsx' | grep -v grep
   
   # Wait 5 min for first heartbeat
   sleep 300
-  grep heartbeat logs/orchestrator.log | tail -1
+  curl -fsS -H "Authorization: Bearer $API_KEY" \
+    "http://127.0.0.1:3312/api/tasks/runs?includeInternal=true&limit=1&type=heartbeat" | jq '.runs[0]'
   ```
 
 - If process not running:
@@ -180,7 +166,7 @@ cat orchestrator_config.json | jq .docsPath
 ls -la ./openclaw-docs/ | head -10
 
 # Count indexed docs
-cat logs/orchestrator.state.json | jq '.docsIndexed | length'
+curl -fsS http://127.0.0.1:3312/api/knowledge/summary | jq '.stats.total'
 ```
 
 **Fix**:
@@ -246,7 +232,8 @@ npm start
 ls -la logs/knowledge-packs/ 2>&1
 
 # Check recent doc-sync tasks
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="doc-sync") | .result'
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=10&type=doc-sync" | jq '.runs[].result'
 ```
 
 **Fix**:
@@ -282,10 +269,12 @@ If a specific task is failing:
 
 ```bash
 # Find the task in history
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="reddit-response")' | head -1
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=10&type=reddit-response" | jq '.runs[0]'
 
 # View error details
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="reddit-response" and .status=="error") | .error'
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=10&type=reddit-response" | jq '.runs[] | select(.status=="error") | .lastError'
 ```
 
 ### Trace Task Execution
@@ -346,18 +335,18 @@ else
 fi
 
 # 2. Recent heartbeat?
-LAST_HB=$(cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.type=="heartbeat") | .timestamp' | tail -1)
+LAST_HB=$(curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq -r '.health.lastHeartbeatAt // empty')
 if [ ! -z "$LAST_HB" ]; then
   echo "✓ Last heartbeat: $LAST_HB"
 else
   echo "✗ No heartbeat found"
 fi
 
-# 3. State file valid?
-if cat logs/orchestrator.state.json | jq empty 2>/dev/null; then
-  echo "✓ State file valid"
+# 3. Persistence health?
+if curl -fsS http://127.0.0.1:3312/api/persistence/health | jq -e '.status=="healthy"' >/dev/null; then
+  echo "✓ Persistence healthy"
 else
-  echo "✗ State file corrupted"
+  echo "✗ Persistence degraded"
 fi
 
 # 4. Recent errors?

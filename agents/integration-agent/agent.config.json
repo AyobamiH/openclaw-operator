@@ -18,6 +18,5 @@
     },
     "network": { "allowed": false }
   },
-  "constraints": { "timeoutSec": 600, "maxRetries": 2 },
-  "heartbeat": { "interval": "10m", "checks": ["skill_access", "workflow_execution"] }
+  "constraints": { "timeoutSec": 600, "maxRetries": 2 }
 }

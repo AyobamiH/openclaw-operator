@@ -69,6 +69,7 @@ Protected operator routes (bearer token):
 - `GET /api/companion/incidents`
 - `GET /api/companion/runs`
 - `GET /api/companion/approvals`
+- `GET /api/runtime/facts`
 - `GET /api/tasks/catalog`
 - `POST /api/tasks/trigger`
 - `GET /api/tasks/runs`
@@ -132,6 +133,9 @@ Operator Console contract truth:
 - `GET /api/dashboard/overview`: protected operator aggregation only. Useful
   for queue, approvals, governance, and recent-task visibility, but not
   authoritative system health.
+- `GET /api/runtime/facts`: protected operator/runtime truth for effective
+  persistence mode, heartbeat schedule, internal task classification, and
+  resident-service expectations.
 - `GET /api/companion/overview`, `GET /api/companion/catalog`,
   `GET /api/companion/incidents`, `GET /api/companion/runs`, and
   `GET /api/companion/approvals`: protected, bounded, read-only companion
@@ -155,6 +159,11 @@ Operator Console contract truth:
 - `GET /api/persistence/health`: public persistence dependency truth, now
   including first-slice coordination status for Redis-backed claims, locks, and
   shared helper budgets.
+- `GET /api/tasks/catalog`: protected operator capability surface for
+  non-internal task types only.
+- `GET /api/tasks/runs`: protected task-run surface that hides internal task
+  types by default and accepts `includeInternal=true` when diagnostics need
+  them.
 - `/system-health`: not a backend route; it is a frontend-only page path.
 
 ### Operator Console Rendering Guardrails
@@ -645,6 +654,7 @@ Current cached read surfaces:
   - `GET /api/companion/incidents`
   - `GET /api/companion/runs`
   - `GET /api/companion/approvals`
+  - `GET /api/runtime/facts`
   - `GET /api/tasks/catalog`
   - `GET /api/approvals/pending`
   - `GET /api/incidents`
@@ -991,7 +1001,7 @@ async function heartbeatHandler(
 ): Promise<TaskResult>
 ```
 
-**What it does**: Health check, collect diagnostics
+**What it does**: Internal control-plane maintenance and diagnostics collection
 
 **Result structure**:
 ```json
@@ -1004,6 +1014,9 @@ async function heartbeatHandler(
 ```
 
 **Spawns agents**: No
+
+**Operator exposure**: Internal-only. The scheduler uses it every 5 minutes,
+but `POST /api/tasks/trigger` does not accept it as a normal public task type.
 
 ---
 
@@ -1067,10 +1080,10 @@ The orchestrator passes task context via JSON file in `--payload` argument.
 ### State Persistence
 
 ```typescript
-// Load state from file
+// Load state from the configured persistence target
 const state = await loadState(config.stateFile);
 
-// Save state to file
+// Save state back to the configured persistence target
 await saveState(state, config.stateFile);
 ```
 
@@ -1094,7 +1107,7 @@ const docs = indexer.getIndexedDocs();
 ```typescript
 // Add task to queue
 queue.add({
-  type: 'heartbeat',
+  type: 'doc-sync',
   priority: 'normal'
 });
 

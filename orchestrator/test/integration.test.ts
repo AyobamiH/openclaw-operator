@@ -650,7 +650,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     const response = await fetch(`${baseUrl}/api/tasks/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'heartbeat', payload: {} }),
+      body: JSON.stringify({ type: 'doc-sync', payload: {} }),
     });
 
     expect(response.status).toBe(401);
@@ -663,13 +663,13 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${TEST_API_KEY}`,
       },
-      body: JSON.stringify({ type: 'heartbeat', payload: { reason: 'integration-test' } }),
+      body: JSON.stringify({ type: 'doc-sync', payload: {} }),
     });
 
     expect(response.status).toBe(202);
     const body = await response.json() as { status: string; type: string };
     expect(body.status).toBe('queued');
-    expect(body.type).toBe('heartbeat');
+    expect(body.type).toBe('doc-sync');
   });
 
   it('serves bounded companion read surfaces with protected runtime truth', async () => {
@@ -816,13 +816,10 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
   it('records success as ok and handler exceptions as error in task history', async () => {
     const runNonce = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const successTaskId = await triggerTask('heartbeat', {
-      reason: 'result-semantics-success',
-      runNonce,
-    });
+    const successTaskId = await triggerTask('doc-sync', { runNonce });
     const successRecord = await waitForTaskHistoryRecord(successTaskId);
     expect(successRecord.result).toBe('ok');
-    expect(successRecord.message).toContain('heartbeat');
+    expect(successRecord.message ?? '').toContain('sync');
 
     const backupDigestDir = `${digestDirPath}.vitest-bak-${Date.now()}`;
     let movedDigestDir = false;
@@ -1006,6 +1003,39 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(healthPayload.truthLayers?.observed?.serviceMode?.gapCount).toBe(
       healthPayload.workers?.serviceExpectedGapCount,
     );
+  });
+
+  it('exposes runtime facts for the effective state-store, scheduler, and resident-service model', async () => {
+    const runtimeFacts = await fetchProtected<{
+      config?: {
+        stateFile?: string;
+        stateStoreKind?: string;
+        strictPersistence?: boolean;
+      };
+      controlPlane?: {
+        heartbeatSchedule?: string;
+        internalTaskTypes?: string[];
+        publicTriggerableTaskTypes?: string[];
+        scheduledTasks?: Array<{ type?: string; schedule?: string; internalOnly?: boolean }>;
+      };
+      agents?: {
+        serviceExpectedIds?: string[];
+        workerFirstServiceIds?: string[];
+      };
+    }>('/api/runtime/facts');
+
+    expect(runtimeFacts.config?.stateFile).toBeTruthy();
+    expect(runtimeFacts.config?.stateStoreKind).toBe('file');
+    expect(runtimeFacts.controlPlane?.heartbeatSchedule).toBe('*/5 * * * *');
+    expect(runtimeFacts.controlPlane?.internalTaskTypes).toContain('heartbeat');
+    expect(runtimeFacts.controlPlane?.publicTriggerableTaskTypes).not.toContain('heartbeat');
+    expect(runtimeFacts.controlPlane?.scheduledTasks?.some(
+      (task) => task.type === 'heartbeat' && task.internalOnly === true,
+    )).toBe(true);
+    expect(runtimeFacts.agents?.serviceExpectedIds).toEqual(
+      expect.arrayContaining(['doc-specialist', 'reddit-helper']),
+    );
+    expect(runtimeFacts.agents?.workerFirstServiceIds ?? []).toEqual([]);
   });
 
   it('exposes explicit agent lifecycle mode through agent overview', async () => {
@@ -1220,9 +1250,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   });
 
   it('returns workflow summaries, workflow graph detail, and agent capability surfaces', { timeout: 60000 }, async () => {
-    const taskId = await triggerTask('heartbeat', {
-      reason: 'workflow-graph-validation',
-    });
+    const taskId = await triggerTask('doc-sync', {});
 
     await waitForTaskHistoryRecord(taskId);
     const run = await waitForTaskRun(taskId);

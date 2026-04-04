@@ -39,14 +39,6 @@
     "timeoutSec": 60,
     "maxRetries": 2
   },
-  "heartbeat": {
-    "interval": "5m",
-    "checks": [
-      "skill_access",
-      "performance",
-      "error_rate"
-    ]
-  },
   "escalation": {
     "alertThreshold": 3,
     "alertIntervalSec": 1800

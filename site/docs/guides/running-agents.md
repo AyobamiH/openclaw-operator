@@ -25,8 +25,9 @@ Current runtime truth:
 - most agents are still **worker-first**
 - only `doc-specialist` and `reddit-helper` are currently
   **service-expected**
-- all declared runtime agents have `src/service.ts`, but that does not mean
-  every one of them must be running as a persistent host service
+- only `doc-specialist` and `reddit-helper` currently keep real resident
+  `src/service.ts` entrypoints; the rest run through orchestrator task
+  execution only
 
 The operator truth source for this distinction is:
 
@@ -168,7 +169,8 @@ Use this as the practical day-one map:
 
 Rule of thumb:
 
-- `logs/*-service.json` is agent memory and service heartbeat
+- `logs/*-service.json` is agent memory, and only `doc-specialist` /
+  `reddit-helper` should be treated as resident-service heartbeat sources
 - `/operator/runs` is the main operator-facing output surface
 - `logs/` matters most for lanes that explicitly write artifacts
 

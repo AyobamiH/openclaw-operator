@@ -236,10 +236,10 @@ describe("operator contract surfaces", () => {
         },
         recentTasks: [
           {
-            id: "task-heartbeat",
-            taskId: "task-heartbeat",
-            type: "heartbeat",
-            message: "Heartbeat completed",
+            id: "task-doc-sync",
+            taskId: "task-doc-sync",
+            type: "doc-sync",
+            message: "Doc sync completed",
             status: "success",
           },
         ],
@@ -255,7 +255,7 @@ describe("operator contract surfaces", () => {
         agents: [
           { id: "doc-specialist", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
           { id: "reddit-helper", serviceAvailable: true, serviceExpected: true, serviceRunning: false },
-          { id: "integration-agent", serviceAvailable: true, serviceExpected: false, serviceRunning: false },
+          { id: "integration-agent", serviceAvailable: false, serviceExpected: false, serviceRunning: false },
         ],
       },
       isLoading: false,
@@ -266,9 +266,9 @@ describe("operator contract surfaces", () => {
         generatedAt: "2026-03-11T10:00:00.000Z",
         tasks: [
           {
-            type: "heartbeat",
-            label: "Heartbeat",
-            purpose: "Run a bounded health pulse through the control plane.",
+            type: "system-monitor",
+            label: "System Monitor",
+            purpose: "Run a targeted runtime diagnosis pass.",
             operationalStatus: "active",
             approvalGated: false,
             exposeInV1: true,
@@ -312,7 +312,12 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText("Needs Attention")).toBeInTheDocument();
     expect(screen.getByText("Safe Next Actions")).toBeInTheDocument();
     expect(screen.getByText("Fast-start mode is active")).toBeInTheDocument();
-    expect(screen.getByText("Heartbeat")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: "System Monitor",
+        level: 3,
+      }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Top Incident Classifications")).toBeInTheDocument();
     expect(screen.getByText("Knowledge")).toBeInTheDocument();
     expect(screen.getByText("Queue Pressure Sources")).toBeInTheDocument();
@@ -321,10 +326,15 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText(/1 host-running/i)).toBeInTheDocument();
     expect(screen.getAllByText("Stale").length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText("Heartbeat"));
+    fireEvent.click(
+      screen.getByRole("heading", {
+        name: "System Monitor",
+        level: 3,
+      }),
+    );
     expect(navigateMock).toHaveBeenCalledWith({
       pathname: "/tasks",
-      search: "?openTask=heartbeat",
+      search: "?openTask=system-monitor",
     });
   }, 15000);
 
@@ -427,9 +437,9 @@ describe("operator contract surfaces", () => {
           processing: 1,
           pressure: [
             {
-              type: "heartbeat",
-              label: "Heartbeat",
-              source: "Heartbeat",
+              type: "doc-sync",
+              label: "Doc Sync",
+              source: "Doc Sync",
               queuedCount: 0,
               processingCount: 1,
               totalCount: 1,
@@ -471,12 +481,12 @@ describe("operator contract surfaces", () => {
         },
         recentTasks: [
           {
-            id: "task-heartbeat",
-            taskId: "task-heartbeat",
-            type: "heartbeat",
+            id: "task-doc-sync",
+            taskId: "task-doc-sync",
+            type: "doc-sync",
             status: "success",
             result: "success",
-            message: "heartbeat (periodic)",
+            message: "doc-sync (manual)",
             handledAt: "2026-03-11T10:14:00.000Z",
           },
         ],
@@ -489,8 +499,8 @@ describe("operator contract surfaces", () => {
     vi.mocked(consoleHooks.useAgentsOverview).mockReturnValue({
       data: {
         agents: [
-          { id: "system-monitor-agent", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
-          { id: "security-agent", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
+          { id: "doc-specialist", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
+          { id: "reddit-helper", serviceAvailable: true, serviceExpected: true, serviceRunning: true },
         ],
       },
       isLoading: false,

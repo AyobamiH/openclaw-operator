@@ -23,7 +23,7 @@ Create/update `orchestrator_config.json`:
 {
   "docsPath": "./openclaw-docs",
   "logsDir": "./logs",
-  "stateFile": "./logs/orchestrator.state.json"
+  "stateFile": "mongo:orchestrator-runtime-state"
 }
 ```
 
@@ -73,7 +73,8 @@ npm start
 Check state:
 
 ```bash
-cat logs/orchestrator.state.json | jq '.lastStartedAt'
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  http://127.0.0.1:3312/api/dashboard/overview | jq '.health.lastHeartbeatAt'
 ```
 
 If null or old, system may have crashed:
@@ -87,11 +88,13 @@ npm start 2>&1 | tail -20
 Check queue and concurrency:
 
 ```bash
-# View last 5 tasks
-cat logs/orchestrator.state.json | jq '.taskHistory[-5:]'
+# View last 5 visible tasks
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=5" | jq '.runs'
 
-# Check if any are in "error" state
-cat logs/orchestrator.state.json | jq '.taskHistory[] | select(.result=="error")'
+# Check internal maintenance runs too when needed
+curl -fsS -H "Authorization: Bearer $API_KEY" \
+  "http://127.0.0.1:3312/api/tasks/runs?limit=10&includeInternal=true" | jq '.runs'
 ```
 
 ---

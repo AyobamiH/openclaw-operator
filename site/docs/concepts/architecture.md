@@ -238,7 +238,7 @@ agents-deployed/
 
 ### Logs
 - `logs/orchestrator.log` — stdout/stderr
-- `logs/orchestrator.state.json` — persisted state
+- `stateFile` target from `orchestrator_config.json` — persisted runtime state
 - `logs/redis-drafts.jsonl` — JSONL of all drafts
 - `logs/knowledge-packs/` — generated knowledge packs
 

@@ -111,7 +111,7 @@ tar -tzf /backup/orchestrator/<latest>.tar.gz | head
 Validate required artifacts exist in archive:
 
 ```bash
-tar -tzf /backup/orchestrator/<latest>.tar.gz | grep -E 'orchestrator_config.json|orchestrator_state.json|knowledge-packs'
+tar -tzf /backup/orchestrator/<latest>.tar.gz | grep -E 'orchestrator_config.json|knowledge-packs'
 ```
 
 ## Retention

@@ -58,6 +58,7 @@ export const PersistenceHistoricalSchema = z.object({
 export const TaskRunsQuerySchema = z.object({
   type: z.string().max(120).optional(),
   status: z.enum(['pending', 'running', 'success', 'failed', 'retrying']).optional(),
+  includeInternal: z.coerce.boolean().optional().default(false),
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
   offset: z.coerce.number().int().min(0).max(100000).optional().default(0),
 });
@@ -94,7 +95,6 @@ export const TaskTriggerSchema = z.object({
     'rss-sweep',
     'nightly-batch',
     'send-digest',
-    'heartbeat',
     'agent-deploy',
     'doc-sync',
   ]),

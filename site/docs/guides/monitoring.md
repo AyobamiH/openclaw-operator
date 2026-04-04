@@ -13,7 +13,8 @@ is the canonical monitoring document; the old root `MONITORING.md` and
 
 The default configured paths are:
 
-- legacy state file artifact: `orchestrator_state.json`
+- legacy state file artifact: `orchestrator_state.json` may still appear in
+  older setups, but it is not the default current runtime target
 - logs directory: `logs/`
 - digest output: `logs/digests/`
 - runtime state target: `mongo:orchestrator-runtime-state`
@@ -50,7 +51,8 @@ Useful fields to watch:
 
 ## Heartbeat Health
 
-Heartbeats are expected every 5 minutes.
+The orchestrator enqueues an internal maintenance `heartbeat` every 5 minutes.
+It is part of scheduled control-plane upkeep, not a normal public trigger path.
 
 ```bash
 curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq '.health.lastHeartbeatAt'
@@ -72,6 +74,7 @@ Watch the relevant events:
 ```bash
 grep -E "nightly-batch|send-digest|heartbeat" logs/orchestrator.log | tail -20
 curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboard/overview | jq '.recentTasks[:10]'
+curl -fsS -H "Authorization: Bearer $API_KEY" "http://127.0.0.1:3312/api/tasks/runs?includeInternal=true&limit=10&type=heartbeat" | jq '.runs'
 ls -lah logs/digests/digest-*.json
 ```
 
@@ -197,7 +200,7 @@ curl -fsS -H "Authorization: Bearer $API_KEY" http://127.0.0.1:3312/api/dashboar
 When runtime health looks wrong:
 
 1. Check process liveness.
-2. Check the latest heartbeat.
+2. Check the latest heartbeat and `/api/runtime/facts`.
 3. Check the most recent failing task record.
 4. Inspect notifier errors if alerts did not arrive.
 5. Use [Common Issues](../troubleshooting/common-issues.md) and

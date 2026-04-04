@@ -760,15 +760,17 @@ const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
     type: "heartbeat",
     label: "Heartbeat",
     purpose: "Fast control-plane liveness check through the normal queue path.",
-    internalOnly: false,
-    publicTriggerable: true,
+    internalOnly: true,
+    publicTriggerable: false,
     approvalGated: false,
     operationalStatus: "confirmed-working",
     dependencyClass: "control-plane",
     baselineConfidence: "high",
     dependencyRequirements: ["task queue"],
-    exposeInV1: true,
-    caveats: [],
+    exposeInV1: false,
+    caveats: [
+      "Internal maintenance task. Use runtime facts and health surfaces instead of queueing it manually.",
+    ],
   },
   {
     type: "build-refactor",
@@ -1161,6 +1163,18 @@ const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
     caveats: ["Internal-only task. Must not be exposed as user-runnable."],
   },
 ];
+
+const HEARTBEAT_CRON_SCHEDULE = "*/5 * * * *";
+const INTERNAL_TASK_TYPES = new Set(
+  OPERATOR_TASK_PROFILES.filter((profile) => profile.internalOnly).map(
+    (profile) => profile.type,
+  ),
+);
+const SCHEDULED_TASK_PROFILES = [
+  { type: "nightly-batch", schedule: "0 23 * * *" },
+  { type: "send-digest", schedule: "0 6 * * *" },
+  { type: "heartbeat", schedule: HEARTBEAT_CRON_SCHEDULE },
+] as const;
 
 const AGENT_CAPABILITY_RUNTIME_SIGNAL_KEYS: Partial<Record<string, string[]>> = {
   "doc-specialist": [
@@ -1597,6 +1611,30 @@ function parseBoundedInt(
 
 function getOperatorTaskProfile(taskType: string): OperatorTaskProfile | null {
   return OPERATOR_TASK_PROFILES.find((profile) => profile.type === taskType) ?? null;
+}
+
+function isInternalTaskType(taskType: string) {
+  return INTERNAL_TASK_TYPES.has(taskType);
+}
+
+function getLastTaskTimestamp(
+  state: OrchestratorState,
+  taskType: string,
+): string | null {
+  const timestamps = [
+    ...state.taskExecutions
+      .filter((execution) => execution.type === taskType)
+      .map((execution) => execution.lastHandledAt),
+    ...state.taskHistory
+      .filter((entry) => entry.type === taskType)
+      .map((entry) => entry.handledAt),
+  ].filter((value): value is string => typeof value === "string" && value.length > 0);
+
+  if (timestamps.length === 0) {
+    return null;
+  }
+
+  return timestamps.sort((left, right) => right.localeCompare(left))[0] ?? null;
 }
 
 type DashboardQueuePressureSummary = {
@@ -2291,15 +2329,23 @@ function buildAgentRuntimeProofSummary(args: {
     Boolean(taskPath?.lastObservedAt) || Number(taskPath?.totalRuns ?? 0) > 0;
   const taskSucceeded =
     Boolean(taskPath?.lastSuccessfulAt) || Number(taskPath?.successfulRuns ?? 0) > 0;
+  const exposesResidentHeartbeat = serviceExpected || serviceAvailable;
 
   return {
     serviceHeartbeat: {
-      checkedAt,
-      status: memory?.serviceHeartbeat?.status ?? memory?.lastStatus ?? null,
+      checkedAt: exposesResidentHeartbeat ? checkedAt : null,
+      status:
+        exposesResidentHeartbeat
+          ? memory?.serviceHeartbeat?.status ?? memory?.lastStatus ?? null
+          : null,
       errorSummary:
-        memory?.serviceHeartbeat?.errorSummary ?? memory?.lastError ?? null,
-      source: memory?.serviceHeartbeat?.source ?? null,
-      staleAgeMs,
+        exposesResidentHeartbeat
+          ? memory?.serviceHeartbeat?.errorSummary ?? memory?.lastError ?? null
+          : null,
+      source: exposesResidentHeartbeat
+        ? memory?.serviceHeartbeat?.source ?? null
+        : null,
+      staleAgeMs: exposesResidentHeartbeat ? staleAgeMs : null,
     },
     taskPath: {
       taskType: taskPath?.taskType ?? orchestratorTask,
@@ -2314,7 +2360,8 @@ function buildAgentRuntimeProofSummary(args: {
     },
     distinctions: {
       serviceAlive: serviceRunning === true,
-      serviceHeartbeatHealthy: memory?.serviceHeartbeat?.status === "ok",
+      serviceHeartbeatHealthy:
+        exposesResidentHeartbeat && memory?.serviceHeartbeat?.status === "ok",
       serviceAvailable,
       serviceExpected,
       serviceInstalled,
@@ -3526,7 +3573,7 @@ export function buildAgentCapabilityReadiness(args: {
 
   if (agent.id === "system-monitor-agent") {
     const systemMonitorRuns = Math.max(
-      countSuccessfulExecutionsForTypes(["system-monitor", "heartbeat"]),
+      countSuccessfulExecutionsForTypes(["system-monitor"]),
       Number(runtimeProof.taskPath.successfulRuns ?? 0),
     );
     const proofSignals = support.proofSignalCount;
@@ -4554,8 +4601,8 @@ function buildOperatorTaskCatalog(
         type: taskType,
         label: taskType,
         purpose: "Runtime allowlisted task.",
-        internalOnly: false,
-        publicTriggerable: true,
+        internalOnly: true,
+        publicTriggerable: false,
         approvalGated: approvalRequired.has(taskType),
         operationalStatus: "unconfirmed" as const,
         dependencyClass: "worker" as const,
@@ -4876,6 +4923,7 @@ function buildCompanionRunsPayload(
   limit: number = 10,
 ) {
   const runs = [...state.taskExecutions]
+    .filter((execution) => !isInternalTaskType(execution.type))
     .sort((left, right) => right.lastHandledAt.localeCompare(left.lastHandledAt))
     .slice(0, limit)
     .map((execution) => {
@@ -4931,6 +4979,64 @@ function buildCompanionRunsPayload(
     generatedAt: new Date().toISOString(),
     total: runs.length,
     runs,
+  };
+}
+
+function buildRuntimeFactsPayload(args: {
+  config: Awaited<ReturnType<typeof loadConfig>>;
+  state: OrchestratorState;
+  fastStartMode: boolean;
+  agents: Awaited<ReturnType<typeof buildAgentOperationalOverview>>;
+}) {
+  const { config, state, fastStartMode, agents } = args;
+  const serviceExpectedIds = agents
+    .filter((agent) => agent.serviceExpected)
+    .map((agent) => agent.id);
+  const serviceAvailableIds = agents
+    .filter((agent) => agent.serviceAvailable)
+    .map((agent) => agent.id);
+  const workerFirstServiceIds = agents
+    .filter((agent) => !agent.serviceExpected && agent.serviceAvailable)
+    .map((agent) => agent.id);
+  const publicTriggerableTaskTypes = OPERATOR_TASK_PROFILES
+    .filter((profile) => profile.publicTriggerable)
+    .map((profile) => profile.type);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    config: {
+      stateFile: config.stateFile,
+      stateStoreKind: isMongoStateTarget(config.stateFile) ? "mongo" : "file",
+      strictPersistence: config.strictPersistence === true,
+      logsDir: config.logsDir,
+      approvalRequiredTaskTypes:
+        config.approvalRequiredTaskTypes ?? ["agent-deploy", "build-refactor"],
+    },
+    controlPlane: {
+      fastStartMode,
+      heartbeatSchedule: HEARTBEAT_CRON_SCHEDULE,
+      lastHeartbeatAt: getLastTaskTimestamp(state, "heartbeat"),
+      internalTaskTypes: [...INTERNAL_TASK_TYPES],
+      publicTriggerableTaskTypes,
+      scheduledTasks: SCHEDULED_TASK_PROFILES.map(({ type, schedule }) => {
+        const profile = getOperatorTaskProfile(type);
+        return {
+          type,
+          schedule,
+          internalOnly: profile?.internalOnly ?? false,
+          publicTriggerable: profile?.publicTriggerable ?? false,
+        };
+      }),
+    },
+    agents: {
+      declaredCount: agents.length,
+      serviceExpectedIds,
+      serviceAvailableIds,
+      workerFirstServiceIds,
+      spawnedWorkerIds: agents
+        .filter((agent) => agent.spawnedWorkerCapable)
+        .map((agent) => agent.id),
+    },
   };
 }
 
@@ -10092,7 +10198,7 @@ async function bootstrap() {
 
     // 5-minute heartbeat for health checks (keeps background monitoring)
     let lastHeartbeatTime = Date.now();
-    cron.schedule("*/5 * * * *", () => {
+    cron.schedule(HEARTBEAT_CRON_SCHEDULE, () => {
       lastHeartbeatTime = Date.now();
       queue.enqueue("heartbeat", { reason: "periodic" });
     });
@@ -10126,7 +10232,7 @@ async function bootstrap() {
 
     console.log("[orchestrator] 🔔 Alerts configured and monitoring started");
     console.log(
-      "[orchestrator] Scheduled 3 cron jobs: nightly-batch (11pm), send-digest (6am), heartbeat (5min)",
+      `[orchestrator] Scheduled 3 cron jobs: nightly-batch (11pm), send-digest (6am), heartbeat (${HEARTBEAT_CRON_SCHEDULE})`,
     );
 
     // ============================================================
@@ -12097,7 +12203,9 @@ async function bootstrap() {
           },
           compute: () => ({
             generatedAt: new Date().toISOString(),
-            tasks: buildOperatorTaskCatalog(config, state),
+            tasks: buildOperatorTaskCatalog(config, state).filter(
+              (task) => !task.internalOnly,
+            ),
           }),
         });
       } catch (error: any) {
@@ -12859,6 +12967,7 @@ async function bootstrap() {
               health: {
                 status: overviewHealthStatus,
                 fastStartMode,
+                lastHeartbeatAt: getLastTaskTimestamp(state, "heartbeat"),
               },
               persistence,
               accounting: {
@@ -12886,7 +12995,9 @@ async function bootstrap() {
                   state.incidentLedger,
                 ),
               },
-              recentTasks: state.taskHistory.slice(-20),
+              recentTasks: state.taskHistory
+                .filter((entry) => !isInternalTaskType(entry.type))
+                .slice(-20),
             };
           },
         });
@@ -13152,6 +13263,9 @@ async function bootstrap() {
         const type = typeof req.query.type === "string" ? req.query.type : undefined;
         const status =
           typeof req.query.status === "string" ? req.query.status : undefined;
+        const includeInternal =
+          String(req.query.includeInternal ?? "").trim().toLowerCase() ===
+          "true";
         const limit = Number(req.query.limit ?? 50);
         const offset = Number(req.query.offset ?? 0);
         await respondWithCachedJson(req, res, {
@@ -13159,9 +13273,10 @@ async function bootstrap() {
           ttlSeconds: readCacheTtls.taskRuns,
           tags: ["runtime-state"],
           scope: "protected",
-          keyData: { type, status, limit, offset },
+          keyData: { type, status, includeInternal, limit, offset },
           compute: () => {
             const filtered = state.taskExecutions.filter((execution) => {
+              if (!includeInternal && isInternalTaskType(execution.type)) return false;
               if (type && execution.type !== type) return false;
               if (status && execution.status !== status) return false;
               return true;
@@ -13174,7 +13289,13 @@ async function bootstrap() {
 
             return {
               generatedAt: new Date().toISOString(),
-              query: { type: type ?? null, status: status ?? null, limit, offset },
+              query: {
+                type: type ?? null,
+                status: status ?? null,
+                includeInternal,
+                limit,
+                offset,
+              },
               total: filtered.length,
               page: {
                 returned: page.length,
@@ -13511,6 +13632,40 @@ async function bootstrap() {
               truthLayers,
               incidents,
             };
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/runtime/facts",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("runtime.facts.read"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        await respondWithCachedJson(req, res, {
+          namespace: "runtime.facts",
+          ttlSeconds: readCacheTtls.healthExtended,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: {
+            stateFile: config.stateFile,
+            strictPersistence: config.strictPersistence === true,
+          },
+          compute: async () => {
+            const agents = await buildAgentOperationalOverview(state);
+            return buildRuntimeFactsPayload({
+              config,
+              state,
+              fastStartMode,
+              agents,
+            });
           },
         });
       } catch (error: any) {

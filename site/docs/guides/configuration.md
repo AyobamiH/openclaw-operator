@@ -139,7 +139,6 @@ Minimal enablement example:
             "rss-sweep",
             "nightly-batch",
             "send-digest",
-            "heartbeat",
             "agent-deploy",
             "doc-sync"
           ]

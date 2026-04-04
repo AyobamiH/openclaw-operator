@@ -466,11 +466,11 @@ function classifyActionTask(task: any): string {
 
 function buildActionTasks(catalog: any): ActionTaskVM[] {
   const priority: Record<string, number> = {
-    heartbeat: 1,
-    "system-monitor": 2,
-    "doc-sync": 3,
-    "drift-repair": 4,
-    "qa-verification": 5,
+    "system-monitor": 1,
+    "doc-sync": 2,
+    "drift-repair": 3,
+    "qa-verification": 4,
+    "control-plane-brief": 5,
     "nightly-batch": 6,
     "build-refactor": 7,
     "market-research": 8,

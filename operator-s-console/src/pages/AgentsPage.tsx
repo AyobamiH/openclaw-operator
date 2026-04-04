@@ -738,14 +738,22 @@ export default function AgentsPage() {
                       </p>
                       <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px] font-mono">
                         <div>
-                          <p className="text-muted-foreground uppercase tracking-wider text-[8px]">Service heartbeat</p>
+                          <p className="text-muted-foreground uppercase tracking-wider text-[8px]">
+                            {agent.lifecycleMode === "service-expected"
+                              ? "Resident heartbeat"
+                              : "Resident loop"}
+                          </p>
                           <p className="text-foreground mt-1">
-                            {agent.serviceHeartbeatStatus ?? "unknown"}
+                            {agent.lifecycleMode === "service-expected"
+                              ? agent.serviceHeartbeatStatus ?? "unknown"
+                              : "not required"}
                           </p>
                           <p className="text-muted-foreground mt-1 leading-relaxed">
-                            {agent.serviceHeartbeatCheckedAt
-                              ? formatDistanceToNow(new Date(agent.serviceHeartbeatCheckedAt)) + " ago"
-                              : "no recent heartbeat"}
+                            {agent.lifecycleMode === "service-expected"
+                              ? agent.serviceHeartbeatCheckedAt
+                                ? formatDistanceToNow(new Date(agent.serviceHeartbeatCheckedAt)) + " ago"
+                                : "no recent heartbeat"
+                              : "worker-first lanes rely on task-path proof, not resident polling"}
                           </p>
                         </div>
                         <div>
