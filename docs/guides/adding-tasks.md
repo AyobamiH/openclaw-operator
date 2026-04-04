@@ -92,6 +92,11 @@ export const handlers: Record<string, TaskHandler> = {
 };
 ```
 
+The internal entries above (`startup`, `doc-change`, `heartbeat`) are shown for
+runtime completeness only. Adding a handler here does not make it a
+public-triggerable task; that still depends on the request validation schema
+and operator task profile policy.
+
 ---
 
 ## Step 3: Schedule (Optional)

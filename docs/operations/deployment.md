@@ -111,13 +111,22 @@ compatible with the stored data or reset those volumes intentionally.
   # or for Mode B:
   # curl -fsS http://localhost:3000/health
   ```
-- [ ] State file exists at config path:
+- [ ] Effective persistence target is understood:
   ```bash
-  test -f "$STATE_FILE" && echo "state file present"
+  echo "$STATE_FILE"
+  if [[ "$STATE_FILE" == *:* ]]; then
+    echo "runtime target is non-file-backed"
+  else
+    test -f "$STATE_FILE" && echo "state file present"
+  fi
   ```
-- [ ] Last task entry readable:
+- [ ] Recent task state is readable:
   ```bash
-  jq '.taskHistory[-1]' "$STATE_FILE"
+  curl -fsS -H "Authorization: Bearer $API_KEY" \
+    "http://127.0.0.1:4300/api/tasks/runs?limit=1&includeInternal=true" | jq '.runs[0]'
+  # or for Mode B:
+  # curl -fsS -H "Authorization: Bearer $API_KEY" \
+  #   "http://localhost:3000/api/tasks/runs?limit=1&includeInternal=true" | jq '.runs[0]'
   ```
 - [ ] Logs directory exists:
   ```bash
@@ -183,7 +192,11 @@ If deployment fails:
    ```
 3. Restore state from backup to configured state path:
    ```bash
-   cp /backup/orchestrator-state-latest.json "$STATE_FILE"
+   if [[ "$STATE_FILE" == *:* ]]; then
+     echo "restore the backing runtime store for $STATE_FILE using its native backup/import path"
+   else
+     cp /backup/orchestrator-state-latest.json "$STATE_FILE"
+   fi
    ```
 4. Rebuild and start selected mode again.
 5. Re-run post-deploy verification checks.

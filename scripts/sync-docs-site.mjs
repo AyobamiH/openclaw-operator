@@ -29,6 +29,25 @@ const copyTargets = [
   { from: "agents/README.md", to: "agents/README.md" },
 ];
 
+const siteExclusions = [
+  "docs/OPENCLAW_KB",
+  "docs/MEMORY_SYSTEM_GUIDE.md",
+  "docs/OPTION_A_IMPLEMENTATION_ROADMAP.md",
+  "docs/SYSTEM_ARCHITECTURE.mmd",
+  "docs/SYSTEM_DIAGRAM_PROMPT.md",
+  "docs/repo-folder-tree-depth3.txt",
+  "docs/operations/DOCUMENTATION_COMPLETE.md",
+  "docs/operations/DOCUMENT_AUDIT.md",
+  "docs/operations/IMPLEMENTATION_COMPLETE.md",
+  "docs/operations/OPERATOR_S_CONSOLE_CUTOVER_BLUEPRINT.md",
+  "docs/operations/PRD_GOVERNANCE_REMEDIATION.md",
+  "docs/operations/SPRINT_TO_COMPLETION.md",
+  "docs/operations/orchestrator-status.md",
+  "docs/operations/orchestrator_documentation.md",
+  "docs/operations/orchestrator_workflow_plan.md",
+  "docs/operations/public-release.md",
+];
+
 async function resetManagedTargets() {
   await mkdir(siteRoot, { recursive: true });
   for (const relativeTarget of managedTargets) {
@@ -45,9 +64,16 @@ async function copyCanonicalDocs() {
   }
 }
 
+async function pruneSiteOnlyInternalDocs() {
+  for (const relativeTarget of siteExclusions) {
+    await rm(join(siteRoot, relativeTarget), { recursive: true, force: true });
+  }
+}
+
 async function main() {
   await resetManagedTargets();
   await copyCanonicalDocs();
+  await pruneSiteOnlyInternalDocs();
   console.log(`[docs-site] synced canonical docs into ${siteRoot}`);
 }
 
