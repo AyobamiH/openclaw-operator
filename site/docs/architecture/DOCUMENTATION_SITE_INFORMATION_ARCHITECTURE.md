@@ -147,10 +147,17 @@ The expected flow is:
 1. update canonical docs in `README.md`, `QUICKSTART.md`, `DEPLOYMENT.md`, and
    `docs/`
 2. run `npm run docs:site:sync`
-3. run `npm run docs:site:build`
+3. run `npm run docs:site:check`
+4. run `npm run docs:site:build`
 
 This keeps the published site downstream from repo truth instead of creating a
 parallel editorial workflow.
+
+The site export is intentionally allowlist-driven. `scripts/docs-site-manifest.mjs`
+defines the exact canonical files that are mirrored into `site/`, and
+`scripts/check-docs-site-curation.mjs` fails when unexpected or forbidden docs
+appear under `site/docs`. Internal or historical docs may remain in the repo,
+but they are not publishable until they are deliberately added to the manifest.
 
 ## Future Direction
 

@@ -1,0 +1,78 @@
+export const siteManagedTargets = [
+  "README.md",
+  "QUICKSTART.md",
+  "DEPLOYMENT.md",
+  "OPENCLAW_CONTEXT_ANCHOR.md",
+  "SPRINT_HARDENING_BASELINE.md",
+  "docs",
+  "operations",
+  "agents",
+  "incubation",
+];
+
+const identicalTargets = [
+  "README.md",
+  "QUICKSTART.md",
+  "DEPLOYMENT.md",
+  "OPENCLAW_CONTEXT_ANCHOR.md",
+  "SPRINT_HARDENING_BASELINE.md",
+  "docs/GOVERNANCE_REPO_HYGIENE.md",
+  "docs/INDEX.md",
+  "docs/NAVIGATION.md",
+  "docs/OPERATOR_GUIDE.md",
+  "docs/README.md",
+  "docs/SUMMARY.md",
+  "docs/WEBHOOK_SIGNING_CONTRACT.md",
+  "docs/architecture/AGENT_ADAPTATION_PLAN.md",
+  "docs/architecture/AGENT_CAPABILITY_IMPLEMENTATION_MATRIX.md",
+  "docs/architecture/AGENT_CAPABILITY_MODEL.md",
+  "docs/architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md",
+  "docs/architecture/OPERATOR_CONSOLE_AUDIT_AND_SPEC.md",
+  "docs/architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md",
+  "docs/assets/scoped-feature-build-operator-walkthrough.svg",
+  "docs/concepts/architecture.md",
+  "docs/guides/adding-tasks.md",
+  "docs/guides/configuration.md",
+  "docs/guides/monitoring.md",
+  "docs/guides/running-agents.md",
+  "docs/operations/KNOWLEDGE_MIRROR_POLICY.md",
+  "docs/operations/backup-recovery.md",
+  "docs/operations/deployment.md",
+  "docs/reference/api.md",
+  "docs/reference/state-schema.md",
+  "docs/reference/task-types.md",
+  "docs/start/architecture-overview.md",
+  "docs/start/getting-started.md",
+  "docs/start/quickstart.md",
+  "docs/troubleshooting/common-issues.md",
+  "docs/troubleshooting/debugging.md",
+];
+
+export const siteCopyTargets = identicalTargets.map((target) => ({
+  from: target,
+  to: target,
+})).concat([
+  { from: "operations/RUNBOOK_BOUNDARIES.md", to: "operations/RUNBOOK_BOUNDARIES.md" },
+  { from: "agents/README.md", to: "agents/README.md" },
+]);
+
+export const sitePublishedDocFiles = identicalTargets.filter((target) => target.startsWith("docs/"));
+
+export const siteForbiddenTargets = [
+  "docs/OPENCLAW_KB",
+  "docs/MEMORY_SYSTEM_GUIDE.md",
+  "docs/OPTION_A_IMPLEMENTATION_ROADMAP.md",
+  "docs/SYSTEM_ARCHITECTURE.mmd",
+  "docs/SYSTEM_DIAGRAM_PROMPT.md",
+  "docs/repo-folder-tree-depth3.txt",
+  "docs/operations/DOCUMENTATION_COMPLETE.md",
+  "docs/operations/DOCUMENT_AUDIT.md",
+  "docs/operations/IMPLEMENTATION_COMPLETE.md",
+  "docs/operations/OPERATOR_S_CONSOLE_CUTOVER_BLUEPRINT.md",
+  "docs/operations/PRD_GOVERNANCE_REMEDIATION.md",
+  "docs/operations/SPRINT_TO_COMPLETION.md",
+  "docs/operations/orchestrator-status.md",
+  "docs/operations/orchestrator_documentation.md",
+  "docs/operations/orchestrator_workflow_plan.md",
+  "docs/operations/public-release.md",
+];
