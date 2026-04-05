@@ -150,6 +150,8 @@ const CHILD_ENV_ALLOWLIST = [
   "TMP",
   "TEMP",
   "NODE_ENV",
+  "ORCHESTRATOR_CONFIG",
+  "STATE_FILE",
   "TZ",
   "LANG",
   "LC_ALL",
@@ -199,6 +201,8 @@ const RUN_RESULT_HIGHLIGHT_PRIORITY = [
   "refusalProfile",
   "closureContract",
   "reproducibilityProfile",
+  "controlPlaneBrief",
+  "releaseReadiness",
   "trustPosture",
   "policyHandoff",
   "telemetryHandoff",
@@ -1423,10 +1427,13 @@ async function runSpawnedAgentJob(
       agentId,
       payload,
       "error",
-      undefined,
+      reportedResult ?? undefined,
       failureMessage,
       startedAt,
     );
+    if (reportedResult && reportedResult.success === false) {
+      return reportedResult;
+    }
     throw new Error(failureMessage);
   } finally {
     await rm(tmpRoot, { recursive: true, force: true });

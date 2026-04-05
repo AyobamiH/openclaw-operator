@@ -99,6 +99,19 @@ interface Result {
     generatedAt: string;
     focus: string | null;
   };
+  handoffPackage: {
+    targetAgentId: string;
+    payloadType: string;
+    reason: string;
+    recommendedTaskType: string;
+    evidenceAnchors: string[];
+  } | null;
+  toolInvocations: Array<{
+    toolId: string;
+    detail: string;
+    evidence: string[];
+    classification: string;
+  }>;
   operatorSummary: string;
   recommendedNextActions: string[];
   specialistContract: {
@@ -444,6 +457,8 @@ async function handleTask(task: Task): Promise<Result> {
         generatedAt: new Date().toISOString(),
         focus: typeof task.focus === "string" && task.focus.trim().length > 0 ? task.focus.trim() : null,
       },
+      handoffPackage: null,
+      toolInvocations: [],
       ...specialistFields,
       executionTime: Date.now() - startedAt,
     };
@@ -563,6 +578,51 @@ async function handleTask(task: Task): Promise<Result> {
         ? null
         : "Escalate because the control-plane brief found a stronger runtime or review pressure source that outranks routine bounded work.",
   });
+  const handoffTargetAgentId =
+    mode.label === "Incident Storm"
+      ? "system-monitor-agent"
+      : mode.label === "Review-Gated"
+        ? "release-manager-agent"
+        : mode.label === "Proof Lag"
+          ? "doc-specialist"
+          : queueSummary.queued > 0 || queueSummary.processing > 0
+            ? "integration-agent"
+            : null;
+  const handoffPackage = handoffTargetAgentId
+    ? {
+        targetAgentId: handoffTargetAgentId,
+        payloadType: "control-plane-brief",
+        reason: `${primaryMove.title}. ${mode.detail}`,
+        recommendedTaskType:
+          mode.label === "Incident Storm"
+            ? "system-monitor"
+            : mode.label === "Review-Gated"
+              ? "release-readiness"
+              : mode.label === "Proof Lag"
+                ? "drift-repair"
+                : "integration-workflow",
+        evidenceAnchors: [
+          `mode:${mode.label}`,
+          `open-incidents:${openIncidents.length}`,
+          `pending-approvals:${pendingApprovalsCount}`,
+          `queued:${queueSummary.queued}`,
+        ],
+      }
+    : null;
+  const toolInvocations = [
+    {
+      toolId: "documentParser",
+      detail:
+        "operations-analyst-agent parsed runtime state, service-state files, and proof freshness evidence to assemble the bounded control-plane brief.",
+      evidence: [
+        `open-incidents:${openIncidents.length}`,
+        `pending-approvals:${pendingApprovalsCount}`,
+        `queued:${queueSummary.queued}`,
+        `processing:${queueSummary.processing}`,
+      ],
+      classification: "required",
+    },
+  ];
 
   return {
     success: true,
@@ -598,6 +658,8 @@ async function handleTask(task: Task): Promise<Result> {
       generatedAt: new Date().toISOString(),
       focus: typeof task.focus === "string" && task.focus.trim().length > 0 ? task.focus.trim() : null,
     },
+    handoffPackage,
+    toolInvocations,
     ...specialistFields,
     executionTime: Date.now() - startedAt,
   };

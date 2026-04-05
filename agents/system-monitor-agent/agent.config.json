@@ -1,7 +1,7 @@
 {
   "id": "system-monitor-agent",
   "orchestratorTask": "system-monitor",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/system-monitor-agent-service.json",
   "name": "System Monitor & Observability Agent",
   "description": "Monitors system health, collects metrics, analyzes logs, detects anomalies, reports on agent performance and resource usage",

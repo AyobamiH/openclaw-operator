@@ -1,7 +1,7 @@
 {
   "id": "normalization-agent",
   "orchestratorTask": "normalize-data",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/normalization-agent-service.json",
   "name": "Data Normalization Agent",
   "description": "Transforms raw data into standardized formats: schema mapping, type conversion, deduplication, validation",

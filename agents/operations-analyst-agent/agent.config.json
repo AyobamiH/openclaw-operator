@@ -1,7 +1,7 @@
 {
   "id": "operations-analyst-agent",
   "orchestratorTask": "control-plane-brief",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/operations-analyst-agent-service.json",
   "name": "Operations Analyst Agent",
   "description": "Produces bounded control-plane summaries, dominant pressure briefs, and operator-facing operational synthesis.",

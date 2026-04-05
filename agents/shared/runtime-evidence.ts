@@ -1,5 +1,6 @@
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 
 export interface RuntimeTaskExecution {
@@ -422,19 +423,83 @@ export function setRuntimeStateMongoClientFactoryForTest(
   runtimeStateMongoClientFactory = factory;
 }
 
+function isRuntimeTarget(value: string) {
+  return /^[a-z][a-z0-9+.-]*:/.test(value);
+}
+
+function resolveRuntimeTargetFromBase(
+  baseDir: string,
+  target: string | undefined | null,
+) {
+  if (!target) {
+    return undefined;
+  }
+
+  const trimmed = target.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  if (isAbsolute(trimmed) || isRuntimeTarget(trimmed)) {
+    return trimmed;
+  }
+
+  return resolve(baseDir, trimmed);
+}
+
+function resolveOrchestratorConfigPath(agentConfigPath: string) {
+  const repoRoot = resolve(dirname(agentConfigPath), "../../");
+  const configuredPath = process.env.ORCHESTRATOR_CONFIG;
+  if (!configuredPath) {
+    return resolve(repoRoot, "orchestrator_config.json");
+  }
+
+  return isAbsolute(configuredPath)
+    ? configuredPath
+    : resolve(repoRoot, configuredPath);
+}
+
+function resolveConfiguredRuntimeStateTarget(agentConfigPath: string) {
+  const orchestratorConfigPath = resolveOrchestratorConfigPath(agentConfigPath);
+  const orchestratorConfigDir = dirname(orchestratorConfigPath);
+
+  if (process.env.STATE_FILE) {
+    return resolveRuntimeTargetFromBase(
+      orchestratorConfigDir,
+      process.env.STATE_FILE,
+    );
+  }
+
+  try {
+    const parsed = JSON.parse(
+      readFileSync(orchestratorConfigPath, "utf-8"),
+    ) as { stateFile?: string | null };
+    return resolveRuntimeTargetFromBase(
+      orchestratorConfigDir,
+      parsed.stateFile,
+    );
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveRuntimeStateTarget(
   agentConfigPath: string,
   orchestratorStatePath: string | undefined | null,
 ) {
+  const configuredTarget = resolveConfiguredRuntimeStateTarget(agentConfigPath);
+  if (configuredTarget) {
+    return configuredTarget;
+  }
+
   if (!orchestratorStatePath) {
     return undefined;
   }
 
-  if (isMongoStateTarget(orchestratorStatePath)) {
-    return orchestratorStatePath;
-  }
-
-  return resolve(dirname(agentConfigPath), orchestratorStatePath);
+  return resolveRuntimeTargetFromBase(
+    dirname(agentConfigPath),
+    orchestratorStatePath,
+  );
 }
 
 export async function loadRuntimeStateTarget<T>(

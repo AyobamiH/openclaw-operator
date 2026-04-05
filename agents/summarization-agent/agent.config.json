@@ -1,7 +1,7 @@
 {
   "id": "summarization-agent",
   "orchestratorTask": "summarize-content",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/summarization-agent-service.json",
   "name": "Summarization Agent",
   "description": "Condenses large bodies of text, research, and reports into concise executive summaries",

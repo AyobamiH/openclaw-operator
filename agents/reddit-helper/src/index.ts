@@ -7,6 +7,7 @@ import { buildSpecialistOperatorFields } from "../../shared/runtime-evidence.js"
 import {
   loadSharedBudgetState,
   saveSharedBudgetState,
+  closeRedditCoordinationStore,
   type RedditHelperBudgetState,
 } from "./coordination.ts";
 
@@ -1897,13 +1898,27 @@ async function main() {
   const config = await loadConfig();
   const raw = await readFile(payloadPath, "utf-8");
   const payload = JSON.parse(raw) as TaskPayload;
-  await telemetry.info("task.received", { queueId: payload.queue?.id, subreddit: payload.queue?.subreddit });
-  const result = await runTask(payload, config);
-  await telemetry.info("task.success", { queueId: payload.queue?.id, subreddit: payload.queue?.subreddit });
+  try {
+    await telemetry.info("task.received", {
+      queueId: payload.queue?.id,
+      subreddit: payload.queue?.subreddit,
+    });
+    const result = await runTask(payload, config);
+    await telemetry.info("task.success", {
+      queueId: payload.queue?.id,
+      subreddit: payload.queue?.subreddit,
+    });
 
-  if (process.env.REDDIT_HELPER_RESULT_FILE) {
-    await ensureDir(process.env.REDDIT_HELPER_RESULT_FILE);
-    await writeFile(process.env.REDDIT_HELPER_RESULT_FILE, JSON.stringify(result, null, 2), "utf-8");
+    if (process.env.REDDIT_HELPER_RESULT_FILE) {
+      await ensureDir(process.env.REDDIT_HELPER_RESULT_FILE);
+      await writeFile(
+        process.env.REDDIT_HELPER_RESULT_FILE,
+        JSON.stringify(result, null, 2),
+        "utf-8",
+      );
+    }
+  } finally {
+    await closeRedditCoordinationStore();
   }
 }
 

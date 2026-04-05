@@ -1,7 +1,7 @@
 {
   "id": "market-research-agent",
   "orchestratorTask": "market-research",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/market-research-agent-service.json",
   "name": "Market & Web Research Agent",
   "description": "Discovers and analyzes market information, fetches web content from allowlisted domains, performs web research",

@@ -127,6 +127,12 @@ Pay special attention to:
 - whether the agent is treated as service-expected by current orchestrator
   runtime policy
 
+For the public repo's local-first boot path, `orchestratorStatePath` now
+defaults to `../../orchestrator/data/orchestrator-state.json` in the agent
+manifests. If you override runtime state with `STATE_FILE` or
+`ORCHESTRATOR_CONFIG`, spawned agents should inherit that same override so the
+agent lane reads the same control-plane truth as the orchestrator.
+
 ## What Each Agent Produces
 
 Use this as the practical day-one map:

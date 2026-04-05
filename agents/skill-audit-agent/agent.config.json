@@ -1,7 +1,7 @@
 {
   "id": "skill-audit-agent",
   "orchestratorTask": "skill-audit",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/skill-audit-agent-service.json",
   "name": "Skill Audit & Verification Agent",
   "description": "Validates skills for correctness, performance, and compliance: unit testing, integration testing, provenance verification, audit logging",

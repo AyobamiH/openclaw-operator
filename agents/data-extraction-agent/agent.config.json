@@ -1,7 +1,7 @@
 {
   "id": "data-extraction-agent",
   "orchestratorTask": "data-extraction",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/data-extraction-agent-service.json",
   "name": "Document & Data Extraction Agent",
   "description": "Extracts structured data from documents (PDF, HTML, CSV), identifies patterns and entities",

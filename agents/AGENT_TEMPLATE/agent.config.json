@@ -1,7 +1,7 @@
 {
   "id": "template-agent",
   "name": "Template Agent",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/template-agent-service.json",
   "description": "Change this in agent.config.json",
   "version": "1.0.0",

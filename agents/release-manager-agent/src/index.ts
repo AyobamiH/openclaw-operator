@@ -51,6 +51,19 @@ interface Result {
       }>;
     };
   };
+  handoffPackage: {
+    targetAgentId: string;
+    payloadType: string;
+    reason: string;
+    recommendedTaskType: string;
+    evidenceAnchors: string[];
+  } | null;
+  toolInvocations: Array<{
+    toolId: string;
+    detail: string;
+    evidence: string[];
+    classification: string;
+  }>;
   operatorSummary: string;
   recommendedNextActions: string[];
   specialistContract: {
@@ -156,6 +169,8 @@ async function handleTask(task: Task): Promise<Result> {
           latestRuns: [],
         },
       },
+      handoffPackage: null,
+      toolInvocations: [],
       ...specialistFields,
       executionTime: Date.now() - startedAt,
     };
@@ -285,6 +300,53 @@ async function handleTask(task: Task): Promise<Result> {
         ? "Escalate because critical runtime, proof, or governance conditions still block safe release posture."
         : null,
   });
+  const handoffTargetAgentId =
+    decision === "go"
+      ? null
+      : latestSecurity?.status === "failed"
+        ? "security-agent"
+        : latestMonitor?.status === "failed"
+          ? "system-monitor-agent"
+          : !latestVerification || latestVerification.status !== "success"
+            ? "qa-verification-agent"
+            : incidentSummary.openCriticalIncidentCount > 0
+              ? "system-monitor-agent"
+              : "operations-analyst-agent";
+  const handoffPackage = handoffTargetAgentId
+    ? {
+        targetAgentId: handoffTargetAgentId,
+        payloadType: "release-readiness",
+        reason: summary,
+        recommendedTaskType:
+          handoffTargetAgentId === "qa-verification-agent"
+            ? "qa-verification"
+            : handoffTargetAgentId === "security-agent"
+              ? "security-audit"
+              : handoffTargetAgentId === "system-monitor-agent"
+                ? "system-monitor"
+                : "control-plane-brief",
+        evidenceAnchors: [
+          `decision:${decision}`,
+          `open-incidents:${incidentSummary.openIncidentCount}`,
+          `critical-incidents:${incidentSummary.openCriticalIncidentCount}`,
+          `pending-approvals:${pendingApprovals}`,
+        ],
+      }
+    : null;
+  const toolInvocations = [
+    {
+      toolId: "documentParser",
+      detail:
+        "release-manager-agent parsed runtime state, latest bounded verifier runs, and proof freshness evidence to synthesize release posture.",
+      evidence: [
+        `decision:${decision}`,
+        `pending-approvals:${pendingApprovals}`,
+        `open-incidents:${incidentSummary.openIncidentCount}`,
+        `latest-runs:${latestRuns.length}`,
+      ],
+      classification: "required",
+    },
+  ];
 
   return {
     success: decision !== "block",
@@ -305,6 +367,8 @@ async function handleTask(task: Task): Promise<Result> {
         latestRuns,
       },
     },
+    handoffPackage,
+    toolInvocations,
     ...specialistFields,
     executionTime: Date.now() - startedAt,
   };

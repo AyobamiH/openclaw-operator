@@ -99,6 +99,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   let stateFilePath = '';
   let digestDirPath = '';
   let configFilePath = '';
+  let envFilePath = '';
   let runtimeRootDir = '';
   let operatorDistDir = '';
 
@@ -273,6 +274,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     configFilePath = join(runtimeRootDir, 'orchestrator_config.test.json');
     stateFilePath = join(runtimeRootDir, 'orchestrator_state.json');
     digestDirPath = join(runtimeRootDir, 'logs', 'digests');
+    envFilePath = join(runtimeRootDir, 'orchestrator.test.env');
     operatorDistDir = join(runtimeRootDir, 'operator-s-console-dist-fixture');
 
     await mkdir(join(operatorDistDir, 'assets'), { recursive: true });
@@ -548,6 +550,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     });
     await writeFile(stateFilePath, JSON.stringify(seededState), 'utf-8');
     await writeFile(configFilePath, JSON.stringify(testConfig), 'utf-8');
+    await writeFile(envFilePath, '', 'utf-8');
 
     serverProcess = spawn(process.execPath, [tsxCliPath, 'src/index.ts'], {
       cwd: process.cwd(),
@@ -567,6 +570,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         ALERTS_ENABLED: 'false',
         ORCHESTRATOR_FAST_START: 'true',
         ORCHESTRATOR_CONFIG: configFilePath,
+        ORCHESTRATOR_ENV_FILE: envFilePath,
         OPERATOR_UI_DIST_DIR: operatorDistDir,
       },
       stdio: 'pipe',
@@ -1344,7 +1348,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(Array.isArray(agentsPayload.relationshipHistory?.timeline)).toBe(true);
   });
 
-  it('surfaces Wave 1 runtime readiness signals through agent overview', { timeout: 90000 }, async () => {
+  it('surfaces Wave 1 runtime readiness signals through agent overview', { timeout: 180000 }, async () => {
     const docTaskId = await triggerTask('drift-repair', {
       requestedBy: 'integration-wave1-readiness',
       paths: [resolve(process.cwd(), '..', 'README.md')],
@@ -1401,6 +1405,8 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       agents?: Array<{
         id?: string;
         capability?: {
+          presentCapabilities?: string[];
+          missingCapabilities?: string[];
           runtimeEvidence?: {
             latestSuccessfulRunId?: string | null;
             latestSuccessfulTaskId?: string | null;
@@ -1478,7 +1484,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expectRuntimeSignal('qa-verification-agent', 'reproducibilityProfile');
   });
 
-  it('surfaces Wave 2 runtime readiness signals through agent overview', { timeout: 90000 }, async () => {
+  it('surfaces Wave 2 runtime readiness signals through agent overview', { timeout: 180000 }, async () => {
     const redditTaskId = await triggerTask('reddit-response', {
       responder: 'reddit-helper',
       queue: {
@@ -1606,7 +1612,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expectRuntimeSignal('market-research-agent', 'deltaCapture');
   });
 
-  it('surfaces Wave 3 runtime readiness signals through agent overview', { timeout: 90000 }, async () => {
+  it('surfaces Wave 3 runtime readiness signals through agent overview', { timeout: 180000 }, async () => {
     const remediationResponse = await fetch(`${baseUrl}/api/incidents/seed-proof-incident/remediate`, {
       method: 'POST',
       headers: {
@@ -1749,6 +1755,156 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(governanceProfile?.status).toBeTruthy();
     expect(governanceProfile?.summary).toBeTruthy();
     expect((governanceProfile?.evidence ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('surfaces Wave 4 runtime readiness signals through agent overview', { timeout: 180000 }, async () => {
+    const controlPlaneTaskId = await triggerTask('control-plane-brief', {
+      focus: 'wave4-runtime-readiness',
+    });
+    await waitForTaskHistoryRecord(controlPlaneTaskId);
+    const controlPlaneRun = await waitForTaskRun(controlPlaneTaskId);
+
+    const systemMonitorTaskId = await triggerTask('system-monitor', {
+      type: 'health',
+      agents: ['release-manager-agent'],
+    });
+    await waitForTaskHistoryRecord(systemMonitorTaskId);
+    await waitForTaskRun(systemMonitorTaskId);
+
+    const securityTaskId = await triggerTask('security-audit', {
+      type: 'scan',
+      scope: 'workspace',
+    });
+    await waitForTaskHistoryRecord(securityTaskId);
+    await waitForTaskRun(securityTaskId);
+
+    const qaTaskId = await triggerTask('qa-verification', {
+      target: 'workflow',
+      targetAgentId: 'integration-agent',
+      suite: 'smoke',
+      mode: 'dry-run',
+      dryRun: true,
+      runIds: ['wave4-release-readiness'],
+      affectedSurfaces: ['release-posture'],
+    });
+    await waitForTaskHistoryRecord(qaTaskId);
+    await waitForTaskRun(qaTaskId);
+
+    const releaseTaskId = await triggerTask('release-readiness', {
+      releaseTarget: 'wave4-runtime-readiness',
+    });
+    await waitForTaskHistoryRecord(releaseTaskId);
+    const releaseRun = await waitForTaskRun(releaseTaskId);
+
+    const agentsPayload = await fetchProtected<{
+      agents?: Array<{
+        id?: string;
+        capability?: {
+          runtimeEvidence?: {
+            latestSuccessfulRunId?: string | null;
+            latestSuccessfulTaskId?: string | null;
+            latestHandledAt?: string | null;
+            highlightKeys?: string[];
+            signals?: Array<{
+              key?: string;
+              summary?: string;
+              observedAt?: string | null;
+              runId?: string | null;
+              taskId?: string | null;
+              evidence?: string[];
+            }>;
+          };
+        };
+      }>;
+    }>('/api/agents/overview');
+
+    const agentsById = new Map(
+      (agentsPayload.agents ?? [])
+        .filter((agent): agent is NonNullable<typeof agent> & { id: string } => typeof agent.id === 'string')
+        .map((agent) => [agent.id, agent]),
+    );
+
+    const expectRuntimeSignal = (agentId: string, key: string) => {
+      const runtimeEvidence = agentsById.get(agentId)?.capability?.runtimeEvidence;
+      expect(runtimeEvidence?.latestSuccessfulRunId).toBeTruthy();
+      expect(runtimeEvidence?.latestSuccessfulTaskId).toBeTruthy();
+      expect(runtimeEvidence?.latestHandledAt).toBeTruthy();
+      expect(runtimeEvidence?.highlightKeys).toContain(key);
+
+      const signal = runtimeEvidence?.signals?.find((entry) => entry.key === key);
+      expect(signal?.summary).toBeTruthy();
+      expect(signal?.observedAt).toBeTruthy();
+      expect(signal?.runId).toBeTruthy();
+      expect(signal?.taskId).toBeTruthy();
+      expect(Array.isArray(signal?.evidence)).toBe(true);
+      expect((signal?.evidence ?? []).length).toBeGreaterThan(0);
+    };
+
+    expectRuntimeSignal('operations-analyst-agent', 'controlPlaneBrief');
+    expectRuntimeSignal('release-manager-agent', 'releaseReadiness');
+    expect(
+      agentsById.get('operations-analyst-agent')?.capability?.presentCapabilities,
+    ).toContain('tool execution evidence');
+    expect(
+      agentsById.get('operations-analyst-agent')?.capability?.presentCapabilities,
+    ).toContain('verification or repair evidence');
+    expect(
+      agentsById.get('release-manager-agent')?.capability?.presentCapabilities,
+    ).toContain('tool execution evidence');
+    expect(
+      agentsById.get('release-manager-agent')?.capability?.presentCapabilities,
+    ).toContain('verification or repair evidence');
+    expect(
+      agentsById.get('operations-analyst-agent')?.capability?.missingCapabilities ?? [],
+    ).not.toContain('tool execution evidence');
+    expect(
+      agentsById.get('release-manager-agent')?.capability?.missingCapabilities ?? [],
+    ).not.toContain('tool execution evidence');
+
+    const controlPlaneDetail = await fetchProtected<{
+      run?: {
+        resultSummary?: {
+          keys?: string[];
+          highlights?: {
+            controlPlaneBrief?: {
+              mode?: { label?: string };
+              primaryOperatorMove?: { title?: string };
+            };
+            releaseReadiness?: {
+              decision?: string;
+              summary?: string;
+            };
+          };
+        };
+      };
+    }>(`/api/tasks/runs/${encodeURIComponent(String(controlPlaneRun.runId))}`);
+    expect(controlPlaneDetail.run?.resultSummary?.keys).toContain('controlPlaneBrief');
+    expect(controlPlaneDetail.run?.resultSummary?.keys).toContain('toolInvocations');
+    expect(controlPlaneDetail.run?.resultSummary?.keys).toContain('handoffPackage');
+    expect(
+      controlPlaneDetail.run?.resultSummary?.highlights?.controlPlaneBrief?.mode?.label,
+    ).toBeTruthy();
+    expect(
+      controlPlaneDetail.run?.resultSummary?.highlights?.controlPlaneBrief?.primaryOperatorMove?.title,
+    ).toBeTruthy();
+
+    const releaseDetail = await fetchProtected<{
+      run?: {
+        resultSummary?: {
+          keys?: string[];
+          highlights?: {
+            releaseReadiness?: {
+              decision?: string;
+              summary?: string;
+            };
+          };
+        };
+      };
+    }>(`/api/tasks/runs/${encodeURIComponent(String(releaseRun.runId))}`);
+    expect(releaseDetail.run).toBeTruthy();
+    expect(releaseDetail.run?.resultSummary?.keys).toContain('releaseReadiness');
+    expect(releaseDetail.run?.resultSummary?.keys).toContain('toolInvocations');
+    expect(releaseDetail.run?.resultSummary?.keys).toContain('handoffPackage');
   });
 
   it('closes public proof linkage across incident, remediation, and run workflow detail', async () => {

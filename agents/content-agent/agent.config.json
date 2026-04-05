@@ -1,7 +1,7 @@
 {
   "id": "content-agent",
   "orchestratorTask": "content-generate",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/content-agent-service.json",
   "name": "Content Generation Agent",
   "description": "Generates documentation, README files, API specs, blog posts, and marketing content from code and data",

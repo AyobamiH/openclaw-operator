@@ -23,6 +23,10 @@ import {
   setGovernedSkillStateStoreForTest,
 } from '../../skills/index.js';
 import { setRuntimeStateMongoClientFactoryForTest } from '../../agents/shared/runtime-evidence.js';
+import {
+  clearDocRepairCooldown,
+  clearDocRepairLock,
+} from '../src/coordination/runtime-coordination.ts';
 import { sourceFetchDefinition } from '../../skills/sourceFetch.js';
 import { normalizerDefinition, executeNormalizer } from '../../skills/normalizer.js';
 import type { ToolInvocation } from '../src/types.js';
@@ -197,6 +201,7 @@ async function runIntegrationAgentFixture(args: {
           env: {
             ...process.env,
             INTEGRATION_AGENT_RESULT_FILE: resultPath,
+            STATE_FILE: statePath,
           },
           stdio: ['ignore', 'pipe', 'pipe'],
         },
@@ -449,6 +454,7 @@ async function runRedditHelperTaskFixture(args?: {
             ALLOW_ORCHESTRATOR_TASK_RUN: 'true',
             REDDIT_HELPER_RESULT_FILE: resultPath,
             NODE_PATH: join(process.cwd(), 'node_modules'),
+            REDIS_URL: '',
             ...(args?.providerMock
               ? {
                   OPENCLAW_ORCHESTRATOR_PACKAGE_JSON: join(
@@ -1293,6 +1299,8 @@ describe('Spawned worker contract fixes', () => {
   });
 
   it('uses remediation payload runIds when evaluating workflow evidence', async () => {
+    const previousStateFile = process.env.STATE_FILE;
+    process.env.STATE_FILE = 'mongo:orchestrator-runtime-state';
     const encoded = gzipSync(
       Buffer.from(
         JSON.stringify({
@@ -1382,47 +1390,57 @@ describe('Spawned worker contract fixes', () => {
     const close = vi.fn().mockResolvedValue(undefined);
     setRuntimeStateMongoClientFactoryForTest(async () => ({ connect, db, close }));
 
-    const { handleTask } = await import('../../agents/qa-verification-agent/src/index.ts');
-    const result = await handleTask({
-      id: 'qa-payload-runids-1',
-      mode: 'dry-run',
-      payload: {
-        incidentId: 'incident-1',
-        repairIds: ['repair-1'],
-        runIds: ['run-source-1'],
-        serviceIds: ['build-refactor-agent'],
-        affectedSurfaces: ['repair-runtime'],
-        targetAgentId: 'build-refactor-agent',
-      },
-    });
+    try {
+      const { handleTask } = await import('../../agents/qa-verification-agent/src/index.ts');
+      const result = await handleTask({
+        id: 'qa-payload-runids-1',
+        mode: 'dry-run',
+        payload: {
+          incidentId: 'incident-1',
+          repairIds: ['repair-1'],
+          runIds: ['run-source-1'],
+          serviceIds: ['build-refactor-agent'],
+          affectedSurfaces: ['repair-runtime'],
+          targetAgentId: 'build-refactor-agent',
+        },
+      });
 
-    expect(result.success).toBe(true);
-    expect(result.verificationSignals).not.toContain(
-      'No workflow evidence matched the referenced run IDs.',
-    );
-    expect(result.verificationSignals).not.toContain(
-      'One or more related repairs remain failed or error-marked.',
-    );
-    expect(result.verificationSignals).not.toContain(
-      'A critical incident remains open in the verification context.',
-    );
-    expect(result.runtimeContext).toMatchObject({
-      workflow: expect.objectContaining({
-        totalEvents: 1,
-      }),
-      relationships: expect.objectContaining({
-        total: 2,
-        targetAgentId: 'build-refactor-agent',
-      }),
-    });
-    expect(result.verificationTrace).toMatchObject({
-      runIds: expect.arrayContaining(['run-source-1']),
-      serviceIds: expect.arrayContaining(['build-refactor-agent']),
-    });
-    expect(collection).toHaveBeenCalledWith('system_state');
+      expect(result.success).toBe(true);
+      expect(result.verificationSignals).not.toContain(
+        'No workflow evidence matched the referenced run IDs.',
+      );
+      expect(result.verificationSignals).not.toContain(
+        'One or more related repairs remain failed or error-marked.',
+      );
+      expect(result.verificationSignals).not.toContain(
+        'A critical incident remains open in the verification context.',
+      );
+      expect(result.runtimeContext).toMatchObject({
+        workflow: expect.objectContaining({
+          totalEvents: 1,
+        }),
+        relationships: expect.objectContaining({
+          total: 2,
+          targetAgentId: 'build-refactor-agent',
+        }),
+      });
+      expect(result.verificationTrace).toMatchObject({
+        runIds: expect.arrayContaining(['run-source-1']),
+        serviceIds: expect.arrayContaining(['build-refactor-agent']),
+      });
+      expect(collection).toHaveBeenCalledWith('system_state');
+    } finally {
+      if (previousStateFile === undefined) {
+        delete process.env.STATE_FILE;
+      } else {
+        process.env.STATE_FILE = previousStateFile;
+      }
+    }
   });
 
   it('treats orphaned incident-linked verifier retries as reconciled after bounded execution', async () => {
+    const previousStateFile = process.env.STATE_FILE;
+    process.env.STATE_FILE = 'mongo:orchestrator-runtime-state';
     const encoded = gzipSync(
       Buffer.from(
         JSON.stringify({
@@ -1455,43 +1473,50 @@ describe('Spawned worker contract fixes', () => {
       writable: true,
     });
 
-    const result = await handleTask({
-      id: 'qa-orphaned-incident-1',
-      target: 'workspace',
-      suite: 'smoke',
-      dryRun: false,
-      payload: {
+    try {
+      const result = await handleTask({
+        id: 'qa-orphaned-incident-1',
+        target: 'workspace',
+        suite: 'smoke',
+        dryRun: false,
+        payload: {
+          incidentId: 'incident-missing-1',
+          runIds: ['retry-run-missing-1'],
+          repairIds: ['retry:repair-missing-1'],
+          affectedSurfaces: ['repair-runtime', 'task-queue'],
+        },
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.verificationSignals).not.toContain(
+        'No workflow evidence matched the referenced run IDs.',
+      );
+      expect(result.closureRecommendation).toMatchObject({
+        allowClosure: true,
+        decision: 'close-incident',
+      });
+      expect(result.closureRecommendation.summary).toContain(
+        'referenced incident is already missing from runtime state',
+      );
+      expect(result.verificationTrace).toMatchObject({
         incidentId: 'incident-missing-1',
-        runIds: ['retry-run-missing-1'],
-        repairIds: ['retry:repair-missing-1'],
-        affectedSurfaces: ['repair-runtime', 'task-queue'],
-      },
-    });
-
-    Object.defineProperty(process, 'chdir', {
-      value: originalChdir,
-      configurable: true,
-      writable: true,
-    });
-
-    expect(result.success).toBe(true);
-    expect(result.verificationSignals).not.toContain(
-      'No workflow evidence matched the referenced run IDs.',
-    );
-    expect(result.closureRecommendation).toMatchObject({
-      allowClosure: true,
-      decision: 'close-incident',
-    });
-    expect(result.closureRecommendation.summary).toContain(
-      'referenced incident is already missing from runtime state',
-    );
-    expect(result.verificationTrace).toMatchObject({
-      incidentId: 'incident-missing-1',
-      allowClosure: true,
-      evidence: expect.arrayContaining(['incident-context:resolved-or-missing']),
-    });
-    expect(chdirMock).toHaveBeenCalled();
-    expect(collection).toHaveBeenCalledWith('system_state');
+        allowClosure: true,
+        evidence: expect.arrayContaining(['incident-context:resolved-or-missing']),
+      });
+      expect(chdirMock).toHaveBeenCalled();
+      expect(collection).toHaveBeenCalledWith('system_state');
+    } finally {
+      Object.defineProperty(process, 'chdir', {
+        value: originalChdir,
+        configurable: true,
+        writable: true,
+      });
+      if (previousStateFile === undefined) {
+        delete process.env.STATE_FILE;
+      } else {
+        process.env.STATE_FILE = previousStateFile;
+      }
+    }
   }, 60000);
 
   it('applies qa verification closure and reopen outcomes to linked incidents and repairs', async () => {
@@ -2854,6 +2879,13 @@ function buildPublicProofOverview() {
       state.pendingDocChanges.push(`nodes/doc-${index}.md`);
     }
 
+    const affectedPaths = [
+      ...state.pendingDocChanges,
+      'nodes/trigger.md',
+    ];
+    await clearDocRepairCooldown(affectedPaths);
+    await clearDocRepairLock(affectedPaths);
+
     const message = await resolveTaskHandler({
       id: 'doc-change-threshold-1',
       type: 'doc-change',
@@ -2915,6 +2947,12 @@ function buildPublicProofOverview() {
       payload: { path: 'nodes/trigger.md' },
       createdAt: Date.now(),
     });
+    const affectedPaths = [
+      ...state.pendingDocChanges,
+      'nodes/trigger.md',
+    ];
+    await clearDocRepairCooldown(affectedPaths);
+    await clearDocRepairLock(affectedPaths);
 
     await handler(
       {
@@ -4727,8 +4765,8 @@ describe('Reddit helper token safety', () => {
     expect(execution.result.recommendedNextActions?.length).toBeGreaterThan(0);
     expect(execution.result.specialistContract).toMatchObject({
       role: 'Reddit Community Builder',
-      workflowStage: 'community-ready',
-      status: 'completed',
+      workflowStage: 'community-review',
+      status: 'watching',
     });
     expect(execution.persistedServiceState.llmCallsToday).toBe(1);
     expect(execution.persistedServiceState.tokensToday).toBe(92);

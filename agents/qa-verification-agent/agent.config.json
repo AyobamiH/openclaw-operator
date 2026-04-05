@@ -1,7 +1,7 @@
 {
   "id": "qa-verification-agent",
   "orchestratorTask": "qa-verification",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/qa-verification-agent-service.json",
   "name": "Quality Assurance & Verification Agent",
   "description": "Verifies quality of work, runs tests, validates outputs against standards",

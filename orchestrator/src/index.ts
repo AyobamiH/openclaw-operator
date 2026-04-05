@@ -2133,7 +2133,17 @@ export function deriveWorkerEvidenceSummary(args: {
   spawnedWorkerCapable: boolean;
   orchestratorTask?: string | null;
   memory: AgentMemoryState | null;
-  support: AgentOperationalOverviewSupport;
+  support?: AgentOperationalOverviewSupport | null;
+  taskExecutions?: Array<{
+    taskId: string;
+    idempotencyKey?: string | null;
+    type: string;
+    status: string;
+    attempt?: number;
+    maxRetries?: number;
+    lastHandledAt?: string | null;
+  }> | null;
+  toolInvocations?: ToolInvocation[] | null;
 }): AgentWorkerEvidenceSummary {
   const {
     agentId,
@@ -2141,20 +2151,72 @@ export function deriveWorkerEvidenceSummary(args: {
     orchestratorTask,
     memory,
     support,
+    taskExecutions,
+    toolInvocations,
   } = args;
 
+  const safeSupport = support ?? null;
+  const latestExecutionByType = safeSupport?.latestExecutionByType ?? new Map();
+  const latestSuccessfulExecutionByType =
+    safeSupport?.latestSuccessfulExecutionByType ?? new Map();
+  const latestAllowedPreflightByAgent =
+    safeSupport?.latestAllowedPreflightByAgent ?? new Map();
+  const latestAllowedExecuteByAgent =
+    safeSupport?.latestAllowedExecuteByAgent ?? new Map();
+  const latestToolInvocationByAgent =
+    safeSupport?.latestToolInvocationByAgent ?? new Map();
+  const directTaskExecutions = Array.isArray(taskExecutions) ? taskExecutions : [];
+  const latestDirectObservedExecution =
+    orchestratorTask
+      ? directTaskExecutions
+          .filter((execution) => execution.type === orchestratorTask)
+          .sort(
+            (left, right) =>
+              toTimestamp(right.lastHandledAt ?? "") - toTimestamp(left.lastHandledAt ?? ""),
+          )[0] ?? null
+      : null;
+  const latestDirectSuccessfulExecution =
+    orchestratorTask
+      ? directTaskExecutions
+          .filter(
+            (execution) => execution.type === orchestratorTask && execution.status === "success",
+          )
+          .sort(
+            (left, right) =>
+              toTimestamp(right.lastHandledAt ?? "") - toTimestamp(left.lastHandledAt ?? ""),
+          )[0] ?? null
+      : null;
+  const directToolInvocations = Array.isArray(toolInvocations)
+    ? toolInvocations.filter((invocation) => invocation.agentId === agentId)
+    : [];
+  const latestDirectToolInvocation =
+    directToolInvocations
+      .slice()
+      .sort((left, right) => toTimestamp(right.timestamp) - toTimestamp(left.timestamp))[0] ??
+    null;
+  const latestDirectAllowedPreflight =
+    directToolInvocations
+      .filter((invocation) => invocation.allowed && resolveToolInvocationMode(invocation) === "preflight")
+      .sort((left, right) => toTimestamp(right.timestamp) - toTimestamp(left.timestamp))[0] ??
+    null;
+  const latestDirectAllowedExecute =
+    directToolInvocations
+      .filter((invocation) => invocation.allowed && resolveToolInvocationMode(invocation) === "execute")
+      .sort((left, right) => toTimestamp(right.timestamp) - toTimestamp(left.timestamp))[0] ??
+    null;
+
   const latestObservedExecution = orchestratorTask
-    ? support.latestExecutionByType.get(orchestratorTask) ?? null
+    ? latestExecutionByType.get(orchestratorTask) ?? latestDirectObservedExecution
     : null;
   const latestSuccessfulExecution = orchestratorTask
-    ? support.latestSuccessfulExecutionByType.get(orchestratorTask) ?? null
+    ? latestSuccessfulExecutionByType.get(orchestratorTask) ?? latestDirectSuccessfulExecution
     : null;
   const latestAllowedPreflight =
-    support.latestAllowedPreflightByAgent.get(agentId) ?? null;
+    latestAllowedPreflightByAgent.get(agentId) ?? latestDirectAllowedPreflight;
   const latestAllowedExecute =
-    support.latestAllowedExecuteByAgent.get(agentId) ?? null;
+    latestAllowedExecuteByAgent.get(agentId) ?? latestDirectAllowedExecute;
   const latestToolInvocation =
-    support.latestToolInvocationByAgent.get(agentId) ?? null;
+    latestToolInvocationByAgent.get(agentId) ?? latestDirectToolInvocation;
   const latestSuccessfulMemoryEntry = (memory?.taskTimeline ?? [])
     .filter((entry) => {
       const summarySuccess = entry.resultSummary?.success === true;
@@ -3325,6 +3387,19 @@ export function buildAgentCapabilityReadiness(args: {
     runtimeProof.distinctions.taskObserved ||
     Boolean(memory?.lastRunAt) ||
     Number(memory?.totalRuns ?? 0) > 0;
+  const latestSuccessfulExecution = orchestratorTask
+    ? support.latestSuccessfulExecutionByType.get(orchestratorTask) ?? null
+    : null;
+  const latestSuccessfulMemoryEntry = (memory?.taskTimeline ?? [])
+    .filter((entry) => {
+      const summarySuccess = entry.resultSummary?.success === true;
+      return entry.status === "success" || summarySuccess;
+    })
+    .sort((left, right) => {
+      const leftTs = toTimestamp(left.completedAt ?? left.startedAt ?? "");
+      const rightTs = toTimestamp(right.completedAt ?? right.startedAt ?? "");
+      return rightTs - leftTs;
+    })[0] ?? null;
   const verifiedRepairCount = orchestratorTask
     ? support.verifiedRepairCountByTaskType.get(orchestratorTask) ?? 0
     : 0;
@@ -3336,6 +3411,53 @@ export function buildAgentCapabilityReadiness(args: {
   const preferredRuntimeSignalKeys = AGENT_CAPABILITY_RUNTIME_SIGNAL_KEYS[agent.id] ?? [];
   const runtimeSignals = Array.isArray(runtimeEvidence?.signals) ? runtimeEvidence.signals : [];
   const runtimeSignalSummaries = runtimeSignals.map((signal) => signal.summary);
+  const memoryResultKeys = new Set<string>(
+    [
+      ...(Array.isArray(latestSuccessfulExecution?.resultSummary?.keys)
+        ? latestSuccessfulExecution.resultSummary.keys
+        : []),
+      ...(Array.isArray(latestSuccessfulMemoryEntry?.resultSummary?.keys)
+        ? latestSuccessfulMemoryEntry.resultSummary.keys
+        : []),
+      ...(Array.isArray(memory?.lastResultSummary?.keys)
+        ? memory.lastResultSummary.keys
+        : []),
+    ].filter((key): key is string => typeof key === "string" && key.length > 0),
+  );
+  const memoryReportedToolExecution = memoryResultKeys.has("toolInvocations");
+  const memoryReportedRelationships = memoryResultKeys.has("relationships");
+  const memoryReportedHandoff =
+    memoryResultKeys.has("handoffPackage") || memoryResultKeys.has("handoffPackages");
+  const memoryReportedProofTransitions = memoryResultKeys.has("proofTransitions");
+  const memoryReportedWorkflowSignals =
+    memoryResultKeys.has("workflowProfile") ||
+    memoryResultKeys.has("delegationPlan") ||
+    memoryResultKeys.has("replayContract") ||
+    memoryResultKeys.has("handoffPackages") ||
+    memoryResultKeys.has("dependencyPlan") ||
+    memoryResultKeys.has("workflowMemory") ||
+    memoryResultKeys.has("partialCompletion");
+  const taskPathSuccessfulRuns = Number(runtimeProof.taskPath.successfulRuns ?? 0);
+  const trustPostureSignal = toRuntimeSignalRecord(
+    runtimeSignals.find((signal) => signal.key === "trustPosture")?.value,
+  );
+  const restartSafetySignal = toRuntimeSignalRecord(
+    runtimeSignals.find((signal) => signal.key === "restartSafetySummary")?.value,
+  );
+  const memoryGovernedSkillCount =
+    Number(trustPostureSignal?.approvedCount ?? 0) +
+    Number(trustPostureSignal?.pendingReviewCount ?? 0);
+  const memoryGovernedPendingReviewCount = Number(
+    trustPostureSignal?.pendingReviewCount ?? 0,
+  );
+  const memoryGovernedRestartSafeCount = Math.max(
+    Number(trustPostureSignal?.restartSafeApprovedCount ?? 0),
+    Number(restartSafetySignal?.restartSafeCount ?? 0),
+  );
+  const memoryGovernedMetadataOnlyCount = Math.max(
+    Number(trustPostureSignal?.metadataOnlyCount ?? 0),
+    Number(restartSafetySignal?.metadataOnlyCount ?? 0),
+  );
 
   const countSuccessfulExecutionsForTypes = (taskTypes: string[]) =>
     taskTypes.reduce(
@@ -3365,15 +3487,18 @@ export function buildAgentCapabilityReadiness(args: {
     : 0;
   const effectiveSuccessfulTaskRuns = Math.max(
     successfulTaskRuns,
-    Number(runtimeProof.taskPath.successfulRuns ?? 0),
+    taskPathSuccessfulRuns,
   );
   const hasSuccessfulRuntimeEvidence =
     Boolean(workerEvidence.lastSuccessfulRunId) || runtimeProof.distinctions.taskSucceeded;
   const hasToolExecutionEvidence =
-    workerEvidence.lastToolGateMode === "execute" || observedToolExecutionCount > 0;
+    workerEvidence.lastToolGateMode === "execute" ||
+    observedToolExecutionCount > 0 ||
+    (memoryReportedToolExecution && hasSuccessfulRuntimeEvidence);
   const hasVerificationOrRepairEvidence =
     verifiedRepairCount > 0 ||
-    (agent.id === "qa-verification-agent" && verificationRelationshipCount > 0) ||
+    (agent.id === "qa-verification-agent" &&
+      (verificationRelationshipCount > 0 || memoryReportedRelationships)) ||
     (
       (
         agent.id === "build-refactor-agent" ||
@@ -3383,9 +3508,11 @@ export function buildAgentCapabilityReadiness(args: {
         agent.id === "summarization-agent" ||
         agent.id === "data-extraction-agent" ||
         agent.id === "normalization-agent" ||
-        agent.id === "market-research-agent"
+        agent.id === "market-research-agent" ||
+        agent.id === "operations-analyst-agent" ||
+        agent.id === "release-manager-agent"
       ) &&
-      verifierHandoffCount > 0
+      (verifierHandoffCount > 0 || memoryReportedRelationships || memoryReportedHandoff)
     ) ||
       (
         (
@@ -3394,7 +3521,9 @@ export function buildAgentCapabilityReadiness(args: {
           agent.id === "system-monitor-agent"
         ) &&
       effectiveSuccessfulTaskRuns > 0
-    );
+    ) ||
+    ((agent.id === "operations-analyst-agent" || agent.id === "release-manager-agent") &&
+      runtimeSignals.length > 0);
 
   const pushEvidenceProfile = (profile: AgentCapabilityEvidenceProfile) => {
     evidenceProfiles.push({
@@ -3463,6 +3592,8 @@ export function buildAgentCapabilityReadiness(args: {
     evidence.push(
       workerEvidence.lastToolGateMode === "execute"
         ? "tool execution evidence observed"
+        : memoryReportedToolExecution
+          ? "memory-backed successful result includes tool invocation evidence"
         : `${observedToolExecutionCount} observed tool invocation relationship(s) recorded`,
     );
     presentCapabilities.push("tool execution evidence");
@@ -3485,13 +3616,25 @@ export function buildAgentCapabilityReadiness(args: {
       verifiedRepairCount > 0
         ? `${verifiedRepairCount} verified repair-linked run(s) observed`
         : agent.id === "qa-verification-agent"
-          ? `${verificationRelationshipCount} verifier relationship(s) observed`
+          ? verificationRelationshipCount > 0
+            ? `${verificationRelationshipCount} verifier relationship(s) observed`
+            : "memory-backed verification relationship evidence observed"
           : agent.id === "skill-audit-agent"
-            ? `${successfulTaskRuns} successful governance verification run(s) observed`
+            ? `${effectiveSuccessfulTaskRuns} successful governance verification run(s) observed`
             : agent.id === "security-agent"
               ? `${effectiveSuccessfulTaskRuns} successful trust-boundary verification run(s) observed`
               : agent.id === "system-monitor-agent"
-                ? `${effectiveSuccessfulTaskRuns} successful monitoring closure run(s) observed`
+                ? observedToolExecutionCount > 0 || memoryReportedRelationships
+                  ? `${Math.max(countObservedRelationships("system-monitor-agent", "monitors-agent"), memoryReportedRelationships ? 1 : 0)} monitoring relationship signal(s) observed`
+                  : `${effectiveSuccessfulTaskRuns} successful monitoring closure run(s) observed`
+                : agent.id === "operations-analyst-agent"
+                  ? memoryReportedRelationships || memoryReportedHandoff
+                    ? "memory-backed control-plane handoff evidence observed"
+                    : `${runtimeSignals.length} control-plane readiness signal(s) support bounded follow-up guidance`
+                  : agent.id === "release-manager-agent"
+                    ? memoryReportedRelationships || memoryReportedHandoff
+                      ? "memory-backed release follow-up evidence observed"
+                      : `${runtimeSignals.length} release-readiness signal(s) support bounded follow-up guidance`
                 : `${verifierHandoffCount} downstream handoff relationship(s) observed`,
     );
     presentCapabilities.push("verification or repair evidence");
@@ -3534,7 +3677,10 @@ export function buildAgentCapabilityReadiness(args: {
       "drift-repair",
       "doc-sync",
     ]);
-    const feedSignals = countObservedRelationships("doc-specialist", "feeds-agent");
+    const feedSignals = Math.max(
+      countObservedRelationships("doc-specialist", "feeds-agent"),
+      memoryReportedRelationships ? 1 : 0,
+    );
     pushEvidenceProfile({
       area: "truth-spine-depth",
       status:
@@ -3570,13 +3716,16 @@ export function buildAgentCapabilityReadiness(args: {
   if (agent.id === "system-monitor-agent") {
     const systemMonitorRuns = Math.max(
       countSuccessfulExecutionsForTypes(["system-monitor"]),
-      Number(runtimeProof.taskPath.successfulRuns ?? 0),
+      taskPathSuccessfulRuns,
     );
-    const proofSignals = support.proofSignalCount;
+    const proofSignals = Math.max(
+      support.proofSignalCount,
+      memoryReportedProofTransitions ? 1 : 0,
+    );
     const retrySignals = state.taskRetryRecoveries.length;
-    const monitorSignals = countObservedRelationships(
-      "system-monitor-agent",
-      "monitors-agent",
+    const monitorSignals = Math.max(
+      countObservedRelationships("system-monitor-agent", "monitors-agent"),
+      memoryReportedRelationships ? 1 : 0,
     );
     pushEvidenceProfile({
       area: "trust-spine-depth",
@@ -3613,9 +3762,12 @@ export function buildAgentCapabilityReadiness(args: {
   if (agent.id === "security-agent") {
     const securityRuns = Math.max(
       countSuccessfulExecutionsForTypes(["security-audit"]),
-      Number(runtimeProof.taskPath.successfulRuns ?? 0),
+      taskPathSuccessfulRuns,
     );
-    const auditSignals = countObservedRelationships("security-agent", "audits-agent");
+    const auditSignals = Math.max(
+      countObservedRelationships("security-agent", "audits-agent"),
+      memoryReportedRelationships ? 1 : 0,
+    );
     pushEvidenceProfile({
       area: "operational-maturity",
       status:
@@ -3656,12 +3808,24 @@ export function buildAgentCapabilityReadiness(args: {
   if (agent.id === "skill-audit-agent") {
     const governanceRuns = Math.max(
       countSuccessfulExecutionsForTypes(["skill-audit"]),
-      Number(runtimeProof.taskPath.successfulRuns ?? 0),
+      taskPathSuccessfulRuns,
     );
-    const governedSkillCount = support.governedSkillCounts.total;
-    const pendingReviewCount = support.governedSkillCounts.pendingReview;
-    const restartSafeCount = support.governedSkillCounts.restartSafe;
-    const metadataOnlyCount = support.governedSkillCounts.metadataOnly;
+    const governedSkillCount = Math.max(
+      support.governedSkillCounts.total,
+      memoryGovernedSkillCount,
+    );
+    const pendingReviewCount = Math.max(
+      support.governedSkillCounts.pendingReview,
+      memoryGovernedPendingReviewCount,
+    );
+    const restartSafeCount = Math.max(
+      support.governedSkillCounts.restartSafe,
+      memoryGovernedRestartSafeCount,
+    );
+    const metadataOnlyCount = Math.max(
+      support.governedSkillCounts.metadataOnly,
+      memoryGovernedMetadataOnlyCount,
+    );
     pushEvidenceProfile({
       area: "governance-depth",
       status:
@@ -3696,14 +3860,17 @@ export function buildAgentCapabilityReadiness(args: {
   }
 
   if (agent.id === "build-refactor-agent") {
-    const buildRefactorRuns = countSuccessfulExecutionsForTypes(["build-refactor"]);
-    const toolSignals = countObservedRelationships(
-      "build-refactor-agent",
-      "invokes-tool",
+    const buildRefactorRuns = Math.max(
+      countSuccessfulExecutionsForTypes(["build-refactor"]),
+      taskPathSuccessfulRuns,
     );
-    const verifierHandoffs = countObservedRelationships(
-      "build-refactor-agent",
-      "feeds-agent",
+    const toolSignals = Math.max(
+      countObservedRelationships("build-refactor-agent", "invokes-tool"),
+      memoryReportedToolExecution ? 1 : 0,
+    );
+    const verifierHandoffs = Math.max(
+      countObservedRelationships("build-refactor-agent", "feeds-agent"),
+      memoryReportedRelationships || memoryReportedHandoff ? 1 : 0,
     );
     pushEvidenceProfile({
       area: "code-governance-depth",
@@ -3739,10 +3906,13 @@ export function buildAgentCapabilityReadiness(args: {
   }
 
   if (agent.id === "qa-verification-agent") {
-    const qaRuns = countSuccessfulExecutionsForTypes(["qa-verification"]);
-    const verificationSignals = countObservedRelationships(
-      "qa-verification-agent",
-      "verifies-agent",
+    const qaRuns = Math.max(
+      countSuccessfulExecutionsForTypes(["qa-verification"]),
+      taskPathSuccessfulRuns,
+    );
+    const verificationSignals = Math.max(
+      countObservedRelationships("qa-verification-agent", "verifies-agent"),
+      memoryReportedRelationships ? 1 : 0,
     );
     pushEvidenceProfile({
       area: "operational-maturity",
@@ -3778,13 +3948,17 @@ export function buildAgentCapabilityReadiness(args: {
   }
 
   if (agent.id === "integration-agent") {
-    const integrationRuns = countSuccessfulExecutionsForTypes([
-      "integration-workflow",
-    ]);
-    const coordinationSignals = support.integrationWorkflowAgentStageCount;
-    const coordinationEdges = countObservedRelationships(
-      "integration-agent",
-      "coordinates-agent",
+    const integrationRuns = Math.max(
+      countSuccessfulExecutionsForTypes(["integration-workflow"]),
+      taskPathSuccessfulRuns,
+    );
+    const coordinationSignals = Math.max(
+      support.integrationWorkflowAgentStageCount,
+      memoryReportedWorkflowSignals ? 1 : 0,
+    );
+    const coordinationEdges = Math.max(
+      countObservedRelationships("integration-agent", "coordinates-agent"),
+      memoryReportedRelationships || memoryReportedHandoff ? 1 : 0,
     );
     pushEvidenceProfile({
       area: "operational-maturity",

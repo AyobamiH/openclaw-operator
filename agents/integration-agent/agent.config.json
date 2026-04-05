@@ -1,7 +1,7 @@
 {
   "id": "integration-agent",
   "orchestratorTask": "integration-workflow",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/integration-agent-service.json",
   "name": "Integration & Workflow Agent",
   "description": "Orchestrates complex multi-skill workflows: coordinates agent communication, manages data flow between agents, handles error recovery",

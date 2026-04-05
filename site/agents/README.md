@@ -177,6 +177,11 @@ Runtime standard:
 - The orchestrator updates each spawned agent `serviceStatePath` with memory
   state (`lastRunAt`, `lastStatus`, task IDs/types, counters, and bounded
   timeline history).
+- In the public repo, `orchestratorStatePath` now defaults to the local-first
+  runtime state file at `../../orchestrator/data/orchestrator-state.json`.
+- When operators override runtime state with `STATE_FILE` or
+  `ORCHESTRATOR_CONFIG`, spawned agents should inherit that override rather
+  than silently drifting back to a stale manifest target.
 - Agents with richer pipelines may define additional memory I/O keys (for
   example `knowledgePackDir`, `draftLogPath`, `devvitQueuePath`) but cannot
   omit the baseline memory contract above.

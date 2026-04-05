@@ -12,7 +12,7 @@
   "knowledgePackDir": "../../logs/knowledge-packs",
   "draftLogPath": "../../logs/reddit-drafts.jsonl",
   "devvitQueuePath": "../../logs/devvit-submissions.jsonl",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/reddit-helper-service.json",
   "telemetryStream": "http://localhost:8700/telemetry",
   "permissions": {

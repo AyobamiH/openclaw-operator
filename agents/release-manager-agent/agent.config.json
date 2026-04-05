@@ -1,7 +1,7 @@
 {
   "id": "release-manager-agent",
   "orchestratorTask": "release-readiness",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/release-manager-agent-service.json",
   "name": "Release Manager Agent",
   "description": "Synthesizes release posture across verification, security, system health, and governed build evidence.",

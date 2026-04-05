@@ -109,6 +109,22 @@ export async function markDocRepairCooldown(
   );
 }
 
+export async function clearDocRepairCooldown(paths: string[]) {
+  const { fingerprint, digest } = buildDocRepairKey(paths);
+  if (!fingerprint) return;
+  await coordinationStore.deleteKey("doc-repair-cooldown", digest);
+}
+
+export async function clearDocRepairLock(paths: string[]) {
+  const { fingerprint, digest } = buildDocRepairKey(paths);
+  if (!fingerprint) return;
+  await coordinationStore.deleteKey("doc-repair-lock", digest);
+}
+
+export async function resetRuntimeCoordinationStoreForTests() {
+  await coordinationStore.resetMemory();
+}
+
 export async function closeRuntimeCoordinationStore() {
   await coordinationStore.close();
 }

@@ -18,8 +18,8 @@
   },
   "docsPath": "../../openclaw-docs",
   "cookbookPath": "../../openai-cookbook",
-  "stateFile": "mongo:orchestrator-runtime-state",
-  "orchestratorStatePath": "mongo:orchestrator-runtime-state",
+  "stateFile": "../../orchestrator/data/orchestrator-state.json",
+  "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/doc-specialist-service.json",
   "telemetryStream": "http://localhost:8700/telemetry",
   "knowledgePackDir": "../../logs/knowledge-packs"
