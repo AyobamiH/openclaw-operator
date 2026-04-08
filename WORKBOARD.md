@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-04-06`
+Last updated: `2026-04-08`
 
 ## Current Headline
 
@@ -21,6 +21,8 @@ The public repo is in a shippable state.
 
 - current public `main` includes the capability-closure and legacy-failure fix
   through commit `c857273`
+- protected-branch shipping now has a repo-managed verification contract:
+  local pre-push gate plus CI-aligned publish gating
 - current portfolio productization is mostly done for the shipped operator
   product
 - broader external-catalog agent growth has not started yet
@@ -45,6 +47,13 @@ The public repo is in a shippable state.
      non-zero after writing a result file
    - this closed the last Wave 4 integration regression and kept run-detail
      summaries truthful
+
+5. Protected-branch verification was tightened.
+   - pushes to `main` / `master` now run a repo-managed pre-push `verify:main`
+     gate locally
+   - GitHub validation now runs the same protected-branch contract
+   - deploy and docs workflows now wait for validation success instead of
+     racing it
 
 ## Current Recommended Next Move
 

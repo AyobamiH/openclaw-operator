@@ -1,15 +1,22 @@
 name: Deploy to Production
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Test & Validate"]
+    types: [completed]
     branches: [main, master]
   workflow_dispatch:
 
 jobs:
   deploy:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    env:
+      SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Use Node.js
         uses: actions/setup-node@v4
@@ -18,9 +25,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: |
-          npm install
-          cd orchestrator && npm install
+        run: npm install
 
       - name: Build orchestrator
         run: cd orchestrator && npm run build
@@ -40,7 +45,7 @@ jobs:
           cp -r orchestrator/dist deployment/
           cp orchestrator/package.json deployment/
           cp orchestrator_config.json deployment/
-          tar -czf orchestrator-build-${{ github.sha }}.tar.gz deployment/
+          tar -czf orchestrator-build-${{ env.SOURCE_SHA }}.tar.gz deployment/
           echo "✅ Deployment artifact created"
 
       - name: Upload artifact
@@ -53,7 +58,7 @@ jobs:
       - name: Notify deployment
         run: |
           echo "📦 Deployment package ready at:"
-          echo "   orchestrator-build-${{ github.sha }}.tar.gz"
+          echo "   orchestrator-build-${{ env.SOURCE_SHA }}.tar.gz"
           echo ""
           echo "To deploy:"
           echo "1. Extract: tar -xzf orchestrator-build-*.tar.gz"

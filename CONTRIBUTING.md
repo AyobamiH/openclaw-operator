@@ -16,6 +16,31 @@ Expected flow:
 
 Do not treat `main` as the place where active work accumulates directly.
 
+## Protected-Branch Verification
+
+This repo now enforces a protected-branch shipping contract for `main` and
+`master`.
+
+- `npm run verify` is the standard repo validation pass
+- `npm run verify:main` is the protected-branch shipping pass
+- the repo-managed pre-push hook runs `npm run verify:main` before allowing a
+  push to `main` or `master`
+
+Install the repo-managed hooks with:
+
+```bash
+npm install
+```
+
+If needed, you can reapply the hook setup manually with:
+
+```bash
+npm run setup:hooks
+```
+
+GitHub Actions also uses the same protected-branch verification contract before
+deploying docs or production artifacts.
+
 ## Assistant Sync Rule
 
 This repo now uses a shared assistant entry workflow for Codex and Copilot.

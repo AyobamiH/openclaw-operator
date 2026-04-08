@@ -117,6 +117,11 @@ The expected flow is:
 
 That is the normal working style for this repo going forward.
 
+Protected branch pushes are now gated by a repo-managed pre-push hook. After
+`npm install`, pushes to `main` or `master` run `npm run verify:main` before
+Git will allow the push. You can also reapply the hook setup with
+`npm run setup:hooks`.
+
 ## Using It For Real Client Work
 
 OpenClaw Operator is most useful when you treat it as a governed web-dev
@@ -359,6 +364,21 @@ npm run docs:site:build
 ```
 
 ## Verification
+
+For branch work, the canonical local validation pass is:
+
+```bash
+npm run verify
+```
+
+For anything headed to `main`, use:
+
+```bash
+npm run verify:main
+```
+
+The protected-branch pre-push hook uses that same `verify:main` contract for
+`main` and `master`.
 
 After startup, these are the fastest checks:
 

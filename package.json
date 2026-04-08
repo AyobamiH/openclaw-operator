@@ -2,7 +2,8 @@
   "name": "@openclaw/workspace",
   "private": true,
   "scripts": {
-    "postinstall": "npm --prefix orchestrator install && npm --prefix operator-s-console install",
+    "postinstall": "node scripts/install-git-hooks.mjs && npm --prefix orchestrator install && npm --prefix operator-s-console install",
+    "setup:hooks": "node scripts/install-git-hooks.mjs",
     "dev": "npm run build:operator-ui && npm --prefix orchestrator run dev",
     "start": "npm --prefix orchestrator run start",
     "build:operator-ui": "npm --prefix operator-s-console run build",
@@ -31,7 +32,8 @@
     "clean": "node scripts/clean-workspace.mjs",
     "clean:dry-run:builds": "node scripts/clean-workspace.mjs --dry-run --include-builds",
     "clean:builds": "node scripts/clean-workspace.mjs --include-builds",
-    "verify": "npm run build && npm run docs:drift && npm run docs:links && npm run test:unit && npm run test:integration && npm run test:operator-ui && npm run typecheck"
+    "verify": "npm run build && npm run docs:drift && npm run docs:links && npm run test:unit && npm run test:integration && npm run test:operator-ui && npm run typecheck",
+    "verify:main": "npm run verify && npm run docs:site:build"
   },
   "dependencies": {
     "tsx": "^4.21.0"

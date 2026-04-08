@@ -38,6 +38,7 @@ npm run test:integration
 npm run docs:drift
 npm run docs:site:build
 npm run verify
+npm run verify:main
 ```
 
 Focused commands:
@@ -59,6 +60,15 @@ Before commit or push of a material change:
 2. keep `AGENTS.md`, `.github/copilot-instructions.md`, and
    `.github/code-instructions.md` aligned with the same first-read workflow
 3. do not preserve stale private-workspace assumptions in public repo docs
+4. do not push `main` or `master` without `npm run verify:main`
+
+## Protected Branch Gate
+
+The repo-managed pre-push hook protects `main` and `master`.
+
+- `npm install` or `npm run setup:hooks` configures `.githooks`
+- pushes to protected branches run `npm run verify:main`
+- deploy-style GitHub workflows are expected to follow the same contract
 
 ## Guardrails
 

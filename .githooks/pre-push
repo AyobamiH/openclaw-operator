@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+remote_name="${1:-origin}"
+remote_url="${2:-}"
+protected_push=0
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "${remote_ref}" in
+    refs/heads/main|refs/heads/master)
+      protected_push=1
+      ;;
+  esac
+done
+
+if [[ "${OPENCLAW_SKIP_VERIFY_HOOK:-0}" == "1" ]]; then
+  echo "[pre-push] OPENCLAW_SKIP_VERIFY_HOOK=1 set; skipping protected-branch verification."
+  exit 0
+fi
+
+if [[ "${protected_push}" -ne 1 ]]; then
+  exit 0
+fi
+
+repo_root="$(git rev-parse --show-toplevel)"
+cd "${repo_root}"
+
+echo "[pre-push] Protected branch push detected for ${remote_name} (${remote_url})."
+echo "[pre-push] Running npm run verify:main before allowing the push."
+npm run verify:main

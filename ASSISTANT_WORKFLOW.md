@@ -11,7 +11,7 @@ Use it to keep Codex, Copilot, and any future assistant aligned on:
 
 It is a workflow contract, not a runtime spec.
 
-Last updated: `2026-04-06`
+Last updated: `2026-04-08`
 
 ## First-Read Order
 
@@ -69,6 +69,24 @@ Minimum check:
 
 If the answer to any of those is "no", fix the docs in the same change set.
 
+## Shipping Verification Contract
+
+Treat protected-branch shipping as a repo-managed contract, not a memory task.
+
+- `npm run verify`
+  - standard repo validation pass while iterating on a branch
+- `npm run verify:main`
+  - protected-branch shipping pass
+  - currently `verify` plus `docs:site:build`
+- `.githooks/pre-push`
+  - runs `npm run verify:main` before a push to `main` or `master`
+- `scripts/install-git-hooks.mjs`
+  - sets `core.hooksPath` to `.githooks`
+  - runs during `npm install`
+
+GitHub Actions should use the same protected-branch verification contract
+before publish-style workflows run.
+
 ## Hard Rules
 
 1. Do not leave Codex and Copilot on different starting assumptions.
@@ -82,9 +100,9 @@ For material work:
 
 1. implement the code
 2. verify it
-3. update `WORKBOARD.md`
-4. update assistant entry points if needed
-5. commit and push
+3. if the change is headed to `main`, run `npm run verify:main`
+4. update `WORKBOARD.md`
+5. update assistant entry points if needed
+6. commit and push
 
 That keeps assistant guidance synchronized with shipped repo state.
-

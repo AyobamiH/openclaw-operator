@@ -7,58 +7,21 @@ on:
     branches: [main, master, develop]
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [22.x]
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Use Node.js 22.x
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 22.x
           cache: 'npm'
 
-      - name: Install root dependencies
+      - name: Install dependencies
         run: npm install
 
-      - name: Install orchestrator dependencies
-        run: cd orchestrator && npm install
-
-      - name: Build orchestrator
-        run: cd orchestrator && npm run build
-
-      - name: Check docs drift contracts
-        run: bash scripts/check-doc-drift.sh
-
-      - name: Run orchestrator fixture tests
-        run: |
-          cd orchestrator
-          npm run test:unit:fixtures
-          echo "✅ Orchestrator fixture tests passed"
-
-      - name: Run orchestrator live integration test
-        run: |
-          cd orchestrator
-          npm run test:integration
-          echo "✅ Orchestrator live integration test passed"
-
-      - name: Validate agent test files
-        run: |
-          cd agents/reddit-helper
-          npx tsx --version
-          echo "✅ Test environment ready"
-
-      - name: Check TypeScript compilation
-        run: |
-          cd orchestrator
-          npx tsc --noEmit
-          echo "✅ TypeScript types valid"
-
-      - name: Lint check (minimal)
-        run: |
-          find orchestrator/src agents/*/src -name "*.ts" -type f | head -5
-          echo "✅ Code structure valid"
+      - name: Run canonical protected-branch verification
+        run: npm run verify:main

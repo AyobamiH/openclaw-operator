@@ -41,6 +41,7 @@ npm run test:integration
 npm run docs:drift
 npm run docs:site:build
 npm run verify
+npm run verify:main
 ```
 
 Useful focused commands:
@@ -63,6 +64,16 @@ When a material change is being prepared for commit or push, make sure:
    `.github/code-instructions.md` still point at the same first-read workflow.
 3. Assistant-facing docs do not preserve stale private-lab assumptions after
    the code has moved on.
+4. Anything headed to `main` has passed `npm run verify:main`.
+
+## Protected Branch Gate
+
+This repo uses a repo-managed pre-push hook for `main` and `master`.
+
+- `npm install` configures `core.hooksPath` to `.githooks`
+- the hook runs `npm run verify:main` before allowing a protected-branch push
+- GitHub Actions uses the same protected-branch verification contract before
+  deploy-style workflows run
 
 ## Guardrails
 
