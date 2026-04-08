@@ -263,6 +263,119 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     return latestPayload;
   };
 
+  const waitForAgentRuntimeSignal = async (
+    agentId: string,
+    key: string,
+    timeoutMs = 30000,
+  ) => {
+    const deadline = Date.now() + timeoutMs;
+    let latestAgent:
+      | {
+          capability?: {
+            runtimeEvidence?: {
+              latestSuccessfulRunId?: string | null;
+              latestSuccessfulTaskId?: string | null;
+              latestHandledAt?: string | null;
+              highlightKeys?: string[];
+              signals?: Array<{
+                key?: string;
+                summary?: string;
+                observedAt?: string | null;
+                runId?: string | null;
+                taskId?: string | null;
+                evidence?: string[];
+              }>;
+            };
+          };
+        }
+      | undefined;
+
+    while (Date.now() < deadline) {
+      const payload = await fetchProtected<{
+        agents?: Array<{
+          id?: string;
+          capability?: {
+            runtimeEvidence?: {
+              latestSuccessfulRunId?: string | null;
+              latestSuccessfulTaskId?: string | null;
+              latestHandledAt?: string | null;
+              highlightKeys?: string[];
+              signals?: Array<{
+                key?: string;
+                summary?: string;
+                observedAt?: string | null;
+                runId?: string | null;
+                taskId?: string | null;
+                evidence?: string[];
+              }>;
+            };
+          };
+        }>;
+      }>('/api/agents/overview');
+
+      latestAgent = (payload.agents ?? []).find((agent) => agent.id === agentId);
+      const runtimeEvidence = latestAgent?.capability?.runtimeEvidence;
+      const signal = runtimeEvidence?.signals?.find((entry) => entry.key === key);
+      const hasRuntimeSignal =
+        Boolean(runtimeEvidence?.latestSuccessfulRunId) &&
+        Boolean(runtimeEvidence?.latestSuccessfulTaskId) &&
+        Boolean(runtimeEvidence?.latestHandledAt) &&
+        (runtimeEvidence?.highlightKeys ?? []).includes(key) &&
+        Boolean(signal?.summary) &&
+        Boolean(signal?.observedAt) &&
+        Boolean(signal?.runId) &&
+        Boolean(signal?.taskId) &&
+        Array.isArray(signal?.evidence) &&
+        (signal?.evidence?.length ?? 0) > 0;
+
+      if (hasRuntimeSignal) {
+        return latestAgent;
+      }
+
+      await sleep(250);
+    }
+
+    return latestAgent;
+  };
+
+  const waitForRunResultSummaryKeys = async (
+    runId: string,
+    expectedKeys: string[],
+    timeoutMs = 30000,
+  ) => {
+    const deadline = Date.now() + timeoutMs;
+    let latestPayload:
+      | {
+          run?: {
+            resultSummary?: {
+              keys?: string[];
+              highlights?: Record<string, unknown>;
+            };
+          };
+        }
+      | null = null;
+
+    while (Date.now() < deadline) {
+      latestPayload = await fetchProtected<{
+        run?: {
+          resultSummary?: {
+            keys?: string[];
+            highlights?: Record<string, unknown>;
+          };
+        };
+      }>(`/api/tasks/runs/${encodeURIComponent(runId)}`);
+
+      const keys = latestPayload.run?.resultSummary?.keys ?? [];
+      if (expectedKeys.every((key) => keys.includes(key))) {
+        return latestPayload;
+      }
+
+      await sleep(250);
+    }
+
+    return latestPayload;
+  };
+
   beforeAll(async () => {
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
@@ -1796,6 +1909,15 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     await waitForTaskHistoryRecord(releaseTaskId);
     const releaseRun = await waitForTaskRun(releaseTaskId);
 
+    const controlPlaneAgent = await waitForAgentRuntimeSignal(
+      'operations-analyst-agent',
+      'controlPlaneBrief',
+    );
+    const releaseAgent = await waitForAgentRuntimeSignal(
+      'release-manager-agent',
+      'releaseReadiness',
+    );
+
     const agentsPayload = await fetchProtected<{
       agents?: Array<{
         id?: string;
@@ -1823,6 +1945,18 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         .filter((agent): agent is NonNullable<typeof agent> & { id: string } => typeof agent.id === 'string')
         .map((agent) => [agent.id, agent]),
     );
+    if (controlPlaneAgent) {
+      agentsById.set('operations-analyst-agent', {
+        ...(agentsById.get('operations-analyst-agent') ?? {}),
+        ...controlPlaneAgent,
+      });
+    }
+    if (releaseAgent) {
+      agentsById.set('release-manager-agent', {
+        ...(agentsById.get('release-manager-agent') ?? {}),
+        ...releaseAgent,
+      });
+    }
 
     const expectRuntimeSignal = (agentId: string, key: string) => {
       const runtimeEvidence = agentsById.get(agentId)?.capability?.runtimeEvidence;
@@ -1861,7 +1995,10 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       agentsById.get('release-manager-agent')?.capability?.missingCapabilities ?? [],
     ).not.toContain('tool execution evidence');
 
-    const controlPlaneDetail = await fetchProtected<{
+    const controlPlaneDetail = await waitForRunResultSummaryKeys(
+      String(controlPlaneRun.runId),
+      ['controlPlaneBrief', 'toolInvocations', 'handoffPackage'],
+    ) as {
       run?: {
         resultSummary?: {
           keys?: string[];
@@ -1877,7 +2014,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
           };
         };
       };
-    }>(`/api/tasks/runs/${encodeURIComponent(String(controlPlaneRun.runId))}`);
+    };
     expect(controlPlaneDetail.run?.resultSummary?.keys).toContain('controlPlaneBrief');
     expect(controlPlaneDetail.run?.resultSummary?.keys).toContain('toolInvocations');
     expect(controlPlaneDetail.run?.resultSummary?.keys).toContain('handoffPackage');
@@ -1888,7 +2025,10 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       controlPlaneDetail.run?.resultSummary?.highlights?.controlPlaneBrief?.primaryOperatorMove?.title,
     ).toBeTruthy();
 
-    const releaseDetail = await fetchProtected<{
+    const releaseDetail = await waitForRunResultSummaryKeys(
+      String(releaseRun.runId),
+      ['releaseReadiness', 'toolInvocations', 'handoffPackage'],
+    ) as {
       run?: {
         resultSummary?: {
           keys?: string[];
@@ -1900,7 +2040,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
           };
         };
       };
-    }>(`/api/tasks/runs/${encodeURIComponent(String(releaseRun.runId))}`);
+    };
     expect(releaseDetail.run).toBeTruthy();
     expect(releaseDetail.run?.resultSummary?.keys).toContain('releaseReadiness');
     expect(releaseDetail.run?.resultSummary?.keys).toContain('toolInvocations');
