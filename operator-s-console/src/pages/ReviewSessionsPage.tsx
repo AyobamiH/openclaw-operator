@@ -90,6 +90,16 @@ function formatSamplingInterval(value: number | null | undefined) {
   return `${Math.round(value / 60000)}m`;
 }
 
+function formatCapturePlanTarget(targetTaskCount: number | null | undefined) {
+  if (targetTaskCount === null) {
+    return "capacity discovery";
+  }
+  if (typeof targetTaskCount !== "number" || targetTaskCount <= 0) {
+    return "n/a";
+  }
+  return `${targetTaskCount.toLocaleString()} tasks`;
+}
+
 function downloadPayload(filename: string, content: string, contentType: string) {
   const blob = new Blob([content], { type: contentType });
   const url = URL.createObjectURL(blob);
@@ -136,14 +146,17 @@ function buildReviewChecks(
 
   const steadyStateSamples = session.summary?.bucketStats?.steady_state_running_cost?.sampleCount ?? 0;
   const consideredRuns = session.summary?.workload.consideredRuns ?? 0;
-  const evidenceRecorded = noteCount > 1 || session.linkedRunIds.length > 0;
+  const evidenceRecorded = noteCount > 0 || session.linkedRunIds.length > 0;
+  const isCapacitySoak = session.capturePlan.profile === "soak-24h" && session.capturePlan.targetTaskCount === null;
 
   return [
     {
       title: "Profile is correct",
       detail:
         session.capturePlan.profile === "soak-24h"
-          ? "This session is running in the 24-hour soak profile."
+          ? isCapacitySoak
+            ? "This session is running in the 24-hour max-capacity soak profile."
+            : "This session is running in the 24-hour representative soak profile."
           : "This session is not using the soak profile, so it will not match the day-long endurance plan.",
       tone: session.capturePlan.profile === "soak-24h" ? "good" : "warn",
     },
@@ -167,7 +180,9 @@ function buildReviewChecks(
       detail:
         consideredRuns > 0
           ? `${consideredRuns} task execution(s) are already inside the session window.`
-          : "The soak run is active, but no task executions have landed in the review window yet. Start the 3k-5k workload.",
+          : isCapacitySoak
+            ? "The max-capacity soak is active, but no task executions have landed in the review window yet. Start the continuous 24h:max feeder."
+            : "The representative soak is active, but no task executions have landed in the review window yet. Start the paced 24h workload.",
       tone: consideredRuns > 0 ? "good" : "todo",
     },
     {
@@ -207,7 +222,11 @@ function getHandoffStatus(session: ReviewSessionRecord) {
 function sessionSubtitle(session: ReviewSessionRecord) {
   const baselineCaptured = session.baselineSummary ? "baseline captured" : "baseline missing";
   const handoff = getHandoffStatus(session);
-  const profile = session.capturePlan?.profile === "soak-24h" ? "24h soak" : "standard";
+  const profile = session.capturePlan?.profile === "soak-24h"
+    ? session.capturePlan.targetTaskCount === null
+      ? "24h max soak"
+      : "24h soak"
+    : "standard";
   return `${profile} · ${baselineCaptured} · ${handoff.subtitle}`;
 }
 
@@ -356,7 +375,7 @@ export default function ReviewSessionsPage() {
       <div className="console-inset p-3">
         <p className="text-[11px] text-muted-foreground font-mono tracking-wide">
           <Activity className="w-3 h-3 inline mr-1.5 text-primary" />
-          Honest review capture is bootstrap-led. Free port `3312`, then run `npm run review-session:run:24h` from the repo root for the clone-ready endurance flow. That command starts the soak session and paces the target 5,000-task representative workload across the full 24-hour window. You can leave this page open first: the new active soak session will appear and auto-select after bootstrap handoff completes.
+          Honest review capture is bootstrap-led. Free port `3312`, then choose the lane that matches your question: `npm run review-session:run:24h` for a realistic representative soak, or `npm run review-session:run:24h:max` for a ceiling-seeking capacity soak. You can leave this page open first: the new active soak session will appear and auto-select after bootstrap handoff completes.
         </p>
       </div>
 
@@ -378,16 +397,16 @@ export default function ReviewSessionsPage() {
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Layer 3 · Manual Evidence</p>
               <p className="text-xs text-muted-foreground mt-2">
-                `Bucket Controls` and `Evidence Actions` are now mostly for extra human proof. The automated review workload already keeps the session in the right soak bucket, links a representative run, and records progress notes for you.
+                `Bucket Controls` and `Evidence Actions` are now mostly for extra human proof. Both automated soak lanes keep the session in the right bucket, link a representative run, and record progress notes for you.
               </p>
             </div>
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Recommended Soak Workflow</p>
               <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                <p>1. Free port `3312`, then run `npm run review-session:run:24h` from the repo root.</p>
+                <p>1. Free port `3312`, then run `npm run review-session:run:24h` for realistic endurance or `npm run review-session:run:24h:max` for capacity discovery.</p>
                 <p>2. If this page was already open, wait for the new `soak-24h` session to appear and auto-select after bootstrap handoff.</p>
                 <p>3. Confirm `State + Profile` shows `active` and `Capture Truth` shows handoff complete.</p>
-                <p>4. The automated feeder will keep representative tasks flowing for the full 24-hour soak, attach its notes to this session, and preserve cumulative totals even after the retained execution window rolls forward.</p>
+                <p>4. The representative lane spreads a fixed 5,000-task plan across the day. The max lane keeps topping up work against queue pressure so you can discover the machine's 24-hour ceiling.</p>
                 <p>5. Add notes only for operator-visible behavior telemetry cannot know by itself, like lag, fan noise, or surprising responsiveness.</p>
                 <p>6. When the review window is over, press `Stop`, then export Markdown and JSON for the post.</p>
               </div>
@@ -455,7 +474,7 @@ export default function ReviewSessionsPage() {
             <div className="space-y-3">
               <p className="text-sm text-foreground">No review sessions recorded.</p>
               <p className="text-xs text-muted-foreground font-mono leading-relaxed">
-                Start one with `npm run review-session:run:24h`. The page will auto-refresh and auto-select the new active soak session after bootstrap. Running only `npm run dev` boots the stack but skips the pre-stack baseline capture by design, and port `3312` must be free before bootstrap starts.
+                Start one with `npm run review-session:run:24h` for the realistic lane or `npm run review-session:run:24h:max` for the capacity lane. The page will auto-refresh and auto-select the new active soak session after bootstrap. Running only `npm run dev` boots the stack but skips the pre-stack baseline capture by design, and port `3312` must be free before bootstrap starts.
               </p>
             </div>
           ) : (
@@ -600,7 +619,7 @@ export default function ReviewSessionsPage() {
                           {session.capturePlan.profile} · every {formatSamplingInterval(session.capturePlan.sampleIntervalMs)}
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          retention {session.capturePlan.maxSamples} · target {session.capturePlan.targetTaskCount ?? "n/a"} tasks · plan {formatDurationHours(session.capturePlan.intendedDurationHours)}
+                          retention {session.capturePlan.maxSamples} · target {formatCapturePlanTarget(session.capturePlan.targetTaskCount)} · plan {formatDurationHours(session.capturePlan.intendedDurationHours)}
                         </p>
                       </div>
                     </div>

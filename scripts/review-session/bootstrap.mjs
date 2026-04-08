@@ -74,7 +74,7 @@ async function loadBootstrapEnv() {
   }
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const values = {};
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index];
@@ -82,7 +82,15 @@ function parseArgs(argv) {
       continue;
     }
 
-    const key = current.slice(2);
+    const withoutPrefix = current.slice(2);
+    const equalsIndex = withoutPrefix.indexOf("=");
+    if (equalsIndex > 0) {
+      const key = withoutPrefix.slice(0, equalsIndex);
+      values[key] = withoutPrefix.slice(equalsIndex + 1);
+      continue;
+    }
+
+    const key = withoutPrefix;
     const next = argv[index + 1];
     if (!next || next.startsWith("--")) {
       values[key] = "true";
@@ -128,6 +136,29 @@ function normalizePositiveInteger(value, fallback, minimum = 1) {
     return fallback;
   }
   return Math.max(minimum, parsed);
+}
+
+export function normalizeTargetTaskCount(value, fallback) {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["max", "capacity-max", "unbounded", "none", "n/a", "null"].includes(normalized)) {
+    return null;
+  }
+
+  return normalizePositiveInteger(value, fallback ?? 1, 1);
+}
+
+function formatTargetTaskCountLabel(value) {
+  if (value === null) {
+    return "capacity discovery";
+  }
+  if (typeof value !== "number" || value <= 0) {
+    return "n/a";
+  }
+  return `${value} tasks`;
 }
 
 async function readCpuSnapshot() {
@@ -376,7 +407,7 @@ function buildCapturePlan(args) {
         : defaults.intendedDurationHours,
     targetTaskCount:
       args["target-task-count"] !== undefined
-        ? normalizePositiveInteger(args["target-task-count"], defaults.targetTaskCount ?? 1, 1)
+        ? normalizeTargetTaskCount(args["target-task-count"], defaults.targetTaskCount)
         : defaults.targetTaskCount,
     postHandoffBucket,
   };
@@ -901,7 +932,7 @@ async function main() {
     console.log(`[review-session] target base URL ${baseUrl}`);
     console.log(`[review-session] runtime log ${runtimeLogPath}`);
     console.log(
-      `[review-session] capture plan ${capturePlan.profile} -> ${capturePlan.sampleIntervalMs}ms interval, ${capturePlan.maxSamples} samples, target ${capturePlan.targetTaskCount ?? "n/a"} tasks`,
+      `[review-session] capture plan ${capturePlan.profile} -> ${capturePlan.sampleIntervalMs}ms interval, ${capturePlan.maxSamples} samples, target ${formatTargetTaskCountLabel(capturePlan.targetTaskCount)}`,
     );
     await waitForHealth(baseUrl, timeoutMs);
     result = await postHandoff(baseUrl, token, payload, retryPath);

@@ -90,8 +90,76 @@ type DispatchTimingPlan = {
   targetDispatchRatePerMin: number;
 };
 
+type FeederMode = 'paced-total' | 'queue-top-up';
+
+type ExtendedHealthResponse = {
+  queue?: {
+    queued?: number;
+    processing?: number;
+  };
+};
+
+type QueuePressureSnapshot = {
+  capturedAt: string;
+  acceptedRuns: number;
+  completedRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  retriedRuns: number;
+  pendingRuns: number;
+  queueQueued: number;
+  queueProcessing: number;
+};
+
+type QueueTopUpConfig = {
+  durationMs: number;
+  topUpPollMs: number;
+  topUpBatchSize: number;
+  maxQueueDepth: number;
+  metricsSnapshotMs: number;
+};
+
+type QueueTopUpSummary = {
+  startedAt: string;
+  endedAt: string;
+  sampledDurationMs: number;
+  feederAccepted: number;
+  feederThrottled: number;
+  feederUnauthorized: number;
+  feederOtherErrors: number;
+  cumulativeDelta: {
+    acceptedRuns: number;
+    completedRuns: number;
+    successfulRuns: number;
+    failedRuns: number;
+    retriedRuns: number;
+    pendingRuns: number;
+  } | null;
+  throughputPerHour: {
+    feederAcceptedAvg: number;
+    completedAvg: number | null;
+    completedPeak: number | null;
+    acceptedPeak: number | null;
+  };
+  queuePressure: {
+    queuedAvg: number | null;
+    queuedPeak: number | null;
+    processingAvg: number | null;
+    processingPeak: number | null;
+  };
+  sampleCount: number;
+};
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const orchestratorRoot = resolve(scriptDir, '..');
+
+export function resolveOrchestratorConfigPath() {
+  const configured = process.env.ORCHESTRATOR_CONFIG?.trim();
+  if (configured) {
+    return resolve(configured);
+  }
+  return resolve(orchestratorRoot, '..', 'orchestrator_config.json');
+}
 
 function loadLocalEnv(): void {
   const candidates = [
@@ -158,6 +226,12 @@ function parseOptionalPositiveNumber(value: string | undefined): number | null {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
+function parseFeederMode(value: string | undefined): FeederMode {
+  return String(value ?? '').trim().toLowerCase() === 'queue-top-up'
+    ? 'queue-top-up'
+    : 'paced-total';
+}
+
 function resolveRequestedDurationMs(
   durationHoursRaw: string | undefined,
   durationMsRaw: string | undefined,
@@ -212,6 +286,13 @@ function formatDuration(ms: number): string {
     return `${minutes}m ${seconds}s`;
   }
   return `${seconds}s`;
+}
+
+function averageNumbers(values: number[]): number | null {
+  if (values.length === 0) {
+    return null;
+  }
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
 async function getFreePort(): Promise<number> {
@@ -392,6 +473,18 @@ async function getJson(
   return JSON.parse(responseText) as unknown;
 }
 
+async function fetchExtendedHealthQueue(
+  baseUrl: string,
+  apiKey: string,
+): Promise<{ queued: number; processing: number }> {
+  const payload = await getJson(baseUrl, apiKey, '/api/health/extended');
+  const parsed = payload as ExtendedHealthResponse | null;
+  return {
+    queued: Number(parsed?.queue?.queued ?? 0),
+    processing: Number(parsed?.queue?.processing ?? 0),
+  };
+}
+
 async function postJsonWithRateLimitRetry(
   baseUrl: string,
   apiKey: string,
@@ -538,6 +631,34 @@ function createGeneratedTaskRequest(
   }
 }
 
+function createWeightedSelector(specs: WorkloadSpec[]) {
+  if (specs.length === 0) {
+    throw new Error('Workload plan has no task specs');
+  }
+
+  const totalWeight = specs.reduce((sum, spec) => sum + spec.weight, 0);
+  const counters = new Array(specs.length).fill(0);
+  let emitted = 0;
+
+  return () => {
+    let bestSpecIndex = 0;
+    let bestDeficit = -Infinity;
+
+    for (let specIndex = 0; specIndex < specs.length; specIndex += 1) {
+      const target = ((emitted + 1) * specs[specIndex].weight) / totalWeight;
+      const deficit = target - counters[specIndex];
+      if (deficit > bestDeficit) {
+        bestDeficit = deficit;
+        bestSpecIndex = specIndex;
+      }
+    }
+
+    counters[bestSpecIndex] += 1;
+    emitted += 1;
+    return specs[bestSpecIndex];
+  };
+}
+
 export function resolveReviewRunLinkTarget(
   workloadRunId: string,
   acceptedTaskIds: string[],
@@ -552,6 +673,46 @@ export function resolveReviewRunLinkTarget(
     return { runId: workloadRunId.trim(), mode: 'workload-run' };
   }
   return null;
+}
+
+function normalizeReviewSessionCumulativeSummary(
+  cumulative: Partial<ReviewSessionCumulativeWorkloadSummary> | null | undefined,
+): ReviewSessionCumulativeWorkloadSummary | null {
+  if (!cumulative || typeof cumulative !== 'object') {
+    return null;
+  }
+
+  return {
+    acceptedRuns: Number(cumulative.acceptedRuns ?? 0),
+    completedRuns: Number(cumulative.completedRuns ?? 0),
+    successfulRuns: Number(cumulative.successfulRuns ?? 0),
+    failedRuns: Number(cumulative.failedRuns ?? 0),
+    retriedRuns: Number(cumulative.retriedRuns ?? 0),
+    pendingRuns: Number(cumulative.pendingRuns ?? 0),
+    totalCostUsd: Number(cumulative.totalCostUsd ?? 0),
+    averageLatencyMs:
+      cumulative.averageLatencyMs === null || cumulative.averageLatencyMs === undefined
+        ? null
+        : Number(cumulative.averageLatencyMs),
+    peakLatencyMs:
+      cumulative.peakLatencyMs === null || cumulative.peakLatencyMs === undefined
+        ? null
+        : Number(cumulative.peakLatencyMs),
+    topTaskTypes: Array.isArray(cumulative.topTaskTypes)
+      ? cumulative.topTaskTypes
+          .filter((entry): entry is { type: string; count: number } =>
+            Boolean(entry)
+            && typeof entry === 'object'
+            && typeof entry.type === 'string'
+            && Number.isFinite(Number(entry.count)),
+          )
+          .map((entry) => ({ type: entry.type, count: Number(entry.count) }))
+      : [],
+    lastAcceptedAt:
+      typeof cumulative.lastAcceptedAt === 'string' ? cumulative.lastAcceptedAt : null,
+    lastCompletedAt:
+      typeof cumulative.lastCompletedAt === 'string' ? cumulative.lastCompletedAt : null,
+  };
 }
 
 function buildTaskHistorySafePlan(
@@ -856,42 +1017,7 @@ export function extractReviewSessionCumulativeSummary(
       };
     };
   };
-  const cumulative = response.session?.summary?.workload?.cumulative;
-  if (!cumulative || typeof cumulative !== 'object') {
-    return null;
-  }
-
-  return {
-    acceptedRuns: Number(cumulative.acceptedRuns ?? 0),
-    completedRuns: Number(cumulative.completedRuns ?? 0),
-    successfulRuns: Number(cumulative.successfulRuns ?? 0),
-    failedRuns: Number(cumulative.failedRuns ?? 0),
-    retriedRuns: Number(cumulative.retriedRuns ?? 0),
-    pendingRuns: Number(cumulative.pendingRuns ?? 0),
-    totalCostUsd: Number(cumulative.totalCostUsd ?? 0),
-    averageLatencyMs:
-      cumulative.averageLatencyMs === null || cumulative.averageLatencyMs === undefined
-        ? null
-        : Number(cumulative.averageLatencyMs),
-    peakLatencyMs:
-      cumulative.peakLatencyMs === null || cumulative.peakLatencyMs === undefined
-        ? null
-        : Number(cumulative.peakLatencyMs),
-    topTaskTypes: Array.isArray(cumulative.topTaskTypes)
-      ? cumulative.topTaskTypes
-          .filter((entry): entry is { type: string; count: number } =>
-            Boolean(entry)
-            && typeof entry === 'object'
-            && typeof entry.type === 'string'
-            && Number.isFinite(Number(entry.count)),
-          )
-          .map((entry) => ({ type: entry.type, count: Number(entry.count) }))
-      : [],
-    lastAcceptedAt:
-      typeof cumulative.lastAcceptedAt === 'string' ? cumulative.lastAcceptedAt : null,
-    lastCompletedAt:
-      typeof cumulative.lastCompletedAt === 'string' ? cumulative.lastCompletedAt : null,
-  };
+  return normalizeReviewSessionCumulativeSummary(response.session?.summary?.workload?.cumulative);
 }
 
 async function waitForStdoutCompletions(
@@ -931,8 +1057,139 @@ async function fetchReviewSessionDetail(
   return response.session ?? null;
 }
 
+export function buildQueueTopUpSummary(
+  snapshots: QueuePressureSnapshot[],
+  startedAt: string,
+  endedAt: string,
+  feederAccepted: number,
+  feederThrottled: number,
+  feederUnauthorized: number,
+  feederOtherErrors: number,
+): QueueTopUpSummary {
+  const startSnapshot = snapshots[0] ?? null;
+  const endSnapshot = snapshots[snapshots.length - 1] ?? null;
+  const startedMs = Date.parse(startedAt);
+  const endedMs = Date.parse(endedAt);
+  const sampledDurationMs =
+    Number.isFinite(startedMs) && Number.isFinite(endedMs) && endedMs > startedMs
+      ? endedMs - startedMs
+      : 0;
+  const queuedValues = snapshots.map((snapshot) => snapshot.queueQueued);
+  const processingValues = snapshots.map((snapshot) => snapshot.queueProcessing);
+  const cumulativeDelta =
+    startSnapshot && endSnapshot
+      ? {
+          acceptedRuns: Math.max(0, endSnapshot.acceptedRuns - startSnapshot.acceptedRuns),
+          completedRuns: Math.max(0, endSnapshot.completedRuns - startSnapshot.completedRuns),
+          successfulRuns: Math.max(0, endSnapshot.successfulRuns - startSnapshot.successfulRuns),
+          failedRuns: Math.max(0, endSnapshot.failedRuns - startSnapshot.failedRuns),
+          retriedRuns: Math.max(0, endSnapshot.retriedRuns - startSnapshot.retriedRuns),
+          pendingRuns: Math.max(0, endSnapshot.pendingRuns - startSnapshot.pendingRuns),
+        }
+      : null;
+  const durationHours = sampledDurationMs > 0 ? sampledDurationMs / (60 * 60 * 1000) : 0;
+  const feederAcceptedAvg = durationHours > 0 ? feederAccepted / durationHours : 0;
+  const completedAvg =
+    cumulativeDelta && durationHours > 0 ? cumulativeDelta.completedRuns / durationHours : null;
+
+  const computePeakPerHour = (
+    accessor: (snapshot: QueuePressureSnapshot) => number,
+  ) => {
+    if (snapshots.length < 2) {
+      return null;
+    }
+
+    let best = 0;
+    let startIndex = 0;
+
+    for (let endIndex = 1; endIndex < snapshots.length; endIndex += 1) {
+      const endTime = Date.parse(snapshots[endIndex].capturedAt);
+      while (
+        startIndex < endIndex
+        && Number.isFinite(endTime)
+        && Number.isFinite(Date.parse(snapshots[startIndex].capturedAt))
+        && endTime - Date.parse(snapshots[startIndex].capturedAt) > 60 * 60 * 1000
+      ) {
+        startIndex += 1;
+      }
+
+      const startTime = Date.parse(snapshots[startIndex].capturedAt);
+      const windowMs = endTime - startTime;
+      if (!Number.isFinite(windowMs) || windowMs <= 0) {
+        continue;
+      }
+      const delta = accessor(snapshots[endIndex]) - accessor(snapshots[startIndex]);
+      const perHour = (Math.max(0, delta) / windowMs) * 60 * 60 * 1000;
+      if (perHour > best) {
+        best = perHour;
+      }
+    }
+
+    return best > 0 ? Number(best.toFixed(2)) : null;
+  };
+
+  return {
+    startedAt,
+    endedAt,
+    sampledDurationMs,
+    feederAccepted,
+    feederThrottled,
+    feederUnauthorized,
+    feederOtherErrors,
+    cumulativeDelta,
+    throughputPerHour: {
+      feederAcceptedAvg: Number(feederAcceptedAvg.toFixed(2)),
+      completedAvg: completedAvg === null ? null : Number(completedAvg.toFixed(2)),
+      acceptedPeak: computePeakPerHour((snapshot) => snapshot.acceptedRuns),
+      completedPeak: computePeakPerHour((snapshot) => snapshot.completedRuns),
+    },
+    queuePressure: {
+      queuedAvg: averageNumbers(queuedValues),
+      queuedPeak: queuedValues.length > 0 ? Math.max(...queuedValues) : null,
+      processingAvg: averageNumbers(processingValues),
+      processingPeak: processingValues.length > 0 ? Math.max(...processingValues) : null,
+    },
+    sampleCount: snapshots.length,
+  };
+}
+
+async function dispatchTaskTrigger(
+  args: {
+    baseUrl: string;
+    apiKey: string;
+    clientIp: string;
+    taskRequest: TaskTriggerRequest;
+  },
+) {
+  const requestStart = Date.now();
+  const response = await fetch(`${args.baseUrl}/api/tasks/trigger`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${args.apiKey}`,
+      'X-Forwarded-For': args.clientIp,
+    },
+    body: JSON.stringify(args.taskRequest),
+  });
+
+  const latencyMs = Date.now() - requestStart;
+  let taskId: string | null = null;
+  if (response.status === 202) {
+    const body = (await response.json()) as { taskId?: string };
+    taskId = typeof body.taskId === 'string' ? body.taskId : null;
+  }
+
+  return {
+    status: response.status,
+    latencyMs,
+    taskId,
+    type: args.taskRequest.type,
+  };
+}
+
 async function main() {
   const attachMode = parseBoolean(process.env.LIVE_RATE_ATTACH, false);
+  const feederMode = parseFeederMode(process.env.LIVE_RATE_FEEDER_MODE);
   const requestedTotalTasks = parseOptionalPositiveInteger(process.env.LIVE_RATE_TOTAL_TASKS);
   const requestedIntervalMs = parseOptionalPositiveInteger(process.env.LIVE_RATE_INTERVAL_MS);
   const requestedDurationMs = resolveRequestedDurationMs(
@@ -948,6 +1205,15 @@ async function main() {
   const reviewNoteIntervalMinutes = parseOptionalPositiveNumber(
     process.env.LIVE_RATE_REVIEW_NOTE_INTERVAL_MINUTES,
   );
+  const requestedTopUpPollMs = parseOptionalPositiveInteger(process.env.LIVE_RATE_TOP_UP_POLL_MS);
+  const requestedTopUpBatchSize = parseOptionalPositiveInteger(
+    process.env.LIVE_RATE_TOP_UP_BATCH_SIZE ?? process.env.LIVE_RATE_TOP_UP_BATCH,
+  );
+  const requestedMaxQueueDepth = parseOptionalPositiveInteger(process.env.LIVE_RATE_MAX_QUEUE_DEPTH);
+  const requestedMetricsSnapshotMs = parseOptionalPositiveInteger(
+    process.env.LIVE_RATE_METRICS_SNAPSHOT_MS,
+  );
+  const requestedCycleLogEvery = parseOptionalPositiveInteger(process.env.LIVE_RATE_CYCLE_LOG_EVERY);
   const defaultPort = process.env.PORT ?? '3000';
   const port = attachMode ? Number(defaultPort) : await getFreePort();
   const baseUrl = process.env.LIVE_RATE_BASE_URL ?? `http://127.0.0.1:${port}`;
@@ -956,7 +1222,7 @@ async function main() {
   const runId = `live-rate-${Date.now()}`;
 
   const tsxCliPath = resolve(process.cwd(), '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
-  const configPath = resolve(process.cwd(), '..', 'orchestrator_config.json');
+  const configPath = resolveOrchestratorConfigPath();
   const configRaw = await readFile(configPath, 'utf-8');
   const config = JSON.parse(configRaw) as { stateFile: string; logsDir?: string; taskHistoryLimit?: number };
   const stateFilePath = resolveConfigPathTarget(configPath, config.stateFile);
@@ -981,7 +1247,7 @@ async function main() {
 
   let reviewSessionDetail: ReviewSessionRecord | null = null;
   let cumulativeReviewSummary: ReviewSessionCumulativeWorkloadSummary | null = null;
-  let totalTasks = requestedTotalTasks;
+  let totalTasks = feederMode === 'paced-total' ? requestedTotalTasks : null;
   const latencies: number[] = [];
   const acceptedTaskIds: string[] = [];
   const queuedByType = new Map<string, number>();
@@ -1054,21 +1320,55 @@ async function main() {
       }
     }
 
-    totalTasks = totalTasks
-      ?? (reviewSessionDetail?.capturePlan?.targetTaskCount ?? null)
-      ?? 3000;
     const targetDurationMs = requestedDurationMs
       ?? (reviewSessionDetail?.capturePlan?.intendedDurationHours
         ? Math.round(reviewSessionDetail.capturePlan.intendedDurationHours * 60 * 60 * 1000)
         : null);
-    const timingPlan = resolveDispatchTimingPlan(totalTasks, requestedIntervalMs, targetDurationMs);
-    const progressEvery = parseOptionalPositiveInteger(process.env.LIVE_RATE_PROGRESS_EVERY)
-      ?? (timingPlan.mode === 'duration-paced' ? 25 : 5);
     const workloadPlan = await buildWorkloadPlan(workloadProfile, runId, stateFilePath, manifestPath);
-    const schedule = buildWeightedSchedule(workloadPlan.specs, totalTasks);
     const reviewNoteIntervalMs = reviewNoteIntervalMinutes === null
       ? null
       : Math.round(reviewNoteIntervalMinutes * 60 * 1000);
+    const queueTopUpConfig: QueueTopUpConfig | null =
+      feederMode === 'queue-top-up'
+        ? {
+            durationMs:
+              targetDurationMs
+              ?? (() => {
+                throw new Error('queue-top-up feeder requires LIVE_RATE_DURATION_HOURS or LIVE_RATE_DURATION_MS');
+              })(),
+            topUpPollMs: requestedTopUpPollMs ?? 5000,
+            topUpBatchSize: requestedTopUpBatchSize ?? 25,
+            maxQueueDepth: requestedMaxQueueDepth ?? 250,
+            metricsSnapshotMs: requestedMetricsSnapshotMs ?? 60000,
+          }
+        : null;
+
+    totalTasks = feederMode === 'paced-total'
+      ? totalTasks
+        ?? (reviewSessionDetail?.capturePlan?.targetTaskCount ?? null)
+        ?? 3000
+      : null;
+
+    const timingPlan = feederMode === 'paced-total'
+      ? resolveDispatchTimingPlan(totalTasks ?? 3000, requestedIntervalMs, targetDurationMs)
+      : null;
+    const progressEvery = feederMode === 'paced-total'
+      ? parseOptionalPositiveInteger(process.env.LIVE_RATE_PROGRESS_EVERY)
+        ?? (timingPlan?.mode === 'duration-paced' ? 25 : 5)
+      : null;
+    const schedule = feederMode === 'paced-total'
+      ? buildWeightedSchedule(workloadPlan.specs, totalTasks ?? 3000)
+      : null;
+    const topUpSelector = feederMode === 'queue-top-up'
+      ? createWeightedSelector(workloadPlan.specs)
+      : null;
+    const cycleLogEvery = feederMode === 'queue-top-up'
+      ? requestedCycleLogEvery ?? Math.max(1, Math.round(60000 / (queueTopUpConfig?.topUpPollMs ?? 5000)))
+      : null;
+
+    if (feederMode === 'queue-top-up' && (!attachMode || !reviewSessionId)) {
+      throw new Error('queue-top-up feeder requires LIVE_RATE_ATTACH=true and an active review session');
+    }
 
     if (attachMode && reviewSessionId) {
       await postJson(
@@ -1079,9 +1379,11 @@ async function main() {
           bucket: reviewBucket,
           note:
             `Starting ${workloadPlan.profile} workload run ${runId} ` +
-            (timingPlan.mode === 'duration-paced'
-              ? `(${totalTasks} tasks paced across ${formatDuration(timingPlan.targetDurationMs ?? 0)}).`
-              : `(${totalTasks} tasks at ${timingPlan.intervalMs}ms interval).`),
+            (feederMode === 'queue-top-up'
+              ? `(capacity-max top-up for ${formatDuration(queueTopUpConfig?.durationMs ?? 0)} with depth ceiling ${queueTopUpConfig?.maxQueueDepth ?? 'n/a'} and batch ${queueTopUpConfig?.topUpBatchSize ?? 'n/a'}).`
+              : timingPlan?.mode === 'duration-paced'
+                ? `(${totalTasks} tasks paced across ${formatDuration(timingPlan.targetDurationMs ?? 0)}).`
+                : `(${totalTasks} tasks at ${timingPlan?.intervalMs ?? requestedIntervalMs ?? 25}ms interval).`),
         },
       );
     }
@@ -1091,15 +1393,18 @@ async function main() {
     console.log('============================================================');
     console.log(`Run ID: ${runId}`);
     console.log(`Attach mode: ${attachMode}`);
+    console.log(`Feeder mode: ${feederMode}`);
     console.log(`Fast-start mode: ${fastStart}`);
     console.log(`Base URL: ${baseUrl}`);
     console.log(`Workload profile: ${workloadPlan.profile} (${workloadPlan.source})`);
-    console.log(`Target tasks: ${totalTasks}`);
+    console.log(`Target tasks: ${totalTasks ?? 'open-ended capacity discovery'}`);
     console.log(
-      timingPlan.mode === 'duration-paced'
-        ? `Dispatch pacing: ${totalTasks} tasks across ${formatDuration(timingPlan.targetDurationMs ?? 0)} ` +
-          `(about ${timingPlan.targetDispatchRatePerMin.toFixed(2)} req/min, every ${(timingPlan.intervalMs / 1000).toFixed(1)}s)`
-        : `Dispatch interval: ${timingPlan.intervalMs}ms (~${timingPlan.targetDispatchRatePerMin.toFixed(2)} req/min)`,
+      feederMode === 'queue-top-up'
+        ? `Queue top-up: ${formatDuration(queueTopUpConfig?.durationMs ?? 0)} with queue ceiling ${queueTopUpConfig?.maxQueueDepth ?? 0}, batch ${queueTopUpConfig?.topUpBatchSize ?? 0}, poll ${queueTopUpConfig?.topUpPollMs ?? 0}ms`
+        : timingPlan?.mode === 'duration-paced'
+          ? `Dispatch pacing: ${totalTasks} tasks across ${formatDuration(timingPlan.targetDurationMs ?? 0)} ` +
+            `(about ${timingPlan.targetDispatchRatePerMin.toFixed(2)} req/min, every ${(timingPlan.intervalMs / 1000).toFixed(1)}s)`
+          : `Dispatch interval: ${timingPlan?.intervalMs ?? requestedIntervalMs ?? 25}ms (~${(timingPlan?.targetDispatchRatePerMin ?? 0).toFixed(2)} req/min)`,
     );
     console.log(`Forwarded IP pool: ${forwardedIpPool}`);
     console.log(`Review session: ${reviewSessionId ?? 'none detected'}`);
@@ -1110,111 +1415,277 @@ async function main() {
     console.log('');
 
     const dispatchStart = Date.now();
+    const dispatchStartedAtIso = new Date(dispatchStart).toISOString();
     let lastProgressNoteAt = reviewNoteIntervalMs === null ? Number.POSITIVE_INFINITY : dispatchStart;
+    let queueTopUpSummary: QueueTopUpSummary | null = null;
 
-    for (let i = 0; i < totalTasks; i++) {
-      if (i > 0) {
-        if (timingPlan.mode === 'duration-paced' && timingPlan.targetDurationMs !== null) {
-          const scheduledDispatchAt =
-            dispatchStart
-            + Math.round((timingPlan.targetDurationMs * i) / Math.max(1, totalTasks - 1));
-          const waitMs = scheduledDispatchAt - Date.now();
-          if (waitMs > 0) {
-            await sleep(waitMs);
+    if (feederMode === 'queue-top-up') {
+      const snapshots: QueuePressureSnapshot[] = [];
+      const topUpDeadline = dispatchStart + (queueTopUpConfig?.durationMs ?? 0);
+      let cycle = 0;
+      let sequence = 0;
+      let lastSnapshotAt = 0;
+
+      const captureQueueSnapshot = async (
+        queueQueued: number,
+        queueProcessing: number,
+        force = false,
+      ) => {
+        if (!attachMode || !reviewSessionId) {
+          return;
+        }
+
+        if (!force && Date.now() - lastSnapshotAt < (queueTopUpConfig?.metricsSnapshotMs ?? 60000)) {
+          return;
+        }
+
+        const detail = await fetchReviewSessionDetail(baseUrl, apiKey, reviewSessionId);
+        const cumulative = normalizeReviewSessionCumulativeSummary(
+          detail?.summary?.workload?.cumulative ?? null,
+        );
+        if (!cumulative) {
+          return;
+        }
+
+        cumulativeReviewSummary = cumulative;
+        snapshots.push({
+          capturedAt: new Date().toISOString(),
+          acceptedRuns: cumulative.acceptedRuns,
+          completedRuns: cumulative.completedRuns,
+          successfulRuns: cumulative.successfulRuns,
+          failedRuns: cumulative.failedRuns,
+          retriedRuns: cumulative.retriedRuns,
+          pendingRuns: cumulative.pendingRuns,
+          queueQueued,
+          queueProcessing,
+        });
+        lastSnapshotAt = Date.now();
+      };
+
+      while (Date.now() < topUpDeadline) {
+        cycle += 1;
+        const { queued, processing } = await fetchExtendedHealthQueue(baseUrl, apiKey);
+        await captureQueueSnapshot(queued, processing, false);
+
+        const currentBacklog = Math.max(0, queued + processing);
+        const dispatchCount = Math.max(
+          0,
+          Math.min(
+            queueTopUpConfig?.topUpBatchSize ?? 0,
+            (queueTopUpConfig?.maxQueueDepth ?? 0) - currentBacklog,
+          ),
+        );
+
+        if (dispatchCount > 0) {
+          const poolSize = Math.max(1, Math.min(65000, forwardedIpPool));
+          const results = await Promise.all(
+            Array.from({ length: dispatchCount }, () => {
+              const currentSequence = sequence;
+              sequence += 1;
+              const clientIndex = currentSequence % poolSize;
+              const octet3 = Math.floor(clientIndex / 250) % 250;
+              const octet4 = (clientIndex % 250) + 1;
+              const clientIp = `10.20.${octet3}.${octet4}`;
+              const spec = topUpSelector!();
+              return dispatchTaskTrigger({
+                baseUrl,
+                apiKey,
+                clientIp,
+                taskRequest: createGeneratedTaskRequest(spec, currentSequence, runId),
+              });
+            }),
+          );
+
+          for (const result of results) {
+            latencies.push(result.latencyMs);
+
+            if (result.status === 202) {
+              accepted += 1;
+              if (result.taskId && acceptedTaskIds.length < 25) {
+                acceptedTaskIds.push(result.taskId);
+              }
+              queuedByType.set(result.type, (queuedByType.get(result.type) ?? 0) + 1);
+            } else if (result.status === 429) {
+              throttled += 1;
+            } else if (result.status === 401) {
+              unauthorized += 1;
+            } else {
+              otherErrors += 1;
+            }
           }
-        } else {
-          await sleep(timingPlan.intervalMs);
+        }
+
+        if (cycle % (cycleLogEvery ?? 1) === 0 || Date.now() + (queueTopUpConfig?.topUpPollMs ?? 0) >= topUpDeadline) {
+          const elapsedMs = Date.now() - dispatchStart;
+          const remainingMs = Math.max(0, topUpDeadline - Date.now());
+          console.log(
+            `Capacity cycle ${cycle}: accepted=${accepted}, throttled=${throttled}, backlog=${currentBacklog}, queue=${queued}, processing=${processing}, elapsed=${formatDuration(elapsedMs)}, remaining=${formatDuration(remainingMs)}`,
+          );
+        }
+
+        if (
+          attachMode
+          && reviewSessionId
+          && reviewNoteIntervalMs !== null
+          && Date.now() - lastProgressNoteAt >= reviewNoteIntervalMs
+        ) {
+          lastProgressNoteAt = Date.now();
+          try {
+            const detail = await fetchReviewSessionDetail(baseUrl, apiKey, reviewSessionId);
+            cumulativeReviewSummary = normalizeReviewSessionCumulativeSummary(
+              detail?.summary?.workload?.cumulative ?? null,
+            ) ?? cumulativeReviewSummary;
+            await postJsonWithRateLimitRetry(
+              baseUrl,
+              apiKey,
+              `/api/review-sessions/${encodeURIComponent(reviewSessionId)}/note`,
+              {
+                bucket: reviewBucket,
+                text:
+                  `Capacity feeder ${runId}: accepted ${accepted}, throttled ${throttled}, ` +
+                  `cumulative completed ${cumulativeReviewSummary?.completedRuns ?? 'n/a'}, ` +
+                  `peak queue snapshot ${Math.max(
+                    queued,
+                    snapshots.at(-1)?.queueQueued ?? queued,
+                  )}.`,
+              },
+            );
+          } catch (error) {
+            console.warn(
+              `[review-workload] Unable to append periodic progress note to review session ${reviewSessionId}: ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+
+        const waitMs = Math.min(
+          queueTopUpConfig?.topUpPollMs ?? 0,
+          Math.max(0, topUpDeadline - Date.now()),
+        );
+        if (waitMs > 0) {
+          await sleep(waitMs);
         }
       }
 
-      const requestStart = Date.now();
-      const poolSize = Math.max(1, Math.min(65000, forwardedIpPool));
-      const clientIndex = i % poolSize;
-      const octet3 = Math.floor(clientIndex / 250) % 250;
-      const octet4 = (clientIndex % 250) + 1;
-      const clientIp = `10.20.${octet3}.${octet4}`;
-      const taskRequest = createGeneratedTaskRequest(schedule[i], i, runId);
-      const response = await fetch(`${baseUrl}/api/tasks/trigger`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${apiKey}`,
-          'X-Forwarded-For': clientIp,
-        },
-        body: JSON.stringify(taskRequest),
-      });
+      const finalQueue = await fetchExtendedHealthQueue(baseUrl, apiKey);
+      await captureQueueSnapshot(finalQueue.queued, finalQueue.processing, true);
+      queueTopUpSummary = buildQueueTopUpSummary(
+        snapshots,
+        dispatchStartedAtIso,
+        new Date().toISOString(),
+        accepted,
+        throttled,
+        unauthorized,
+        otherErrors,
+      );
+    } else {
+      for (let i = 0; i < (totalTasks ?? 0); i++) {
+        if (i > 0) {
+          if (timingPlan?.mode === 'duration-paced' && timingPlan.targetDurationMs !== null) {
+            const scheduledDispatchAt =
+              dispatchStart
+              + Math.round((timingPlan.targetDurationMs * i) / Math.max(1, (totalTasks ?? 0) - 1));
+            const waitMs = scheduledDispatchAt - Date.now();
+            if (waitMs > 0) {
+              await sleep(waitMs);
+            }
+          } else if (timingPlan) {
+            await sleep(timingPlan.intervalMs);
+          }
+        }
 
-      const elapsed = Date.now() - requestStart;
-      latencies.push(elapsed);
+        const poolSize = Math.max(1, Math.min(65000, forwardedIpPool));
+        const clientIndex = i % poolSize;
+        const octet3 = Math.floor(clientIndex / 250) % 250;
+        const octet4 = (clientIndex % 250) + 1;
+        const clientIp = `10.20.${octet3}.${octet4}`;
+        const result = await dispatchTaskTrigger({
+          baseUrl,
+          apiKey,
+          clientIp,
+          taskRequest: createGeneratedTaskRequest(schedule![i], i, runId),
+        });
 
-      if (response.status === 202) {
-        accepted += 1;
-        const body = (await response.json()) as { taskId: string };
-        acceptedTaskIds.push(body.taskId);
-        queuedByType.set(taskRequest.type, (queuedByType.get(taskRequest.type) ?? 0) + 1);
-      } else if (response.status === 429) {
-        throttled += 1;
-      } else if (response.status === 401) {
-        unauthorized += 1;
-      } else {
-        otherErrors += 1;
-      }
+        latencies.push(result.latencyMs);
 
-      if ((i + 1) % progressEvery === 0 || i + 1 === totalTasks) {
-        const elapsedMs = Date.now() - dispatchStart;
-        const remainingTasks = totalTasks - (i + 1);
-        const etaMs = remainingTasks > 0 ? remainingTasks * timingPlan.intervalMs : 0;
-        console.log(
-          `Dispatched ${i + 1}/${totalTasks} (accepted=${accepted}, throttled=${throttled}, elapsed=${formatDuration(elapsedMs)}, eta=${formatDuration(etaMs)})`,
-        );
-      }
+        if (result.status === 202) {
+          accepted += 1;
+          if (result.taskId) {
+            acceptedTaskIds.push(result.taskId);
+          }
+          queuedByType.set(result.type, (queuedByType.get(result.type) ?? 0) + 1);
+        } else if (result.status === 429) {
+          throttled += 1;
+        } else if (result.status === 401) {
+          unauthorized += 1;
+        } else {
+          otherErrors += 1;
+        }
 
-      if (
-        attachMode
-        && reviewSessionId
-        && reviewNoteIntervalMs !== null
-        && Date.now() - lastProgressNoteAt >= reviewNoteIntervalMs
-      ) {
-        lastProgressNoteAt = Date.now();
-        try {
-          await postJsonWithRateLimitRetry(
-            baseUrl,
-            apiKey,
-            `/api/review-sessions/${encodeURIComponent(reviewSessionId)}/note`,
-            {
-              bucket: reviewBucket,
-              text:
-                `Feeder progress for ${runId}: dispatched ${i + 1}/${totalTasks}, accepted ${accepted}, ` +
-                `throttled ${throttled}, current mix ${Array.from(queuedByType.entries())
-                  .sort((left, right) => right[1] - left[1])
-                  .map(([type, count]) => `${type}=${count}`)
-                  .join(', ') || 'none'}.`,
-            },
+        if (((i + 1) % (progressEvery ?? 5) === 0) || i + 1 === (totalTasks ?? 0)) {
+          const elapsedMs = Date.now() - dispatchStart;
+          const remainingTasks = (totalTasks ?? 0) - (i + 1);
+          const etaMs = remainingTasks > 0 ? remainingTasks * (timingPlan?.intervalMs ?? 0) : 0;
+          console.log(
+            `Dispatched ${i + 1}/${totalTasks} (accepted=${accepted}, throttled=${throttled}, elapsed=${formatDuration(elapsedMs)}, eta=${formatDuration(etaMs)})`,
           );
-        } catch (error) {
-          console.warn(
-            `[review-workload] Unable to append periodic progress note to review session ${reviewSessionId}: ` +
-            `${error instanceof Error ? error.message : String(error)}`,
-          );
+        }
+
+        if (
+          attachMode
+          && reviewSessionId
+          && reviewNoteIntervalMs !== null
+          && Date.now() - lastProgressNoteAt >= reviewNoteIntervalMs
+        ) {
+          lastProgressNoteAt = Date.now();
+          try {
+            await postJsonWithRateLimitRetry(
+              baseUrl,
+              apiKey,
+              `/api/review-sessions/${encodeURIComponent(reviewSessionId)}/note`,
+              {
+                bucket: reviewBucket,
+                text:
+                  `Feeder progress for ${runId}: dispatched ${i + 1}/${totalTasks}, accepted ${accepted}, ` +
+                  `throttled ${throttled}, current mix ${Array.from(queuedByType.entries())
+                    .sort((left, right) => right[1] - left[1])
+                    .map(([type, count]) => `${type}=${count}`)
+                    .join(', ') || 'none'}.`,
+              },
+            );
+          } catch (error) {
+            console.warn(
+              `[review-workload] Unable to append periodic progress note to review session ${reviewSessionId}: ` +
+              `${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
         }
       }
     }
 
     const dispatchDurationMs = Date.now() - dispatchStart;
-    const stdoutCompletionTimeoutMs = Math.min(
-      60000,
-      Math.max(10000, totalTasks * Math.max(250, timingPlan.intervalMs)),
-    );
-    const completedByStdout = attachMode
+    const stdoutCompletionTimeoutMs = feederMode === 'paced-total'
+      ? Math.min(
+          60000,
+          Math.max(10000, (totalTasks ?? 0) * Math.max(250, timingPlan?.intervalMs ?? 25)),
+        )
+      : 0;
+    const completedByStdout = feederMode === 'queue-top-up'
       ? new Set<number>()
-      : await waitForStdoutCompletions(
-          () => stdoutBuffer,
-          runId,
-          accepted,
-          stdoutCompletionTimeoutMs,
-        );
-    const completed = await waitForTaskHistory(stateFilePath, acceptedTaskIds, 10000);
-    const executionRecords = await waitForTaskExecutions(stateFilePath, acceptedTaskIds, 10000);
+      : attachMode
+        ? new Set<number>()
+        : await waitForStdoutCompletions(
+            () => stdoutBuffer,
+            runId,
+            accepted,
+            stdoutCompletionTimeoutMs,
+          );
+    const completed = feederMode === 'queue-top-up'
+      ? new Map<string, TaskHistoryRecord>()
+      : await waitForTaskHistory(stateFilePath, acceptedTaskIds, 10000);
+    const executionRecords = feederMode === 'queue-top-up'
+      ? new Map<string, TaskExecutionRecord>()
+      : await waitForTaskExecutions(stateFilePath, acceptedTaskIds, 10000);
     const executionStatusSummary = summarizeExecutionStatuses(executionRecords.values());
 
     let completedOk = 0;
@@ -1265,7 +1736,11 @@ async function main() {
 
     console.log('');
     console.log('---------------- SUMMARY ----------------');
-    console.log(`Accepted: ${accepted}/${totalTasks}`);
+    console.log(
+      feederMode === 'queue-top-up'
+        ? `Accepted: ${accepted} (open-ended capacity feeder)`
+        : `Accepted: ${accepted}/${totalTasks}`,
+    );
     console.log(`Throttled (429): ${throttled}`);
     console.log(`Unauthorized (401): ${unauthorized}`);
     console.log(`Other errors: ${otherErrors}`);
@@ -1277,18 +1752,27 @@ async function main() {
         : `Completions observed in stdout: ${completedByStdout.size}/${accepted} (${completionCoverage.toFixed(1)}%)`,
     );
     console.log(`Queued mix: ${queuedMix.join(', ') || 'none'}`);
-    console.log(`Execution records retained in state (cap 5000): ${executionRecords.size}/${accepted}`);
-    console.log(
-      `Execution status split from state: success=${executionStatusSummary.success}, failed=${executionStatusSummary.failed}, retrying=${executionStatusSummary.retrying}, pending/running=${executionStatusSummary.pendingOrRunning}`,
-    );
-    console.log(`Recent taskHistory sample retained (cap ${taskHistoryLimit}): ${completed.size}/${accepted}`);
-    console.log(`taskHistory sample result split: ok=${completedOk}, error=${completedError}`);
-    if (totalDrainSeconds > 0) {
+    if (feederMode === 'queue-top-up') {
+      console.log('Retained execution/taskHistory windows are not used as the source of truth for capacity mode.');
+    } else {
+      console.log(`Execution records retained in state (cap 5000): ${executionRecords.size}/${accepted}`);
+      console.log(
+        `Execution status split from state: success=${executionStatusSummary.success}, failed=${executionStatusSummary.failed}, retrying=${executionStatusSummary.retrying}, pending/running=${executionStatusSummary.pendingOrRunning}`,
+      );
+      console.log(`Recent taskHistory sample retained (cap ${taskHistoryLimit}): ${completed.size}/${accepted}`);
+      console.log(`taskHistory sample result split: ok=${completedOk}, error=${completedError}`);
+    }
+    if (totalDrainSeconds > 0 && feederMode !== 'queue-top-up') {
       console.log(`Dispatch-to-last-completion: ${totalDrainSeconds.toFixed(1)}s`);
     }
     if (cumulativeReviewSummary) {
       console.log(
-        `Review session cumulative totals: accepted=${cumulativeReviewSummary.acceptedRuns}, completed=${cumulativeReviewSummary.completedRuns}, successful=${cumulativeReviewSummary.successfulRuns}, failed=${cumulativeReviewSummary.failedRuns}, retried=${cumulativeReviewSummary.retriedRuns}, pending=${cumulativeReviewSummary.pendingRuns}`,
+      `Review session cumulative totals: accepted=${cumulativeReviewSummary.acceptedRuns}, completed=${cumulativeReviewSummary.completedRuns}, successful=${cumulativeReviewSummary.successfulRuns}, failed=${cumulativeReviewSummary.failedRuns}, retried=${cumulativeReviewSummary.retriedRuns}, pending=${cumulativeReviewSummary.pendingRuns}`,
+      );
+    }
+    if (queueTopUpSummary) {
+      console.log(
+        `Capacity delta: accepted=${queueTopUpSummary.cumulativeDelta?.acceptedRuns ?? 'n/a'}, completed=${queueTopUpSummary.cumulativeDelta?.completedRuns ?? 'n/a'}, peak completed/hr=${queueTopUpSummary.throughputPerHour.completedPeak ?? 'n/a'}, peak accepted/hr=${queueTopUpSummary.throughputPerHour.acceptedPeak ?? 'n/a'}, queue avg/peak=${queueTopUpSummary.queuePressure.queuedAvg ?? 'n/a'}/${queueTopUpSummary.queuePressure.queuedPeak ?? 'n/a'}`,
       );
     }
     console.log('-----------------------------------------');
@@ -1297,8 +1781,9 @@ async function main() {
     const summaryRecord = {
       runId,
       generatedAt: new Date().toISOString(),
+      feederMode,
       fastStart,
-      totalTasks,
+      totalTasks: totalTasks ?? null,
       accepted,
       throttled,
       unauthorized,
@@ -1309,12 +1794,19 @@ async function main() {
         max: enqueueMax,
       },
       effectiveDispatchRatePerMin: Number(dispatchRatePerMin.toFixed(2)),
-      dispatchTiming: {
-        mode: timingPlan.mode,
-        intervalMs: timingPlan.intervalMs,
-        targetDurationMs: timingPlan.targetDurationMs,
-        targetDispatchRatePerMin: Number(timingPlan.targetDispatchRatePerMin.toFixed(2)),
-      },
+      dispatchTiming: timingPlan
+        ? {
+            mode: timingPlan.mode,
+            intervalMs: timingPlan.intervalMs,
+            targetDurationMs: timingPlan.targetDurationMs,
+            targetDispatchRatePerMin: Number(timingPlan.targetDispatchRatePerMin.toFixed(2)),
+          }
+        : {
+            mode: 'queue-top-up',
+            intervalMs: queueTopUpConfig?.topUpPollMs ?? null,
+            targetDurationMs: queueTopUpConfig?.durationMs ?? null,
+            targetDispatchRatePerMin: null,
+          },
       completionsObservedStdout: completedByStdout.size,
       executionRecordsRetained: executionRecords.size,
       executionStatusSplitFromState: executionStatusSummary,
@@ -1336,6 +1828,7 @@ async function main() {
       excludedTypes: workloadPlan.excludedTypes,
       queuedByType: Object.fromEntries(queuedByType.entries()),
       reviewSessionCumulative: cumulativeReviewSummary,
+      queueTopUp: queueTopUpSummary,
     };
 
     await mkdir(dirname(runLogPath), { recursive: true });
@@ -1373,9 +1866,14 @@ async function main() {
           {
             bucket: reviewBucket,
             text:
-              `${workloadPlan.profile} workload ${runId}: accepted ${accepted}/${totalTasks}, ` +
-              `throttled ${throttled}, enqueue p95 ${enqueueP95}ms, ` +
-              `dispatch rate ${dispatchRatePerMin.toFixed(2)} req/min, mix ${queuedMix.join(', ')}.`,
+              feederMode === 'queue-top-up'
+                ? `capacity-max workload ${runId}: feeder accepted ${accepted}, throttled ${throttled}, ` +
+                  `completed delta ${queueTopUpSummary?.cumulativeDelta?.completedRuns ?? 'n/a'}, ` +
+                  `peak completed/hr ${queueTopUpSummary?.throughputPerHour.completedPeak ?? 'n/a'}, ` +
+                  `queue peak ${queueTopUpSummary?.queuePressure.queuedPeak ?? 'n/a'}, mix ${queuedMix.join(', ')}.`
+                : `${workloadPlan.profile} workload ${runId}: accepted ${accepted}/${totalTasks}, ` +
+                  `throttled ${throttled}, enqueue p95 ${enqueueP95}ms, ` +
+                  `dispatch rate ${dispatchRatePerMin.toFixed(2)} req/min, mix ${queuedMix.join(', ')}.`,
           },
         );
       } catch (error) {

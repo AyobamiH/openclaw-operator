@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultState } from "../src/state.js";
-import { reconcileStaleReviewSessionsState } from "../../scripts/review-session/bootstrap.mjs";
+import {
+  normalizeTargetTaskCount,
+  parseArgs,
+  reconcileStaleReviewSessionsState,
+} from "../../scripts/review-session/bootstrap.mjs";
 
 function createEmptyCumulativeWorkload() {
   return {
@@ -21,6 +25,29 @@ function createEmptyCumulativeWorkload() {
 }
 
 describe("review-session bootstrap preflight", () => {
+  it("accepts open-ended capacity aliases for the 24h max lane target", () => {
+    expect(normalizeTargetTaskCount("max", 5000)).toBeNull();
+    expect(normalizeTargetTaskCount("capacity-max", 5000)).toBeNull();
+    expect(normalizeTargetTaskCount("unbounded", 5000)).toBeNull();
+    expect(normalizeTargetTaskCount("null", 5000)).toBeNull();
+    expect(normalizeTargetTaskCount("7500", 5000)).toBe(7500);
+  });
+
+  it("parses npm passthrough flags written as --key=value", () => {
+    expect(
+      parseArgs([
+        "--profile=soak-24h",
+        "--target-task-count=max",
+        "--baseUrl",
+        "http://127.0.0.1:4312",
+      ]),
+    ).toEqual({
+      profile: "soak-24h",
+      "target-task-count": "max",
+      baseUrl: "http://127.0.0.1:4312",
+    });
+  });
+
   it("reconciles stale active and pending handoff sessions before a fresh run starts", () => {
     const state = createDefaultState();
     state.reviewSessions.push(
