@@ -1712,7 +1712,7 @@ export interface ReviewSessionWorkloadSummary {
     type: string;
     count: number;
   }>;
-  cumulative: ReviewSessionCumulativeWorkloadSummary;
+  cumulative?: ReviewSessionCumulativeWorkloadSummary | null;
 }
 
 export interface ReviewSessionDerivedSummary {

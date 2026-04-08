@@ -546,6 +546,188 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText(/13 approvals are waiting, but they are downstream of the larger incident story right now/i)).toBeInTheDocument();
   });
 
+  it("renders legacy review sessions that do not yet have cumulative soak totals", () => {
+    vi.mocked(consoleHooks.useReviewSessions).mockReturnValue({
+      data: {
+        sessions: [
+          {
+            id: "review-legacy",
+            title: "older soak session",
+            state: "completed",
+            createdAt: "2026-03-30T08:00:00.000Z",
+            activeBucket: "steady_state_running_cost",
+            baselineSummary: {
+              cpuPercentAvg: 3.4,
+              cpuPercentPeak: 5.8,
+              memoryUsedMbAvg: 512,
+              memoryUsedMbPeak: 540,
+              loadAvg1m: 0.18,
+            },
+            baselineStartedAt: "2026-03-30T08:00:00.000Z",
+            baselineEndedAt: "2026-03-30T08:00:08.000Z",
+            handoffReceivedAt: "2026-03-30T08:01:00.000Z",
+            startupStartedAt: "2026-03-30T08:00:08.000Z",
+            capturePlan: {
+              profile: "soak-24h",
+              sampleIntervalMs: 60000,
+              maxSamples: 1800,
+              intendedDurationHours: 24,
+              targetTaskCount: 5000,
+            },
+            machine: {
+              hostname: "mini-pc",
+              platform: "linux",
+              arch: "x64",
+              cpuModel: "AMD Ryzen",
+              cpuCores: 8,
+              memoryTotalMb: 16384,
+            },
+            summary: {
+              durationSeconds: 7200,
+              startupHandoffSeconds: 52,
+              workload: {
+                windowStartedAt: "2026-03-30T08:01:00.000Z",
+                windowEndedAt: "2026-03-30T10:01:00.000Z",
+                consideredRuns: 14,
+                completedRuns: 12,
+                successfulRuns: 11,
+                failedRuns: 1,
+                retryingRuns: 0,
+                pendingRuns: 2,
+                averageLatencyMs: 420,
+                p95LatencyMs: 900,
+                totalCostUsd: 0.1245,
+                topTaskTypes: [{ type: "heartbeat", count: 8 }],
+              },
+              telemetry: {
+                totalSampleCount: 4,
+                queueDepthPeak: 38,
+                openIncidentsPeak: 2,
+                cpuPercentPeak: 61,
+                processRssMbPeak: 684,
+              },
+              bucketStats: {
+                steady_state_running_cost: { sampleCount: 4 },
+              },
+            },
+            linkedRunIds: ["run-1"],
+          },
+        ],
+        activeSession: null,
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useReviewSessions>);
+
+    vi.mocked(consoleHooks.useReviewSessionDetail).mockReturnValue({
+      data: {
+        session: {
+          id: "review-legacy",
+          title: "older soak session",
+          state: "completed",
+          createdAt: "2026-03-30T08:00:00.000Z",
+          activeBucket: "steady_state_running_cost",
+          baselineSummary: {
+            cpuPercentAvg: 3.4,
+            cpuPercentPeak: 5.8,
+            memoryUsedMbAvg: 512,
+            memoryUsedMbPeak: 540,
+            loadAvg1m: 0.18,
+          },
+          baselineStartedAt: "2026-03-30T08:00:00.000Z",
+          baselineEndedAt: "2026-03-30T08:00:08.000Z",
+          handoffReceivedAt: "2026-03-30T08:01:00.000Z",
+          startupStartedAt: "2026-03-30T08:00:08.000Z",
+          capturePlan: {
+            profile: "soak-24h",
+            sampleIntervalMs: 60000,
+            maxSamples: 1800,
+            intendedDurationHours: 24,
+            targetTaskCount: 5000,
+          },
+          machine: {
+            hostname: "mini-pc",
+            platform: "linux",
+            arch: "x64",
+            cpuModel: "AMD Ryzen",
+            cpuCores: 8,
+            memoryTotalMb: 16384,
+          },
+          summary: {
+            durationSeconds: 7200,
+            startupHandoffSeconds: 52,
+            workload: {
+              windowStartedAt: "2026-03-30T08:01:00.000Z",
+              windowEndedAt: "2026-03-30T10:01:00.000Z",
+              consideredRuns: 14,
+              completedRuns: 12,
+              successfulRuns: 11,
+              failedRuns: 1,
+              retryingRuns: 0,
+              pendingRuns: 2,
+              averageLatencyMs: 420,
+              p95LatencyMs: 900,
+              totalCostUsd: 0.1245,
+              topTaskTypes: [{ type: "heartbeat", count: 8 }],
+            },
+            telemetry: {
+              totalSampleCount: 4,
+              queueDepthPeak: 38,
+              openIncidentsPeak: 2,
+              cpuPercentPeak: 61,
+              processRssMbPeak: 684,
+            },
+            bucketStats: {
+              steady_state_running_cost: { sampleCount: 4 },
+            },
+          },
+          linkedRunIds: ["run-1"],
+          scenarioNotes: [],
+          bucketTimeline: [],
+        },
+        samples: [],
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useReviewSessionDetail>);
+
+    vi.mocked(consoleHooks.useReviewSessionBucket).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof consoleHooks.useReviewSessionBucket>);
+
+    vi.mocked(consoleHooks.useReviewSessionNote).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof consoleHooks.useReviewSessionNote>);
+
+    vi.mocked(consoleHooks.useReviewSessionLinkRun).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof consoleHooks.useReviewSessionLinkRun>);
+
+    vi.mocked(consoleHooks.useReviewSessionStop).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof consoleHooks.useReviewSessionStop>);
+
+    vi.mocked(consoleHooks.useReviewSessionExport).mockReturnValue({
+      mutateAsync: vi.fn(),
+      isPending: false,
+    } as unknown as ReturnType<typeof consoleHooks.useReviewSessionExport>);
+
+    render(
+      <MemoryRouter>
+        <ReviewSessionsPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/legacy session fallback: showing retained window totals/i)).toBeInTheDocument();
+    expect(screen.getByText(/completed of 14 accepted runs/i)).toBeInTheDocument();
+  });
+
   it("renders agent capability readiness and gap evidence", () => {
     vi.mocked(consoleHooks.useAgentsOverview).mockReturnValue({
       data: {

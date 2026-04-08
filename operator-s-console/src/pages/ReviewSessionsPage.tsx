@@ -16,7 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
-import type { ReviewSessionBucket, ReviewSessionRecord, ReviewTelemetrySample } from "@/types/console";
+import type {
+  ReviewSessionBucket,
+  ReviewSessionCumulativeWorkloadSummary,
+  ReviewSessionRecord,
+  ReviewSessionWorkloadSummary,
+  ReviewTelemetrySample,
+} from "@/types/console";
 
 const BUCKET_OPTIONS: Array<{ value: ReviewSessionBucket; label: string; description: string }> = [
   {
@@ -98,6 +104,38 @@ function formatCapturePlanTarget(targetTaskCount: number | null | undefined) {
     return "n/a";
   }
   return `${targetTaskCount.toLocaleString()} tasks`;
+}
+
+type DisplayedCumulativeWorkloadSummary = ReviewSessionCumulativeWorkloadSummary & {
+  isLegacyFallback: boolean;
+};
+
+function resolveDisplayedCumulativeWorkloadSummary(
+  workload: ReviewSessionWorkloadSummary | null | undefined,
+): DisplayedCumulativeWorkloadSummary {
+  const cumulative = workload?.cumulative;
+  if (cumulative) {
+    return {
+      ...cumulative,
+      isLegacyFallback: false,
+    };
+  }
+
+  return {
+    acceptedRuns: workload?.consideredRuns ?? 0,
+    completedRuns: workload?.completedRuns ?? 0,
+    successfulRuns: workload?.successfulRuns ?? 0,
+    failedRuns: workload?.failedRuns ?? 0,
+    retriedRuns: workload?.retryingRuns ?? 0,
+    pendingRuns: workload?.pendingRuns ?? 0,
+    totalCostUsd: workload?.totalCostUsd ?? 0,
+    averageLatencyMs: workload?.averageLatencyMs ?? null,
+    peakLatencyMs: null,
+    lastAcceptedAt: workload?.windowEndedAt ?? null,
+    lastCompletedAt: workload && workload.completedRuns > 0 ? workload.windowEndedAt : null,
+    topTaskTypes: Array.isArray(workload?.topTaskTypes) ? workload.topTaskTypes : [],
+    isLegacyFallback: Boolean(workload),
+  };
 }
 
 function downloadPayload(filename: string, content: string, contentType: string) {
@@ -260,6 +298,11 @@ export default function ReviewSessionsPage() {
   const sample = latestSample(samples);
   const handoff = session ? getHandoffStatus(session) : null;
   const activeSessionIsSelected = Boolean(activeSession?.id && selectedSessionId === activeSession.id);
+  const workloadSummary = session?.summary?.workload ?? null;
+  const displayedCumulativeWorkload = useMemo(
+    () => resolveDisplayedCumulativeWorkloadSummary(workloadSummary),
+    [workloadSummary],
+  );
 
   useEffect(() => {
     if (!session) return;
@@ -558,12 +601,17 @@ export default function ReviewSessionsPage() {
                 </div>
                 <div className="console-inset p-3 rounded-sm">
                   <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Cumulative Soak</p>
-                  <p className="metric-value text-2xl mt-2">{session.summary?.workload.cumulative.completedRuns ?? 0}</p>
+                  <p className="metric-value text-2xl mt-2">{displayedCumulativeWorkload.completedRuns}</p>
                   <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                    completed of {session.summary?.workload.cumulative.acceptedRuns ?? 0} accepted runs
+                    completed of {displayedCumulativeWorkload.acceptedRuns} accepted runs
                   </p>
                   <p className="text-[10px] font-mono text-muted-foreground mt-1">
-                    failed {session.summary?.workload.cumulative.failedRuns ?? 0} · pending {session.summary?.workload.cumulative.pendingRuns ?? 0}
+                    failed {displayedCumulativeWorkload.failedRuns} · pending {displayedCumulativeWorkload.pendingRuns}
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                    {displayedCumulativeWorkload.isLegacyFallback
+                      ? "legacy session fallback: showing retained window totals until cumulative soak metrics are available"
+                      : "cumulative soak totals from the full review session window"}
                   </p>
                 </div>
                 <div className="console-inset p-3 rounded-sm">
@@ -818,19 +866,19 @@ export default function ReviewSessionsPage() {
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Run Outcomes</p>
                         <p className="text-sm text-foreground mt-2">
-                          {session.summary.workload.cumulative.successfulRuns} ok / {session.summary.workload.cumulative.failedRuns} failed
+                          {displayedCumulativeWorkload.successfulRuns} ok / {displayedCumulativeWorkload.failedRuns} failed
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          accepted {session.summary.workload.cumulative.acceptedRuns} · retrying {session.summary.workload.cumulative.retriedRuns} · pending {session.summary.workload.cumulative.pendingRuns}
+                          accepted {displayedCumulativeWorkload.acceptedRuns} · retrying {displayedCumulativeWorkload.retriedRuns} · pending {displayedCumulativeWorkload.pendingRuns}
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Latency</p>
                         <p className="text-sm text-foreground mt-2">
-                          cumulative avg {session.summary.workload.cumulative.averageLatencyMs ?? "n/a"} ms
+                          cumulative avg {displayedCumulativeWorkload.averageLatencyMs ?? "n/a"} ms
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          cumulative peak {session.summary.workload.cumulative.peakLatencyMs ?? "n/a"} ms · window p95 {session.summary.workload.p95LatencyMs ?? "n/a"} ms
+                          cumulative peak {displayedCumulativeWorkload.peakLatencyMs ?? "n/a"} ms · window p95 {workloadSummary?.p95LatencyMs ?? "n/a"} ms
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
@@ -863,22 +911,22 @@ export default function ReviewSessionsPage() {
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Retained Window Slice</p>
                         <p className="text-[11px] font-mono text-foreground mt-2">
-                          {formatDate(session.summary.workload.windowStartedAt)}
+                          {formatDate(workloadSummary?.windowStartedAt)}
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          to {formatDate(session.summary.workload.windowEndedAt)}
+                          to {formatDate(workloadSummary?.windowEndedAt)}
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          retained {session.summary.workload.consideredRuns} runs · completed {session.summary.workload.completedRuns} · total cost ${(session.summary.workload.totalCostUsd ?? 0).toFixed(4)}
+                          retained {workloadSummary?.consideredRuns ?? 0} runs · completed {workloadSummary?.completedRuns ?? 0} · total cost ${((workloadSummary?.totalCostUsd ?? 0)).toFixed(4)}
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Cumulative Top Task Types</p>
                         <div className="mt-2 space-y-1">
-                          {session.summary.workload.cumulative.topTaskTypes.length === 0 ? (
+                          {displayedCumulativeWorkload.topTaskTypes.length === 0 ? (
                             <p className="text-xs text-muted-foreground">No accepted task mix has been recorded for this soak yet.</p>
                           ) : (
-                            session.summary.workload.cumulative.topTaskTypes.map((item) => (
+                            displayedCumulativeWorkload.topTaskTypes.map((item) => (
                               <p key={item.type} className="text-[11px] font-mono text-foreground">
                                 {item.type} · {item.count}
                               </p>
