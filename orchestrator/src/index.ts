@@ -23,6 +23,7 @@ import {
 import {
   ALLOWED_TASK_TYPES,
   consumeReviewQueueItemForApprovalDecision,
+  isTaskFailureRetryable,
   resolveTaskHandler,
 } from "./taskHandlers.js";
 import {
@@ -12503,8 +12504,9 @@ async function bootstrap() {
       const attempt = Number.isFinite(execution.attempt)
         ? execution.attempt
         : 1;
+      const retryableFailure = isTaskFailureRetryable(error);
 
-      if (attempt <= maxRetries) {
+      if (retryableFailure && attempt <= maxRetries) {
         execution.status = "retrying";
         const nextAttempt = attempt + 1;
         const retryPayload = {
@@ -12576,7 +12578,7 @@ async function bootstrap() {
         task,
         idempotencyKey,
         err,
-        attempt <= maxRetries,
+        retryableFailure && attempt <= maxRetries,
         attempt,
         maxRetries,
       );

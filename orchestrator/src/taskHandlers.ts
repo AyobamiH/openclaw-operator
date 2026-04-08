@@ -1840,13 +1840,46 @@ function toErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function throwTaskFailure(taskLabel: string, error: unknown): never {
-  throw new Error(`${taskLabel} failed: ${toErrorMessage(error)}`);
+export class TaskExecutionFailure extends Error {
+  readonly retryable: boolean;
+
+  constructor(message: string, options?: { retryable?: boolean }) {
+    super(message);
+    this.name = "TaskExecutionFailure";
+    this.retryable = options?.retryable ?? true;
+  }
+}
+
+export function isTaskFailureRetryable(error: unknown) {
+  return error instanceof TaskExecutionFailure ? error.retryable : true;
+}
+
+function throwTaskFailure(
+  taskLabel: string,
+  error: unknown,
+  options?: { retryable?: boolean },
+): never {
+  throw new TaskExecutionFailure(`${taskLabel} failed: ${toErrorMessage(error)}`, {
+    retryable: options?.retryable ?? isTaskFailureRetryable(error),
+  });
 }
 
 function summarizeSpawnedAgentFailure(result: Record<string, unknown>) {
   if (typeof result.error === "string" && result.error.trim().length > 0) {
     return result.error.trim();
+  }
+
+  const specialistContract =
+    typeof result.specialistContract === "object" &&
+    result.specialistContract !== null
+      ? (result.specialistContract as Record<string, unknown>)
+      : null;
+  if (
+    specialistContract &&
+    typeof specialistContract.refusalReason === "string" &&
+    specialistContract.refusalReason.trim().length > 0
+  ) {
+    return specialistContract.refusalReason.trim();
   }
 
   if (Array.isArray(result.warnings)) {
@@ -1879,6 +1912,12 @@ function summarizeSpawnedAgentFailure(result: Record<string, unknown>) {
       : null;
   if (summary) {
     if (
+      typeof summary.improvementDescription === "string" &&
+      summary.improvementDescription.trim().length > 0
+    ) {
+      return summary.improvementDescription.trim();
+    }
+    if (
       typeof summary.compliance === "string" &&
       summary.compliance.trim().length > 0
     ) {
@@ -1889,7 +1928,49 @@ function summarizeSpawnedAgentFailure(result: Record<string, unknown>) {
     }
   }
 
+  const refusalProfile =
+    typeof result.refusalProfile === "object" && result.refusalProfile !== null
+      ? (result.refusalProfile as Record<string, unknown>)
+      : null;
+  if (refusalProfile && Array.isArray(refusalProfile.reasons)) {
+    const reasons = refusalProfile.reasons
+      .filter((reason): reason is string => typeof reason === "string")
+      .map((reason) => reason.trim())
+      .filter(Boolean);
+    if (reasons.length > 0) {
+      return reasons.join("; ");
+    }
+  }
+
+  if (
+    typeof result.operatorSummary === "string" &&
+    result.operatorSummary.trim().length > 0
+  ) {
+    return result.operatorSummary.trim();
+  }
+
   return "agent returned unsuccessful result";
+}
+
+function spawnedAgentResultIsRetryable(result: Record<string, unknown>) {
+  const specialistContract =
+    typeof result.specialistContract === "object" &&
+    result.specialistContract !== null
+      ? (result.specialistContract as Record<string, unknown>)
+      : null;
+  if (specialistContract?.status === "refused") {
+    return false;
+  }
+
+  const refusalProfile =
+    typeof result.refusalProfile === "object" && result.refusalProfile !== null
+      ? (result.refusalProfile as Record<string, unknown>)
+      : null;
+  if (refusalProfile?.refused === true) {
+    return false;
+  }
+
+  return true;
 }
 
 export function assertSpawnedAgentReportedSuccess(
@@ -1897,8 +1978,11 @@ export function assertSpawnedAgentReportedSuccess(
   taskLabel: string,
 ) {
   if (result.success === true) return;
-  throw new Error(
+  throw new TaskExecutionFailure(
     `${taskLabel} agent reported unsuccessful result: ${summarizeSpawnedAgentFailure(result)}`,
+    {
+      retryable: spawnedAgentResultIsRetryable(result),
+    },
   );
 }
 
@@ -3237,6 +3321,7 @@ const integrationWorkflowHandler: TaskHandler = async (task, context) => {
           : "agent returned unsuccessful result";
       throw new Error(`integration workflow failed: ${reason}`);
     }
+
     return `integration workflow complete (${steps} steps)`;
   } catch (error) {
     throwTaskFailure("integration workflow", error);
