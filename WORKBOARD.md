@@ -26,6 +26,8 @@ The public repo is in a shippable state.
 - current portfolio productization is mostly done for the shipped operator
   product
 - broader external-catalog agent growth has not started yet
+- an uncommitted governance spike was reviewed against current code truth and
+  intentionally dropped instead of being carried forward as local drift
 
 ## Recently Finished
 
@@ -54,6 +56,15 @@ The public repo is in a shippable state.
    - GitHub validation now runs the same protected-branch contract
    - deploy and docs workflows now wait for validation success instead of
      racing it
+
+6. An uncommitted governance spike was intentionally dropped.
+   - retained ideas only: dynamic task validation, auth-grace config, route
+     inventory, and manifest-boundary concepts
+   - dropped implementation because it duplicated the shipped
+     `/api/companion/*` surface, targeted stale runtime types/helpers, and
+     shipped a self-invalidating route-governance registry
+   - future governance work should restart from current `main`, not from the
+     discarded local spike
 
 ## Current Recommended Next Move
 
