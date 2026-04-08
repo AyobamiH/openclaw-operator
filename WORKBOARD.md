@@ -82,6 +82,17 @@ These are real work items, but they are not the immediate next build slice.
 5. Host-specific lifecycle expansion for additional resident services.
    - only if a host genuinely needs them
 
+6. Optional maintenance-visibility follow-up from retired branch archaeology.
+   - the old `feat/heartbeat-maintenance-cutover` branch was not kept as a
+     merge target
+   - if revisited, re-implement only from current `main`
+   - preserve these ideas, not the branch shape:
+     - maintenance cadence records behind the internal heartbeat scheduler
+     - operator overview maintenance card
+     - optional diagnostic toggle for internal maintenance runs
+   - do not merge the old branch wholesale because later runtime, onboarding,
+     capability, and docs-site work already superseded most of it
+
 ## Hard Rules
 
 1. Do not treat prose from external role catalogs as shipped capability.
