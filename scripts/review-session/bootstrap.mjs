@@ -5,7 +5,7 @@ import os from "node:os";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzipSync, gunzipSync } from "node:zlib";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -520,6 +520,101 @@ async function writeStateFile(stateFilePath, state) {
   await writeFile(stateFilePath, JSON.stringify(state, null, 2), "utf-8");
 }
 
+function appendScenarioNote(session, bucket, capturedAt, text) {
+  const scenarioNotes = Array.isArray(session.scenarioNotes) ? session.scenarioNotes : [];
+  scenarioNotes.push({ capturedAt, bucket, text });
+  session.scenarioNotes = scenarioNotes;
+}
+
+function createEmptyCumulativeWorkload() {
+  return {
+    acceptedRuns: 0,
+    completedRuns: 0,
+    successfulRuns: 0,
+    failedRuns: 0,
+    retriedRuns: 0,
+    pendingRuns: 0,
+    totalCostUsd: 0,
+    latencySampleCount: 0,
+    latencySumMs: 0,
+    peakLatencyMs: null,
+    taskTypeCounts: {},
+    lastAcceptedAt: null,
+    lastCompletedAt: null,
+  };
+}
+
+export function reconcileStaleReviewSessionsState(state, options = {}) {
+  const reviewSessions = Array.isArray(state?.reviewSessions) ? state.reviewSessions : null;
+  if (!reviewSessions) {
+    return {
+      updated: false,
+      completedActiveCount: 0,
+      failedPendingCount: 0,
+    };
+  }
+
+  const now = typeof options.now === "string" ? options.now : new Date().toISOString();
+  const baseUrl =
+    typeof options.baseUrl === "string" && options.baseUrl.trim().length > 0
+      ? options.baseUrl.trim()
+      : "the requested base URL";
+  let completedActiveCount = 0;
+  let failedPendingCount = 0;
+
+  for (const session of reviewSessions) {
+    if (!session || typeof session !== "object") {
+      continue;
+    }
+
+    if (session.state === "active") {
+      session.state = "completed";
+      session.endedAt = typeof session.endedAt === "string" ? session.endedAt : now;
+      appendScenarioNote(
+        session,
+        typeof session.activeBucket === "string" ? session.activeBucket : "steady_state_running_cost",
+        now,
+        `Bootstrap preflight reconciled this stale active review session after no runtime responded at ${baseUrl}.`,
+      );
+      completedActiveCount += 1;
+      continue;
+    }
+
+    if (session.state === "pending_handoff") {
+      session.state = "handoff_failed";
+      session.endedAt = typeof session.endedAt === "string" ? session.endedAt : now;
+      session.failureReason =
+        typeof session.failureReason === "string" && session.failureReason.length > 0
+          ? session.failureReason
+          : `Bootstrap preflight reconciled a stale pending handoff after no runtime responded at ${baseUrl}.`;
+      appendScenarioNote(
+        session,
+        typeof session.activeBucket === "string" ? session.activeBucket : "startup_cost",
+        now,
+        `Bootstrap preflight marked this stale pending handoff as failed after no runtime responded at ${baseUrl}.`,
+      );
+      failedPendingCount += 1;
+    }
+  }
+
+  return {
+    updated: completedActiveCount > 0 || failedPendingCount > 0,
+    completedActiveCount,
+    failedPendingCount,
+  };
+}
+
+export async function reconcileStaleReviewSessions(stateFilePath, baseUrl) {
+  const state = await readStateFile(stateFilePath);
+  const summary = reconcileStaleReviewSessionsState(state, { baseUrl });
+  if (!summary.updated) {
+    return summary;
+  }
+
+  await writeStateFile(stateFilePath, state);
+  return summary;
+}
+
 function buildBootstrapSamples(reviewSessionId, baselineSamples, profile) {
   return baselineSamples.map((sample) => ({
     reviewSessionId,
@@ -580,6 +675,7 @@ async function persistPendingHandoff(stateFilePath, payload) {
     ],
     scenarioNotes: payload.notes,
     linkedRunIds: [],
+    cumulativeWorkload: createEmptyCumulativeWorkload(),
     summary: null,
     failureReason: null,
   });
@@ -724,6 +820,12 @@ async function main() {
   }
 
   await assertStackOff(baseUrl);
+  const staleReviewSessionSummary = await reconcileStaleReviewSessions(stateFilePath, baseUrl);
+  if (staleReviewSessionSummary.updated) {
+    console.log(
+      `[review-session] reconciled stale review sessions in runtime state (${staleReviewSessionSummary.completedActiveCount} active -> completed, ${staleReviewSessionSummary.failedPendingCount} pending -> handoff_failed)`,
+    );
+  }
 
   const reviewSessionId = randomUUID();
   console.log(`[review-session] capturing baseline for ${reviewSessionId} (${capturePlan.profile})`);
@@ -816,7 +918,13 @@ async function main() {
   console.log(JSON.stringify({ reviewSessionId, baseUrl, result }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(`[review-session] ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 1;
-});
+const isEntrypoint =
+  typeof process.argv[1] === "string" &&
+  pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+
+if (isEntrypoint) {
+  main().catch((error) => {
+    console.error(`[review-session] ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  });
+}

@@ -240,6 +240,7 @@ export default function ReviewSessionsPage() {
   const samples = detailQuery.data?.samples ?? [];
   const sample = latestSample(samples);
   const handoff = session ? getHandoffStatus(session) : null;
+  const activeSessionIsSelected = Boolean(activeSession?.id && selectedSessionId === activeSession.id);
 
   useEffect(() => {
     if (!session) return;
@@ -355,7 +356,7 @@ export default function ReviewSessionsPage() {
       <div className="console-inset p-3">
         <p className="text-[11px] text-muted-foreground font-mono tracking-wide">
           <Activity className="w-3 h-3 inline mr-1.5 text-primary" />
-          Honest review capture is bootstrap-led. Stop any stack already using the target review port, then start with `npm run review-session:start` for a normal session or `npm run review-session:start -- --profile soak-24h --title "mini-pc 24h soak"` for a day-long endurance run.
+          Honest review capture is bootstrap-led. Free port `3312`, then run `npm run review-session:run:24h` from the repo root for the clone-ready endurance flow. That command starts the soak session and paces the target 5,000-task representative workload across the full 24-hour window. You can leave this page open first: the new active soak session will appear and auto-select after bootstrap handoff completes.
         </p>
       </div>
 
@@ -365,7 +366,7 @@ export default function ReviewSessionsPage() {
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Layer 1 · Session Ledger</p>
               <p className="text-xs text-muted-foreground mt-2">
-                Pick the review session you want to inspect. For your mini-PC proof, this should be the `soak-24h` session you started before the workload begins.
+                Pick the review session you want to inspect. If you opened this page before starting the run, that is fine: the new active `soak-24h` session will appear here and auto-select once bootstrap handoff completes.
               </p>
             </div>
             <div className="console-inset p-3 rounded-sm">
@@ -377,18 +378,18 @@ export default function ReviewSessionsPage() {
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Layer 3 · Manual Evidence</p>
               <p className="text-xs text-muted-foreground mt-2">
-                `Bucket Controls` lets you say what phase the machine is in. `Evidence Actions` lets you add human notes and link exact task runs that prove a claim.
+                `Bucket Controls` and `Evidence Actions` are now mostly for extra human proof. The automated review workload already keeps the session in the right soak bucket, links a representative run, and records progress notes for you.
               </p>
             </div>
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Recommended Soak Workflow</p>
               <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                <p>1. Start `--profile soak-24h` before the stack comes up so baseline and startup cost are captured.</p>
-                <p>2. Wait for `State + Profile` to show `active` and `Capture Truth` to show handoff complete.</p>
-                <p>3. Leave the bucket on `Steady State` while the machine is just running normally.</p>
-                <p>4. Switch to `Burst Workload` when you start the real 3k-5k task push or any deliberate stress spike.</p>
-                <p>5. Add notes when the UI feels laggy, noisy, or surprisingly smooth, and link representative runs from the Runs page.</p>
-                <p>6. When the day-long run ends, press `Stop`, then export Markdown and JSON for the post.</p>
+                <p>1. Free port `3312`, then run `npm run review-session:run:24h` from the repo root.</p>
+                <p>2. If this page was already open, wait for the new `soak-24h` session to appear and auto-select after bootstrap handoff.</p>
+                <p>3. Confirm `State + Profile` shows `active` and `Capture Truth` shows handoff complete.</p>
+                <p>4. The automated feeder will keep representative tasks flowing for the full 24-hour soak, attach its notes to this session, and preserve cumulative totals even after the retained execution window rolls forward.</p>
+                <p>5. Add notes only for operator-visible behavior telemetry cannot know by itself, like lag, fan noise, or surprising responsiveness.</p>
+                <p>6. When the review window is over, press `Stop`, then export Markdown and JSON for the post.</p>
               </div>
             </div>
           </div>
@@ -422,6 +423,28 @@ export default function ReviewSessionsPage() {
 
       <div className="grid xl:grid-cols-[0.8fr_1.2fr] gap-3">
         <SummaryCard title="Session Ledger" icon={<NotebookText className="w-4 h-4" />}>
+          <div className="console-inset p-3 rounded-sm mb-3">
+            {activeSession ? (
+              activeSessionIsSelected ? (
+                <p className="text-xs text-muted-foreground">
+                  Active review session detected. This page is already following the current soak run.
+                </p>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    A newer active review session is running. Jump to it if you want to watch the current automated soak run.
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => setSelectedSessionId(activeSession.id)}>
+                    Follow Active
+                  </Button>
+                </div>
+              )
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Nothing is active yet. You can open this page first, then start the one-command review run in your terminal. The new soak session will appear here automatically.
+              </p>
+            )}
+          </div>
           {isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((item) => (
@@ -432,7 +455,7 @@ export default function ReviewSessionsPage() {
             <div className="space-y-3">
               <p className="text-sm text-foreground">No review sessions recorded.</p>
               <p className="text-xs text-muted-foreground font-mono leading-relaxed">
-                Start one with `npm run review-session:start`, or use `--profile soak-24h` when you want minute-grade evidence across a full-day endurance run. Running only `npm run dev` boots the stack but skips the pre-stack baseline capture by design, and the target review port must be free before bootstrap starts.
+                Start one with `npm run review-session:run:24h`. The page will auto-refresh and auto-select the new active soak session after bootstrap. Running only `npm run dev` boots the stack but skips the pre-stack baseline capture by design, and port `3312` must be free before bootstrap starts.
               </p>
             </div>
           ) : (
@@ -515,10 +538,13 @@ export default function ReviewSessionsPage() {
                   </p>
                 </div>
                 <div className="console-inset p-3 rounded-sm">
-                  <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Workload Window</p>
-                  <p className="metric-value text-2xl mt-2">{session.summary?.workload.completedRuns ?? 0}</p>
+                  <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Cumulative Soak</p>
+                  <p className="metric-value text-2xl mt-2">{session.summary?.workload.cumulative.completedRuns ?? 0}</p>
                   <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                    completed of {session.summary?.workload.consideredRuns ?? 0} considered runs
+                    completed of {session.summary?.workload.cumulative.acceptedRuns ?? 0} accepted runs
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                    failed {session.summary?.workload.cumulative.failedRuns ?? 0} · pending {session.summary?.workload.cumulative.pendingRuns ?? 0}
                   </p>
                 </div>
                 <div className="console-inset p-3 rounded-sm">
@@ -611,7 +637,7 @@ export default function ReviewSessionsPage() {
                     <div className="console-inset p-3 rounded-sm">
                       <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">What this is for</p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Use bucket switches to label the current phase of the test. `Steady State` means normal running. `Burst Workload` means you intentionally started a heavy task wave. `User Experience` is where you capture how the box actually feels to use.
+                        Use bucket switches to label manual phases or unusual situations. The one-command review workload already flips to `Burst Workload` at the start of the push and back to `Steady State` when the run finishes.
                       </p>
                     </div>
                     <div className="grid md:grid-cols-[1fr_auto] gap-3 items-end">
@@ -664,7 +690,7 @@ export default function ReviewSessionsPage() {
                     <div className="console-inset p-3 rounded-sm">
                       <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">What belongs here</p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Telemetry already captures CPU, memory, queue, incidents, and latency. Use these controls for the extra proof telemetry cannot know by itself: what you felt, what task wave you started, and which exact run proves a behavior.
+                        Telemetry already captures CPU, memory, queue, incidents, and latency. The automated review workload also records its own linked run and summary note. Use these controls for extra proof telemetry cannot know by itself: what you felt, what changed, and any special run you want to highlight.
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -773,19 +799,19 @@ export default function ReviewSessionsPage() {
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Run Outcomes</p>
                         <p className="text-sm text-foreground mt-2">
-                          {session.summary.workload.successfulRuns} ok / {session.summary.workload.failedRuns} failed
+                          {session.summary.workload.cumulative.successfulRuns} ok / {session.summary.workload.cumulative.failedRuns} failed
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          retrying {session.summary.workload.retryingRuns} · pending {session.summary.workload.pendingRuns}
+                          accepted {session.summary.workload.cumulative.acceptedRuns} · retrying {session.summary.workload.cumulative.retriedRuns} · pending {session.summary.workload.cumulative.pendingRuns}
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Latency</p>
                         <p className="text-sm text-foreground mt-2">
-                          avg {session.summary.workload.averageLatencyMs ?? "n/a"} ms
+                          cumulative avg {session.summary.workload.cumulative.averageLatencyMs ?? "n/a"} ms
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          p95 {session.summary.workload.p95LatencyMs ?? "n/a"} ms
+                          cumulative peak {session.summary.workload.cumulative.peakLatencyMs ?? "n/a"} ms · window p95 {session.summary.workload.p95LatencyMs ?? "n/a"} ms
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
@@ -816,7 +842,7 @@ export default function ReviewSessionsPage() {
 
                     <div className="grid xl:grid-cols-[1fr_1fr] gap-3">
                       <div className="console-inset p-3 rounded-sm">
-                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Workload Window</p>
+                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Retained Window Slice</p>
                         <p className="text-[11px] font-mono text-foreground mt-2">
                           {formatDate(session.summary.workload.windowStartedAt)}
                         </p>
@@ -824,16 +850,16 @@ export default function ReviewSessionsPage() {
                           to {formatDate(session.summary.workload.windowEndedAt)}
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          total cost ${(session.summary.workload.totalCostUsd ?? 0).toFixed(4)}
+                          retained {session.summary.workload.consideredRuns} runs · completed {session.summary.workload.completedRuns} · total cost ${(session.summary.workload.totalCostUsd ?? 0).toFixed(4)}
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
-                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Top Task Types</p>
+                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Cumulative Top Task Types</p>
                         <div className="mt-2 space-y-1">
-                          {session.summary.workload.topTaskTypes.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">No task executions landed inside the session window yet.</p>
+                          {session.summary.workload.cumulative.topTaskTypes.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No accepted task mix has been recorded for this soak yet.</p>
                           ) : (
-                            session.summary.workload.topTaskTypes.map((item) => (
+                            session.summary.workload.cumulative.topTaskTypes.map((item) => (
                               <p key={item.type} className="text-[11px] font-mono text-foreground">
                                 {item.type} · {item.count}
                               </p>

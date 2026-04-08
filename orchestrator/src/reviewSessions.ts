@@ -5,6 +5,7 @@ import {
   ReviewSessionBootstrapHandoffPayload,
   ReviewSessionBucket,
   ReviewSessionCapturePlan,
+  ReviewSessionCumulativeWorkload,
   ReviewSessionDerivedSummary,
   ReviewSessionRecord,
   ReviewTelemetrySample,
@@ -115,6 +116,151 @@ function resolveCapturePlan(session: Pick<ReviewSessionRecord, "capturePlan">): 
   };
 }
 
+function createEmptyCumulativeWorkload(): ReviewSessionCumulativeWorkload {
+  return {
+    acceptedRuns: 0,
+    completedRuns: 0,
+    successfulRuns: 0,
+    failedRuns: 0,
+    retriedRuns: 0,
+    pendingRuns: 0,
+    totalCostUsd: 0,
+    latencySampleCount: 0,
+    latencySumMs: 0,
+    peakLatencyMs: null,
+    taskTypeCounts: {},
+    lastAcceptedAt: null,
+    lastCompletedAt: null,
+  };
+}
+
+function ensureCumulativeWorkload(session: ReviewSessionRecord): ReviewSessionCumulativeWorkload {
+  if (!session.cumulativeWorkload) {
+    session.cumulativeWorkload = createEmptyCumulativeWorkload();
+  }
+  return session.cumulativeWorkload;
+}
+
+function buildTopTaskTypes(taskTypeCounts: Record<string, number>) {
+  return Object.entries(taskTypeCounts)
+    .map(([type, count]) => ({ type, count }))
+    .sort((left, right) => right.count - left.count || left.type.localeCompare(right.type))
+    .slice(0, 5);
+}
+
+function preferLaterTimestamp(current: string | null, candidate: string | null) {
+  const currentMs = parseTimestamp(current);
+  const candidateMs = parseTimestamp(candidate);
+  if (candidateMs === null) {
+    return current;
+  }
+  if (currentMs === null || candidateMs > currentMs) {
+    return candidate;
+  }
+  return current;
+}
+
+function buildCumulativeWorkloadSummary(session: ReviewSessionRecord, state: OrchestratorState) {
+  const cumulative = ensureCumulativeWorkload(session);
+  const workloadWindow = resolveWorkloadWindow(session);
+  const windowStartMs = parseTimestamp(workloadWindow.startedAt) ?? Date.now();
+  const windowEndMs = parseTimestamp(workloadWindow.endedAt) ?? Date.now();
+  const executions = state.taskExecutions.filter((execution) =>
+    executionTouchesWindow(execution, windowStartMs, windowEndMs),
+  );
+  const latencyValues = executions
+    .map((execution) => execution.accounting?.latencyMs)
+    .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const fallbackCompletedRuns = executions.filter(
+    (execution) => execution.status === "success" || execution.status === "failed",
+  );
+  const fallbackRetriedRuns = executions.filter(
+    (execution) => execution.status === "retrying" || execution.attempt > 1,
+  );
+  const fallbackTaskTypeCounts = executions.reduce<Record<string, number>>((acc, execution) => {
+    acc[execution.type] = (acc[execution.type] ?? 0) + 1;
+    return acc;
+  }, {});
+  const fallbackLastAcceptedAt = executions.reduce<string | null>((latest, execution) => {
+    return preferLaterTimestamp(
+      latest,
+      execution.startedAt ?? execution.lastHandledAt ?? execution.completedAt ?? null,
+    );
+  }, null);
+  const fallbackLastCompletedAt = fallbackCompletedRuns.reduce<string | null>((latest, execution) => {
+    return preferLaterTimestamp(
+      latest,
+      execution.completedAt ?? execution.lastHandledAt ?? execution.startedAt ?? null,
+    );
+  }, null);
+
+  return {
+    acceptedRuns: Math.max(cumulative.acceptedRuns, executions.length),
+    completedRuns: Math.max(cumulative.completedRuns, fallbackCompletedRuns.length),
+    successfulRuns: Math.max(
+      cumulative.successfulRuns,
+      executions.filter((execution) => execution.status === "success").length,
+    ),
+    failedRuns: Math.max(
+      cumulative.failedRuns,
+      executions.filter((execution) => execution.status === "failed").length,
+    ),
+    retriedRuns: Math.max(cumulative.retriedRuns, fallbackRetriedRuns.length),
+    pendingRuns: Math.max(
+      cumulative.pendingRuns,
+      executions.filter(
+        (execution) => execution.status === "pending" || execution.status === "running",
+      ).length,
+    ),
+    totalCostUsd: round2(
+      Math.max(
+        cumulative.totalCostUsd,
+        executions.reduce((sum, execution) => sum + (execution.accounting?.costUsd ?? 0), 0),
+      ),
+    ),
+    averageLatencyMs:
+      cumulative.latencySampleCount > 0
+        ? Math.round(cumulative.latencySumMs / cumulative.latencySampleCount)
+        : latencyValues.length > 0
+          ? Math.round(average(latencyValues))
+          : null,
+    peakLatencyMs:
+      cumulative.peakLatencyMs === null
+        ? latencyValues.length > 0
+          ? Math.max(...latencyValues)
+          : null
+        : latencyValues.length > 0
+          ? Math.max(cumulative.peakLatencyMs, Math.max(...latencyValues))
+          : cumulative.peakLatencyMs,
+    lastAcceptedAt: preferLaterTimestamp(cumulative.lastAcceptedAt, fallbackLastAcceptedAt),
+    lastCompletedAt: preferLaterTimestamp(cumulative.lastCompletedAt, fallbackLastCompletedAt),
+    topTaskTypes:
+      Object.keys(cumulative.taskTypeCounts).length > 0
+        ? buildTopTaskTypes(cumulative.taskTypeCounts)
+        : buildTopTaskTypes(fallbackTaskTypeCounts),
+  };
+}
+
+function resolveSessionStartAt(session: ReviewSessionRecord) {
+  return session.handoffReceivedAt ?? session.startupStartedAt ?? session.startedAt ?? session.createdAt;
+}
+
+function sessionTracksTimestamp(session: ReviewSessionRecord, occurredAt: string | null | undefined) {
+  const occurredMs = parseTimestamp(occurredAt);
+  if (occurredMs === null) {
+    return true;
+  }
+  const startedMs = parseTimestamp(resolveSessionStartAt(session));
+  const endedMs = parseTimestamp(session.endedAt);
+  if (startedMs !== null && occurredMs < startedMs) {
+    return false;
+  }
+  if (endedMs !== null && occurredMs > endedMs) {
+    return false;
+  }
+  return true;
+}
+
 function resolveWorkloadWindow(session: ReviewSessionRecord) {
   const nowIso = new Date().toISOString();
   return {
@@ -213,6 +359,7 @@ function buildWorkloadSummary(session: ReviewSessionRecord, state: OrchestratorS
       executions.reduce((sum, execution) => sum + (execution.accounting?.costUsd ?? 0), 0),
     ),
     topTaskTypes,
+    cumulative: buildCumulativeWorkloadSummary(session, state),
   };
 }
 
@@ -363,6 +510,9 @@ function buildMarkdownExport(session: ReviewSessionRecord, samples: ReviewTeleme
     `- Linked Run Cost USD: ${summary?.linkedRunCostUsd ?? 0}`,
     `- Linked Run Average Latency Ms: ${summary?.linkedRunAverageLatencyMs ?? "n/a"}`,
     `- Open Incidents Peak: ${summary?.observedIncidentCount ?? 0}`,
+    `- Cumulative Accepted Runs: ${summary?.workload.cumulative.acceptedRuns ?? 0}`,
+    `- Cumulative Completed Runs: ${summary?.workload.cumulative.completedRuns ?? 0}`,
+    `- Cumulative Failed Runs: ${summary?.workload.cumulative.failedRuns ?? 0}`,
   ];
 
   if (summary?.telemetry) {
@@ -397,9 +547,33 @@ function buildMarkdownExport(session: ReviewSessionRecord, samples: ReviewTeleme
       `- Total Cost USD: ${summary.workload.totalCostUsd}`,
     );
 
+    lines.push(
+      "",
+      "### Cumulative Soak Totals",
+      "",
+      `- Accepted Runs: ${summary.workload.cumulative.acceptedRuns}`,
+      `- Completed Runs: ${summary.workload.cumulative.completedRuns}`,
+      `- Successful Runs: ${summary.workload.cumulative.successfulRuns}`,
+      `- Failed Runs: ${summary.workload.cumulative.failedRuns}`,
+      `- Retried Runs: ${summary.workload.cumulative.retriedRuns}`,
+      `- Pending / Running Runs: ${summary.workload.cumulative.pendingRuns}`,
+      `- Average Latency Ms: ${summary.workload.cumulative.averageLatencyMs ?? "n/a"}`,
+      `- Peak Latency Ms: ${summary.workload.cumulative.peakLatencyMs ?? "n/a"}`,
+      `- Total Cost USD: ${summary.workload.cumulative.totalCostUsd}`,
+      `- Last Accepted At: ${summary.workload.cumulative.lastAcceptedAt ?? "n/a"}`,
+      `- Last Completed At: ${summary.workload.cumulative.lastCompletedAt ?? "n/a"}`,
+    );
+
     if (summary.workload.topTaskTypes.length > 0) {
       lines.push("", "### Top Task Types", "");
       for (const item of summary.workload.topTaskTypes) {
+        lines.push(`- ${item.type}: ${item.count}`);
+      }
+    }
+
+    if (summary.workload.cumulative.topTaskTypes.length > 0) {
+      lines.push("", "### Cumulative Top Task Types", "");
+      for (const item of summary.workload.cumulative.topTaskTypes) {
         lines.push(`- ${item.type}: ${item.count}`);
       }
     }
@@ -455,6 +629,7 @@ function createBootstrapSession(payload: ReviewSessionBootstrapHandoffPayload): 
     ],
     scenarioNotes: payload.notes,
     linkedRunIds: [],
+    cumulativeWorkload: createEmptyCumulativeWorkload(),
     summary: null,
     failureReason: null,
   };
@@ -491,6 +666,58 @@ export function createReviewSessionService(options: ReviewSessionServiceOptions)
 
   function getSession(id: string) {
     return state.reviewSessions.find((session) => session.id === id) ?? null;
+  }
+
+  function recordAcceptedRun(reviewSessionId: string | null | undefined, taskType: string, acceptedAt: string) {
+    if (!reviewSessionId) return;
+    const session = getSession(reviewSessionId);
+    if (!session || !sessionTracksTimestamp(session, acceptedAt)) return;
+    const cumulative = ensureCumulativeWorkload(session);
+    cumulative.acceptedRuns += 1;
+    cumulative.pendingRuns += 1;
+    cumulative.lastAcceptedAt = acceptedAt;
+    cumulative.taskTypeCounts[taskType] = (cumulative.taskTypeCounts[taskType] ?? 0) + 1;
+  }
+
+  function recordRetriedRun(reviewSessionId: string | null | undefined, retriedAt: string) {
+    if (!reviewSessionId) return;
+    const session = getSession(reviewSessionId);
+    if (!session || !sessionTracksTimestamp(session, retriedAt)) return;
+    const cumulative = ensureCumulativeWorkload(session);
+    cumulative.retriedRuns += 1;
+  }
+
+  function recordCompletedRun(args: {
+    reviewSessionId: string | null | undefined;
+    taskType: string;
+    status: "success" | "failed";
+    completedAt: string;
+    latencyMs?: number | null;
+    costUsd?: number | null;
+  }) {
+    if (!args.reviewSessionId) return;
+    const session = getSession(args.reviewSessionId);
+    if (!session || !sessionTracksTimestamp(session, args.completedAt)) return;
+    const cumulative = ensureCumulativeWorkload(session);
+    cumulative.completedRuns += 1;
+    if (cumulative.pendingRuns > 0) {
+      cumulative.pendingRuns -= 1;
+    }
+    if (args.status === "success") {
+      cumulative.successfulRuns += 1;
+    } else {
+      cumulative.failedRuns += 1;
+    }
+    cumulative.lastCompletedAt = args.completedAt;
+    cumulative.totalCostUsd += typeof args.costUsd === "number" ? args.costUsd : 0;
+    if (typeof args.latencyMs === "number" && Number.isFinite(args.latencyMs)) {
+      cumulative.latencySampleCount += 1;
+      cumulative.latencySumMs += args.latencyMs;
+      cumulative.peakLatencyMs =
+        cumulative.peakLatencyMs === null
+          ? args.latencyMs
+          : Math.max(cumulative.peakLatencyMs, args.latencyMs);
+    }
   }
 
   function listSessions() {
@@ -640,6 +867,7 @@ export function createReviewSessionService(options: ReviewSessionServiceOptions)
     session.capturePlan = payload.capturePlan;
     session.machine = payload.machine;
     session.baselineSummary = payload.baselineSummary;
+    session.cumulativeWorkload = session.cumulativeWorkload ?? createEmptyCumulativeWorkload();
     session.summary = null;
     session.failureReason = null;
     session.bucketTimeline = [
@@ -804,6 +1032,9 @@ export function createReviewSessionService(options: ReviewSessionServiceOptions)
     overview,
     detail,
     bootstrapHandoff,
+    recordAcceptedRun,
+    recordRetriedRun,
+    recordCompletedRun,
     switchBucket,
     addNote,
     linkRun,

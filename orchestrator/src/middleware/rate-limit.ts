@@ -151,6 +151,27 @@ export const operatorWriteLimiter = rateLimit({
 });
 
 /**
+ * Task trigger bucket (global across authenticated task enqueue writes)
+ * 6000 requests per 60 seconds per API key actor/label.
+ *
+ * This is intentionally separate from the narrow operator mutation bucket so
+ * review-session workload passes can enqueue 3k-5k tasks without starving the
+ * follow-up review-session metadata writes (`link-run`, `note`, bucket updates).
+ */
+export const taskTriggerLimiter = rateLimit({
+  windowMs: ONE_MINUTE_MS,
+  limit: 6000,
+  keyGenerator: (req: Request) => resolveAuthenticatedKey(req, 'task-trigger'),
+  message: 'Task trigger rate limit exceeded, please retry after a minute',
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: buildRateLimitHandler(
+    'Task trigger rate limit exceeded, please retry after a minute',
+    ONE_MINUTE_MS,
+  ),
+});
+
+/**
  * Admin export bucket (global across authenticated export routes)
  * 10 requests per 60 seconds per API key actor/label.
  */

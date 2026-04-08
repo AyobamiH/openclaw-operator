@@ -138,6 +138,7 @@ import {
   authLimiter,
   viewerReadLimiter,
   operatorWriteLimiter,
+  taskTriggerLimiter,
 } from "./middleware/rate-limit.js";
 import {
   getCachedJson,
@@ -12213,7 +12214,17 @@ async function bootstrap() {
         ? ["runtime-state", "knowledge-state"]
         : ["runtime-state"],
     );
-    const { idempotencyKey } = requireExecutionRecord(task);
+    const { existing: execution, idempotencyKey } = requireExecutionRecord(task);
+    if (!execution.reviewSessionId) {
+      const activeReviewSessionId =
+        state.reviewSessions.find((session) => session.state === "active")?.id ?? null;
+      execution.reviewSessionId = activeReviewSessionId;
+      reviewSessionService.recordAcceptedRun(
+        activeReviewSessionId,
+        task.type,
+        new Date(task.createdAt).toISOString(),
+      );
+    }
     appendTaskWorkflowEvent(
       task,
       "ingress",
@@ -12464,6 +12475,16 @@ async function bootstrap() {
         "ok",
         typeof message === "string" ? message : undefined,
       );
+      if (execution.reviewSessionId) {
+        reviewSessionService.recordCompletedRun({
+          reviewSessionId: execution.reviewSessionId,
+          taskType: task.type,
+          status: "success",
+          completedAt: execution.completedAt,
+          latencyMs: execution.accounting?.latencyMs ?? null,
+          costUsd: execution.accounting?.costUsd ?? null,
+        });
+      }
       failureTracker.track(task.type, message);
       syncRepairRecordOnTaskSuccess(
         task,
@@ -12508,6 +12529,13 @@ async function bootstrap() {
 
       if (retryableFailure && attempt <= maxRetries) {
         execution.status = "retrying";
+        if (execution.reviewSessionId && execution.reviewRetryTracked !== true) {
+          reviewSessionService.recordRetriedRun(
+            execution.reviewSessionId,
+            execution.lastHandledAt,
+          );
+          execution.reviewRetryTracked = true;
+        }
         const nextAttempt = attempt + 1;
         const retryPayload = {
           ...task.payload,
@@ -12595,6 +12623,16 @@ async function bootstrap() {
       });
 
       recordTaskResult(task, "error", err.message);
+      if (execution.reviewSessionId && execution.status === "failed") {
+        reviewSessionService.recordCompletedRun({
+          reviewSessionId: execution.reviewSessionId,
+          taskType: task.type,
+          status: "failed",
+          completedAt: execution.completedAt,
+          latencyMs: execution.accounting?.latencyMs ?? null,
+          costUsd: execution.accounting?.costUsd ?? null,
+        });
+      }
       failureTracker.track(task.type, undefined, err);
       alertManager.error(`task-${task.type}`, `Task failed: ${err.message}`, {
         taskId: task.id,
@@ -13586,7 +13624,7 @@ async function bootstrap() {
     "/api/tasks/trigger",
     authLimiter,
     requireBearerToken,
-    operatorWriteLimiter,
+    taskTriggerLimiter,
     requireRole("operator"),
     auditProtectedAction("tasks.trigger.create"),
     createValidationMiddleware(TaskTriggerSchema, "body"),

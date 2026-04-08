@@ -1378,6 +1378,29 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(Array.isArray(approvals.items)).toBe(true);
   });
 
+  it('allows burst task trigger traffic beyond the narrow operator metadata limit', async () => {
+    const responses = await Promise.all(
+      Array.from({ length: 40 }, (_unused, index) =>
+        fetch(`${baseUrl}/api/tasks/trigger`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${TEST_API_KEY}`,
+            'X-Forwarded-For': `10.40.0.${(index % 250) + 1}`,
+          },
+          body: JSON.stringify({
+            type: 'heartbeat',
+            payload: { reason: `rate-limit-burst-${index}` },
+          }),
+        }),
+      ),
+    );
+
+    responses.forEach((response) => {
+      expect(response.status).toBe(202);
+    });
+  });
+
   it('exposes governed skill policy, registry, telemetry, and audit surfaces with live runtime truth', { timeout: 45000 }, async () => {
     const registryPayload = await fetchProtected<{
       total?: number;

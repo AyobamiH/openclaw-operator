@@ -38,7 +38,7 @@ import {
   stopReviewSession,
   exportReviewSession,
 } from "@/lib/api";
-import type { KnowledgeQueryRequest } from "@/types/console";
+import type { KnowledgeQueryRequest, ReviewSessionDetailResponse } from "@/types/console";
 import { jitteredInterval, nextProtectedPollInterval } from "@/lib/polling";
 
 export function useDashboardOverview() {
@@ -406,7 +406,11 @@ export function useReviewSessionStop() {
 }
 
 export function useReviewSessionExport() {
-  return useMutation({
+  return useMutation<
+    string | ReviewSessionDetailResponse,
+    Error,
+    { id: string; format: "json" | "markdown" }
+  >({
     mutationFn: ({ id, format }: { id: string; format: "json" | "markdown" }) =>
       exportReviewSession(id, format),
   });

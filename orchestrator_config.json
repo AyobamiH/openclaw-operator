@@ -7,6 +7,7 @@
   "businessEvidenceDir": "../../artifacts/business-value",
   "publishingRegistryPath": "./config/publishing/registry.v1.json",
   "publishingDatabasePath": "./logs/deterministic-publishing.sqlite",
+  "taskHistoryLimit": 10000,
   "strictPersistence": false,
   "approvalRequiredTaskTypes": [
     "agent-deploy",

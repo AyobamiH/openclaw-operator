@@ -2,6 +2,24 @@ import { describe, expect, it, vi } from "vitest";
 import { createDefaultState } from "../src/state.js";
 import { createReviewSessionService } from "../src/reviewSessions.js";
 
+function createEmptyCumulativeWorkload() {
+  return {
+    acceptedRuns: 0,
+    completedRuns: 0,
+    successfulRuns: 0,
+    failedRuns: 0,
+    retriedRuns: 0,
+    pendingRuns: 0,
+    totalCostUsd: 0,
+    latencySampleCount: 0,
+    latencySumMs: 0,
+    peakLatencyMs: null,
+    taskTypeCounts: {},
+    lastAcceptedAt: null,
+    lastCompletedAt: null,
+  };
+}
+
 describe("private review session soak mode", () => {
   it("promotes bootstrap handoff into steady-state ownership with the capture plan intact", async () => {
     const state = createDefaultState();
@@ -46,6 +64,7 @@ describe("private review session soak mode", () => {
       ],
       scenarioNotes: [],
       linkedRunIds: [],
+      cumulativeWorkload: createEmptyCumulativeWorkload(),
       summary: null,
       failureReason: null,
     });
@@ -243,6 +262,7 @@ describe("private review session soak mode", () => {
       ],
       scenarioNotes: [],
       linkedRunIds: ["run-success"],
+      cumulativeWorkload: createEmptyCumulativeWorkload(),
       summary: null,
       failureReason: null,
     });
@@ -395,5 +415,92 @@ describe("private review session soak mode", () => {
     });
     expect(detail?.session.summary?.linkedRunCount).toBe(1);
     expect(detail?.session.summary?.linkedRunCostUsd).toBe(0.02);
+  });
+
+  it("tracks cumulative soak workload beyond the rolling execution window", async () => {
+    const state = createDefaultState();
+    const service = createReviewSessionService({
+      state,
+      flushState: vi.fn().mockResolvedValue(undefined),
+      getQueueSnapshot: () => ({ queued: 0, processing: 0 }),
+    });
+
+    const session = await service.bootstrapHandoff({
+      reviewSessionId: "review-cumulative",
+      title: "Mini PC 24h soak",
+      createdAt: "2026-03-31T00:00:00.000Z",
+      baselineStartedAt: "2026-03-31T00:00:00.000Z",
+      baselineEndedAt: "2026-03-31T00:00:10.000Z",
+      startupStartedAt: "2026-03-31T00:00:10.000Z",
+      machine: {
+        hostname: "mini-pc",
+        platform: "linux",
+        arch: "x64",
+        cpuModel: "Intel",
+        cpuCores: 8,
+        memoryTotalMb: 8192,
+      },
+      baselineSummary: {
+        cpuPercentAvg: 3,
+        cpuPercentPeak: 5,
+        loadAvg1m: 0.4,
+        memoryUsedMbAvg: 1200,
+        memoryUsedMbPeak: 1250,
+      },
+      baselineSamples: [],
+      initialBucket: "startup_cost",
+      postHandoffBucket: "steady_state_running_cost",
+      capturePlan: {
+        profile: "soak-24h",
+        sampleIntervalMs: 60000,
+        maxSamples: 1800,
+        intendedDurationHours: 24,
+        targetTaskCount: 5000,
+      },
+      notes: [],
+    });
+
+    const handoffMs = Date.parse(session.handoffReceivedAt ?? new Date().toISOString());
+    const acceptedAt = new Date(handoffMs + 1000).toISOString();
+    const secondAcceptedAt = new Date(handoffMs + 2000).toISOString();
+    const retriedAt = new Date(handoffMs + 3000).toISOString();
+    const firstCompletedAt = new Date(handoffMs + 4000).toISOString();
+    const secondCompletedAt = new Date(handoffMs + 5000).toISOString();
+
+    service.recordAcceptedRun("review-cumulative", "heartbeat", acceptedAt);
+    service.recordAcceptedRun("review-cumulative", "qa-verification", secondAcceptedAt);
+    service.recordRetriedRun("review-cumulative", retriedAt);
+    service.recordCompletedRun({
+      reviewSessionId: "review-cumulative",
+      taskType: "heartbeat",
+      status: "success",
+      completedAt: firstCompletedAt,
+      latencyMs: 250,
+      costUsd: 0.02,
+    });
+    service.recordCompletedRun({
+      reviewSessionId: "review-cumulative",
+      taskType: "qa-verification",
+      status: "failed",
+      completedAt: secondCompletedAt,
+      latencyMs: 700,
+      costUsd: 0.05,
+    });
+
+    const detail = service.detail("review-cumulative");
+
+    expect(detail?.session.summary?.workload.cumulative.acceptedRuns).toBe(2);
+    expect(detail?.session.summary?.workload.cumulative.completedRuns).toBe(2);
+    expect(detail?.session.summary?.workload.cumulative.successfulRuns).toBe(1);
+    expect(detail?.session.summary?.workload.cumulative.failedRuns).toBe(1);
+    expect(detail?.session.summary?.workload.cumulative.retriedRuns).toBe(1);
+    expect(detail?.session.summary?.workload.cumulative.pendingRuns).toBe(0);
+    expect(detail?.session.summary?.workload.cumulative.averageLatencyMs).toBe(475);
+    expect(detail?.session.summary?.workload.cumulative.peakLatencyMs).toBe(700);
+    expect(detail?.session.summary?.workload.cumulative.totalCostUsd).toBe(0.07);
+    expect(detail?.session.summary?.workload.cumulative.topTaskTypes).toEqual([
+      { type: "heartbeat", count: 1 },
+      { type: "qa-verification", count: 1 },
+    ]);
   });
 });
