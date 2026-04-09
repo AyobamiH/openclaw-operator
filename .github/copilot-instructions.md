@@ -75,6 +75,19 @@ This repo uses a repo-managed pre-push hook for `main` and `master`.
 - GitHub Actions uses the same protected-branch verification contract before
   deploy-style workflows run
 
+## Real Integration Tests
+
+Integration tests must prove real runtime behavior with real completion
+conditions.
+
+- do not hardcode fake success paths
+- do not rely on fixed sleeps when the runtime is asynchronous
+- when polling cached endpoints for fresh state, vary the request key or read a
+  non-cached surface
+- do not stop at the first visible flaky assertion; close the whole timing or
+  cache failure mode before push
+- a one-off local pass is not enough evidence for a flaky integration test
+
 ## Guardrails
 
 1. Do not bulk-import external agent catalogs.

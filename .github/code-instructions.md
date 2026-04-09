@@ -70,6 +70,18 @@ The repo-managed pre-push hook protects `main` and `master`.
 - pushes to protected branches run `npm run verify:main`
 - deploy-style GitHub workflows are expected to follow the same contract
 
+## Real Integration Tests
+
+Integration tests must use real runtime paths and real completion conditions.
+
+- do not hardcode fake success just to get coverage green
+- do not rely on fixed sleeps when the runtime is asynchronous
+- when polling cached endpoints for fresh state, vary the request key or read a
+  non-cached surface
+- close the full timing/cache failure mode before push, not just the first
+  visible assertion
+- "passed once locally" is not enough evidence for a flaky integration test
+
 ## Guardrails
 
 1. one bounded new public agent at a time

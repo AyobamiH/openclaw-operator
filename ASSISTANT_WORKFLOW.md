@@ -11,7 +11,7 @@ Use it to keep Codex, Copilot, and any future assistant aligned on:
 
 It is a workflow contract, not a runtime spec.
 
-Last updated: `2026-04-08`
+Last updated: `2026-04-09`
 
 ## First-Read Order
 
@@ -86,6 +86,24 @@ Treat protected-branch shipping as a repo-managed contract, not a memory task.
 
 GitHub Actions should use the same protected-branch verification contract
 before publish-style workflows run.
+
+## Real Test Rule
+
+Integration tests must prove real runtime behavior, not fake or hardcoded
+success paths.
+
+When a test exercises asynchronous or cached runtime surfaces:
+
+1. wait on real completion signals, not fixed sleeps
+2. poll for the exact truth you need before asserting
+3. account for cache boundaries explicitly
+4. if polling a cached endpoint for fresh state, vary the request key or read a
+   non-cached surface
+5. do not treat "passed once locally" as evidence that a timing-sensitive
+   failure is closed
+
+If a flaky failure appears, close the whole timing/caching failure mode before
+push, not just the first visible assertion.
 
 ## Hard Rules
 

@@ -266,7 +266,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   const waitForAgentRuntimeSignal = async (
     agentId: string,
     key: string,
-    timeoutMs = 30000,
+    timeoutMs = 45000,
   ) => {
     const deadline = Date.now() + timeoutMs;
     let latestAgent:
@@ -311,7 +311,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
             };
           };
         }>;
-      }>('/api/agents/overview');
+      }>(`/api/agents/overview?pollTs=${Date.now()}`);
 
       latestAgent = (payload.agents ?? []).find((agent) => agent.id === agentId);
       const runtimeEvidence = latestAgent?.capability?.runtimeEvidence;
@@ -341,7 +341,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   const waitForRunResultSummaryKeys = async (
     runId: string,
     expectedKeys: string[],
-    timeoutMs = 30000,
+    timeoutMs = 45000,
   ) => {
     const deadline = Date.now() + timeoutMs;
     let latestPayload:
@@ -363,7 +363,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
             highlights?: Record<string, unknown>;
           };
         };
-      }>(`/api/tasks/runs/${encodeURIComponent(runId)}`);
+      }>(`/api/tasks/runs/${encodeURIComponent(runId)}?pollTs=${Date.now()}`);
 
       const keys = latestPayload.run?.resultSummary?.keys ?? [];
       if (expectedKeys.every((key) => keys.includes(key))) {

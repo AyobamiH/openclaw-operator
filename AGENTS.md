@@ -37,6 +37,17 @@ Use these as the minimum working set before changing agent capability claims,
 promoting tasks into operator-facing profiles, or changing `/operator` /
 `operator-s-console` scope.
 
+### Real Integration Tests
+
+Treat integration failures as real system-timing or cache problems until proven
+otherwise.
+
+1. Use real runtime paths, not hardcoded success fixtures.
+2. Wait on real completion conditions, not fixed sleeps.
+3. If polling cached surfaces for fresh state, vary the request key or use a
+   non-cached truth surface.
+4. Do not stop after a single local green run when the failure class is flaky.
+
 ## Memory
 
 You wake up fresh each session. These files are your continuity:

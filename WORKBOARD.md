@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-04-08`
+Last updated: `2026-04-09`
 
 ## Current Headline
 
@@ -23,6 +23,8 @@ The public repo is in a shippable state.
   through commit `c857273`
 - protected-branch shipping now has a repo-managed verification contract:
   local pre-push gate plus CI-aligned publish gating
+- the Wave 4 readiness integration test is now hardened against cached stale
+  snapshots, not just early reads
 - current portfolio productization is mostly done for the shipped operator
   product
 - broader external-catalog agent growth has not started yet
@@ -65,6 +67,13 @@ The public repo is in a shippable state.
      shipped a self-invalidating route-governance registry
    - future governance work should restart from current `main`, not from the
      discarded local spike
+
+7. The Wave 4 runtime-readiness test was hardened again.
+   - the first fix closed early-read races but still polled cached endpoints
+   - the current test now varies poll request keys and waits beyond the cache
+     TTL when checking agent overview and run-detail readiness output
+   - assistant workflow guidance now explicitly requires cache-aware real
+     completion conditions for integration tests
 
 ## Current Recommended Next Move
 
