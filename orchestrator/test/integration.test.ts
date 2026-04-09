@@ -10,7 +10,7 @@ import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { computeWebhookSignature } from '../src/middleware/auth.js';
 import { createDefaultState } from '../src/state.js';
 import { summarizeProofSurface } from '../../agents/shared/runtime-evidence.js';
@@ -105,6 +105,154 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   let envFilePath = '';
   let runtimeRootDir = '';
   let operatorDistDir = '';
+  let seededStateRaw = '';
+  let serviceStateLogsDir = '';
+  let serviceStateBackupDir = '';
+
+  const clearAgentServiceStateFiles = async () => {
+    if (!serviceStateLogsDir) {
+      return;
+    }
+
+    try {
+      const entries = await readdir(serviceStateLogsDir);
+      await Promise.all(
+        entries
+          .filter((entry) => entry.endsWith('-service.json'))
+          .map((entry) => rm(join(serviceStateLogsDir, entry), { force: true })),
+      );
+    } catch {
+      // Keep tests moving if the host log directory does not exist yet.
+    }
+  };
+
+  const backupAgentServiceStateFiles = async () => {
+    if (!serviceStateLogsDir || !serviceStateBackupDir) {
+      return;
+    }
+
+    await mkdir(serviceStateBackupDir, { recursive: true });
+
+    try {
+      const entries = await readdir(serviceStateLogsDir);
+      await Promise.all(
+        entries
+          .filter((entry) => entry.endsWith('-service.json'))
+          .map((entry) =>
+            rename(
+              join(serviceStateLogsDir, entry),
+              join(serviceStateBackupDir, entry),
+            ),
+          ),
+      );
+    } catch {
+      // Keep tests moving if there are no pre-existing service state files.
+    }
+  };
+
+  const restoreAgentServiceStateFiles = async () => {
+    if (!serviceStateLogsDir || !serviceStateBackupDir) {
+      return;
+    }
+
+    await clearAgentServiceStateFiles();
+
+    try {
+      const entries = await readdir(serviceStateBackupDir);
+      await Promise.all(
+        entries.map((entry) =>
+          rename(
+            join(serviceStateBackupDir, entry),
+            join(serviceStateLogsDir, entry),
+          ),
+        ),
+      );
+    } catch {
+      // Nothing to restore.
+    }
+  };
+
+  const stopRuntimeProcess = async () => {
+    if (serverProcess && serverProcess.exitCode === null) {
+      serverProcess.kill('SIGTERM');
+      await new Promise<void>((resolveExit) => {
+        const timeout = setTimeout(() => {
+          if (serverProcess && serverProcess.exitCode === null) {
+            serverProcess.kill('SIGKILL');
+          }
+        }, 5000);
+
+        serverProcess?.once('exit', () => {
+          clearTimeout(timeout);
+          resolveExit();
+        });
+      });
+    }
+
+    serverProcess = null;
+  };
+
+  const startRuntimeProcess = async () => {
+    const tsxCliPath = resolve(process.cwd(), '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    stdoutBuffer = '';
+    stderrBuffer = '';
+
+    serverProcess = spawn(process.execPath, [tsxCliPath, 'src/index.ts'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NODE_ENV: 'test',
+        PORT: String(new URL(baseUrl).port),
+        API_KEY: TEST_API_KEY,
+        WEBHOOK_SECRET: TEST_WEBHOOK_SECRET,
+        MONGO_PASSWORD: process.env.MONGO_PASSWORD ?? 'test-mongo-password',
+        REDIS_PASSWORD: process.env.REDIS_PASSWORD ?? 'test-redis-password',
+        MONGO_USERNAME: process.env.MONGO_USERNAME ?? 'test-mongo-user',
+        // Keep the suite deterministic: this runtime is file-backed and should not
+        // inherit ambient Mongo connectivity from the host machine.
+        DATABASE_URL: '',
+        DB_NAME: process.env.DB_NAME ?? 'orchestrator',
+        ALERTS_ENABLED: 'false',
+        ORCHESTRATOR_FAST_START: 'true',
+        ORCHESTRATOR_CONFIG: configFilePath,
+        ORCHESTRATOR_ENV_FILE: envFilePath,
+        OPERATOR_UI_DIST_DIR: operatorDistDir,
+      },
+      stdio: 'pipe',
+    });
+
+    serverProcess.stdout.on('data', (chunk: Buffer) => {
+      stdoutBuffer += chunk.toString();
+    });
+    serverProcess.stderr.on('data', (chunk: Buffer) => {
+      stderrBuffer += chunk.toString();
+    });
+
+    await new Promise<void>((resolveReady, rejectReady) => {
+      serverProcess?.once('spawn', () => resolveReady());
+      serverProcess?.once('error', (error) => rejectReady(error));
+    });
+
+    try {
+      await waitForHealthy(baseUrl);
+    } catch (error) {
+      if (serverProcess?.exitCode !== null) {
+        throw new Error(
+          `Orchestrator exited before readiness (code=${serverProcess?.exitCode}).\nSTDOUT:\n${stdoutBuffer}\nSTDERR:\n${stderrBuffer}`,
+        );
+      }
+      throw new Error(
+        `Orchestrator failed health check before timeout.\nSTDOUT:\n${stdoutBuffer}\nSTDERR:\n${stderrBuffer}`,
+      );
+    }
+  };
+
+  const resetRuntimeToSeededState = async () => {
+    await stopRuntimeProcess();
+    await clearAgentServiceStateFiles();
+    await writeFile(stateFilePath, seededStateRaw, 'utf-8');
+    await startRuntimeProcess();
+  };
 
   const triggerTask = async (type: string, payload: Record<string, unknown>) => {
     const response = await fetch(`${baseUrl}/api/tasks/trigger`, {
@@ -430,6 +578,16 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       latestAgent = (payload.agents ?? []).find((agent) => agent.id === agentId);
       const runtimeEvidence = latestAgent?.capability?.runtimeEvidence;
       const signal = runtimeEvidence?.signals?.find((entry) => entry.key === key);
+      const matchesRunId =
+        typeof diagnostics?.runId === 'string' && diagnostics.runId.length > 0
+          ? signal?.runId === diagnostics.runId &&
+            runtimeEvidence?.latestSuccessfulRunId === diagnostics.runId
+          : true;
+      const matchesTaskId =
+        typeof diagnostics?.taskId === 'string' && diagnostics.taskId.length > 0
+          ? signal?.taskId === diagnostics.taskId &&
+            runtimeEvidence?.latestSuccessfulTaskId === diagnostics.taskId
+          : true;
       const hasRuntimeSignal =
         Boolean(runtimeEvidence?.latestSuccessfulRunId) &&
         Boolean(runtimeEvidence?.latestSuccessfulTaskId) &&
@@ -440,7 +598,9 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         Boolean(signal?.runId) &&
         Boolean(signal?.taskId) &&
         Array.isArray(signal?.evidence) &&
-        (signal?.evidence?.length ?? 0) > 0;
+        (signal?.evidence?.length ?? 0) > 0 &&
+        matchesRunId &&
+        matchesTaskId;
 
       if (hasRuntimeSignal) {
         return latestAgent;
@@ -610,7 +770,6 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   beforeAll(async () => {
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
-    const tsxCliPath = resolve(process.cwd(), '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
     const configPath = resolve(process.cwd(), '..', 'orchestrator_config.json');
     const configRaw = await readFile(configPath, 'utf-8');
     const config = JSON.parse(configRaw) as { stateFile: string; digestDir?: string };
@@ -620,6 +779,8 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     digestDirPath = join(runtimeRootDir, 'logs', 'digests');
     envFilePath = join(runtimeRootDir, 'orchestrator.test.env');
     operatorDistDir = join(runtimeRootDir, 'operator-s-console-dist-fixture');
+    serviceStateLogsDir = resolve(process.cwd(), '..', 'logs');
+    serviceStateBackupDir = join(runtimeRootDir, 'service-state-backup');
 
     await mkdir(join(operatorDistDir, 'assets'), { recursive: true });
     await writeFile(
@@ -893,75 +1054,17 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       remediationTasks: [],
     });
     await writeFile(stateFilePath, JSON.stringify(seededState), 'utf-8');
+    seededStateRaw = JSON.stringify(seededState);
     await writeFile(configFilePath, JSON.stringify(testConfig), 'utf-8');
     await writeFile(envFilePath, '', 'utf-8');
-
-    serverProcess = spawn(process.execPath, [tsxCliPath, 'src/index.ts'], {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        NODE_ENV: 'test',
-        PORT: String(port),
-        API_KEY: TEST_API_KEY,
-        WEBHOOK_SECRET: TEST_WEBHOOK_SECRET,
-        MONGO_PASSWORD: process.env.MONGO_PASSWORD ?? 'test-mongo-password',
-        REDIS_PASSWORD: process.env.REDIS_PASSWORD ?? 'test-redis-password',
-        MONGO_USERNAME: process.env.MONGO_USERNAME ?? 'test-mongo-user',
-        // Keep the suite deterministic: this runtime is file-backed and should not
-        // inherit ambient Mongo connectivity from the host machine.
-        DATABASE_URL: '',
-        DB_NAME: process.env.DB_NAME ?? 'orchestrator',
-        ALERTS_ENABLED: 'false',
-        ORCHESTRATOR_FAST_START: 'true',
-        ORCHESTRATOR_CONFIG: configFilePath,
-        ORCHESTRATOR_ENV_FILE: envFilePath,
-        OPERATOR_UI_DIST_DIR: operatorDistDir,
-      },
-      stdio: 'pipe',
-    });
-
-    serverProcess.stdout.on('data', (chunk: Buffer) => {
-      stdoutBuffer += chunk.toString();
-    });
-    serverProcess.stderr.on('data', (chunk: Buffer) => {
-      stderrBuffer += chunk.toString();
-    });
-
-    await new Promise<void>((resolveReady, rejectReady) => {
-      serverProcess?.once('spawn', () => resolveReady());
-      serverProcess?.once('error', (error) => rejectReady(error));
-    });
-
-    try {
-      await waitForHealthy(baseUrl);
-    } catch (error) {
-      if (serverProcess.exitCode !== null) {
-        throw new Error(
-          `Orchestrator exited before readiness (code=${serverProcess.exitCode}).\nSTDOUT:\n${stdoutBuffer}\nSTDERR:\n${stderrBuffer}`,
-        );
-      }
-      throw new Error(
-        `Orchestrator failed health check before timeout.\nSTDOUT:\n${stdoutBuffer}\nSTDERR:\n${stderrBuffer}`,
-      );
-    }
+    await backupAgentServiceStateFiles();
+    await clearAgentServiceStateFiles();
+    await startRuntimeProcess();
   }, 45000);
 
   afterAll(async () => {
-    if (serverProcess && serverProcess.exitCode === null) {
-      serverProcess.kill('SIGTERM');
-      await new Promise<void>((resolveExit) => {
-        const timeout = setTimeout(() => {
-          if (serverProcess && serverProcess.exitCode === null) {
-            serverProcess.kill('SIGKILL');
-          }
-        }, 5000);
-
-        serverProcess?.once('exit', () => {
-          clearTimeout(timeout);
-          resolveExit();
-        });
-      });
-    }
+    await stopRuntimeProcess();
+    await restoreAgentServiceStateFiles();
 
     if (runtimeRootDir) {
       await rm(runtimeRootDir, { recursive: true, force: true });
@@ -1184,6 +1287,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       const failingTaskId = await triggerTask('send-digest', {
         reason: 'result-semantics-failure',
         runNonce,
+        maxRetries: 0,
       });
       const failingRecord = await waitForTaskHistoryRecord(failingTaskId);
       expect(failingRecord.result).toBe('error');
@@ -1198,6 +1302,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   it('records integration-workflow success:false as error', async () => {
     const failingTaskId = await triggerTask('integration-workflow', {
       type: 'workflow',
+      maxRetries: 0,
       steps: [
         {
           name: 'force-failure',
@@ -2102,6 +2207,8 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   });
 
   it('surfaces Wave 4 runtime readiness signals through agent overview', { timeout: 180000 }, async () => {
+    await resetRuntimeToSeededState();
+
     const controlPlaneTaskId = await triggerTask('control-plane-brief', {
       focus: 'wave4-runtime-readiness',
     });
@@ -2144,6 +2251,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
     const releaseTaskId = await triggerTask('release-readiness', {
       releaseTarget: 'wave4-runtime-readiness',
+      maxRetries: 0,
     });
     await waitForTaskHistoryRecord(releaseTaskId);
     const releaseRun = await waitForCompletedTaskRun(releaseTaskId, ['success', 'failed']);
@@ -2151,6 +2259,11 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     const controlPlaneAgent = await waitForAgentRuntimeSignal(
       'operations-analyst-agent',
       'controlPlaneBrief',
+      45000,
+      {
+        runId: String(controlPlaneRun.runId),
+        taskId: controlPlaneTaskId,
+      },
     );
     const releaseAgent = await waitForAgentRuntimeSignal(
       'release-manager-agent',

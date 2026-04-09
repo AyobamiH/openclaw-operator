@@ -69,11 +69,15 @@ The public repo is in a shippable state.
      discarded local spike
 
 7. The Wave 4 runtime-readiness test was hardened again.
-   - the first fix closed early-read races but still polled cached endpoints
-   - the current test now varies poll request keys and waits beyond the cache
-     TTL when checking agent overview and run-detail readiness output
+   - the first fix closed early-read races but still left the suite vulnerable
+     to cached reads, stale local agent service-state memory, and critical
+     incident bleed from earlier failure tests
+   - the current test now isolates Wave 4 behind a seeded runtime reset,
+     disables retry noise for intentional failure cases, and requires current
+     run/task ids when checking promoted runtime evidence
    - assistant workflow guidance now explicitly requires cache-aware real
-     completion conditions for integration tests
+     completion conditions and isolation from ambient host artifacts for
+     integration tests
 
 ## Current Recommended Next Move
 

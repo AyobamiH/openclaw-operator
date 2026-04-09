@@ -99,7 +99,11 @@ When a test exercises asynchronous or cached runtime surfaces:
 3. account for cache boundaries explicitly
 4. if polling a cached endpoint for fresh state, vary the request key or read a
    non-cached surface
-5. do not treat "passed once locally" as evidence that a timing-sensitive
+5. isolate the test from ambient host artifacts such as persisted service-state
+   files when the assertion depends on current-run truth
+6. reset or quarantine cross-test persistent state when earlier intentional
+   failures could change later release, incident, or runtime-evidence posture
+7. do not treat "passed once locally" as evidence that a timing-sensitive
    failure is closed
 
 If a flaky failure appears, close the whole timing/caching failure mode before
