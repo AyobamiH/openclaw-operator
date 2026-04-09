@@ -907,9 +907,9 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         MONGO_PASSWORD: process.env.MONGO_PASSWORD ?? 'test-mongo-password',
         REDIS_PASSWORD: process.env.REDIS_PASSWORD ?? 'test-redis-password',
         MONGO_USERNAME: process.env.MONGO_USERNAME ?? 'test-mongo-user',
-        DATABASE_URL:
-          process.env.DATABASE_URL ??
-          'mongodb://127.0.0.1:1/orchestrator?serverSelectionTimeoutMS=1000&connectTimeoutMS=1000',
+        // Keep the suite deterministic: this runtime is file-backed and should not
+        // inherit ambient Mongo connectivity from the host machine.
+        DATABASE_URL: '',
         DB_NAME: process.env.DB_NAME ?? 'orchestrator',
         ALERTS_ENABLED: 'false',
         ORCHESTRATOR_FAST_START: 'true',
