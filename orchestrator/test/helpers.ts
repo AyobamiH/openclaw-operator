@@ -4,6 +4,7 @@
  */
 
 import { describe, it, beforeEach, afterEach, expect, vi } from 'vitest';
+import { performance } from 'node:perf_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -258,8 +259,8 @@ export async function waitFor(
   condition: () => boolean | Promise<boolean>,
   timeoutMs: number = 5000,
 ): Promise<void> {
-  const startTime = Date.now();
-  while (Date.now() - startTime < timeoutMs) {
+  const startTime = performance.now();
+  while (performance.now() - startTime < timeoutMs) {
     if (await condition()) {
       return;
     }
@@ -294,11 +295,11 @@ export async function simulateTaskExecution(
   duration: number = 100,
   shouldFail: boolean = false,
 ): Promise<{ executionTime: number; result: any; error?: Error }> {
-  const startTime = Date.now();
+  const startTime = performance.now();
 
   await new Promise((resolve) => setTimeout(resolve, duration));
 
-  const executionTime = Date.now() - startTime;
+  const executionTime = performance.now() - startTime;
 
   if (shouldFail) {
     return {

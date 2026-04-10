@@ -8,6 +8,7 @@
  * - Workflow state is maintained across steps
  */
 
+import { performance } from 'node:perf_hooks';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { allAgents, taskFixtures } from '../fixtures';
 import { MockAuditLogger, createTraceContext, customAssertions } from '../helpers';
@@ -56,7 +57,7 @@ describe('Unit Simulation: Cross-Agent Workflows', () => {
       totalDuration: 0,
     };
 
-    const startTime = Date.now();
+    const startTime = performance.now();
 
     for (let i = 0; i < steps.length; i++) {
       const step = steps[i];
@@ -83,7 +84,7 @@ describe('Unit Simulation: Cross-Agent Workflows', () => {
       }
 
       // Execute the step
-      const stepStartTime = Date.now();
+      const stepStartTime = performance.now();
       const traceId = auditLogger.logAction('workflow_step_executed', step.agentId, step.skillId, {
         workflowTraceId: workflowTrace.traceId,
         parentTraceId,
@@ -96,7 +97,7 @@ describe('Unit Simulation: Cross-Agent Workflows', () => {
         typeof step.input?.delay === 'number' ? step.input.delay : 50 + Math.random() * 100;
       await new Promise((resolve) => setTimeout(resolve, processingTime));
 
-      const stepDuration = Date.now() - stepStartTime;
+      const stepDuration = performance.now() - stepStartTime;
 
       result.steps.push({
         agentId: step.agentId,
@@ -112,7 +113,7 @@ describe('Unit Simulation: Cross-Agent Workflows', () => {
       });
     }
 
-    result.totalDuration = Date.now() - startTime;
+    result.totalDuration = performance.now() - startTime;
     return result;
   }
 
@@ -299,9 +300,9 @@ describe('Unit Simulation: Cross-Agent Workflows', () => {
       },
     ];
 
-    const startTime = Date.now();
+    const startTime = performance.now();
     const result = await executeWorkflow(workflow);
-    const duration = Date.now() - startTime;
+    const duration = performance.now() - startTime;
 
     // Duration should be close to timeout
     expect(duration).toBeGreaterThanOrEqual(timeout - 100);
@@ -333,9 +334,9 @@ describe('Unit Simulation: Cross-Agent Workflows', () => {
       ],
     ];
 
-    const startTime = Date.now();
+    const startTime = performance.now();
     const results = await Promise.all(workflows.map((w) => executeWorkflow(w)));
-    const duration = Date.now() - startTime;
+    const duration = performance.now() - startTime;
 
     // All workflows should succeed
     expect(results.every((r) => r.success)).toBe(true);

@@ -8,6 +8,7 @@
  * - System remains stable under failure conditions
  */
 
+import { performance } from 'node:perf_hooks';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { allAgents } from '../fixtures';
 import { MockAgentState, MockAuditLogger, simulateTaskExecution, customAssertions } from '../helpers';
@@ -201,14 +202,14 @@ describe('Unit Simulation: Error Handling & Recovery', () => {
   });
 
   it('should apply exponential backoff between retries', async () => {
-    const startTime = Date.now();
+    const startTime = performance.now();
 
     const result = await executeTaskWithRetry('qa-verification-agent', 'testRunner', {
       shouldFail: true,
       maxRetries: 3,
     });
 
-    const duration = Date.now() - startTime;
+    const duration = performance.now() - startTime;
 
     // With exponential backoff: 100ms + 200ms + 400ms = 700ms minimum
     // Plus execution time, should be > 500ms
@@ -328,7 +329,7 @@ describe('Unit Simulation: Error Handling & Recovery', () => {
 
   it('should timeout long-running tasks', async () => {
     const timeout = 300; // 300ms timeout
-    const startTime = Date.now();
+    const startTime = performance.now();
 
     // Simulate very long task (will get cancelled)
     const promise = new Promise<TaskResult>((resolve) => {
@@ -337,7 +338,7 @@ describe('Unit Simulation: Error Handling & Recovery', () => {
           success: false,
           agentId: 'market-research-agent',
           skillId: 'sourceFetch',
-          duration: Date.now() - startTime,
+          duration: performance.now() - startTime,
           error: 'Task timeout',
           retryCount: 0,
           escalated: false,
@@ -352,7 +353,7 @@ describe('Unit Simulation: Error Handling & Recovery', () => {
           success: true,
           agentId: 'market-research-agent',
           skillId: 'sourceFetch',
-          duration: Date.now() - startTime,
+          duration: performance.now() - startTime,
           retryCount: 0,
           escalated: false,
           traceId: 'success-trace',
