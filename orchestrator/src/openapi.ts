@@ -8,6 +8,7 @@ const TASK_TYPE_ENUM = [
   "deployment-ops",
   "code-index",
   "test-intelligence",
+  "compliance-review",
   "reddit-response",
   "security-audit",
   "summarize-content",

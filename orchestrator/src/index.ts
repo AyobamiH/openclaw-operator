@@ -1052,6 +1052,28 @@ const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
     ],
   },
   {
+    type: "compliance-review",
+    label: "Compliance Review",
+    purpose: "Produce a bounded compliance posture across policy coverage, dependency manifests, and release governance evidence.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "worker",
+    baselineConfidence: "medium",
+    dependencyRequirements: [
+      "compliance worker",
+      "policy documents",
+      "dependency manifests",
+      "release governance evidence",
+    ],
+    exposeInV1: true,
+    caveats: [
+      "This lane is read-only compliance synthesis; it does not alter policy, dependencies, or release workflows.",
+      "Treat blocked posture as a signal to close policy or dependency gaps before release claims.",
+    ],
+  },
+  {
     type: "send-digest",
     label: "Send Digest",
     purpose: "Send digest notifications for queued lead work.",
@@ -1309,6 +1331,7 @@ const AGENT_CAPABILITY_RUNTIME_SIGNAL_KEYS: Partial<Record<string, string[]>> = 
   "deployment-ops-agent": ["deploymentOps"],
   "code-index-agent": ["codeIndex"],
   "test-intelligence-agent": ["testIntelligence"],
+  "compliance-agent": ["compliance"],
 };
 
 const TASK_AGENT_SKILL_REQUIREMENTS: Record<
@@ -1374,6 +1397,10 @@ const TASK_AGENT_SKILL_REQUIREMENTS: Record<
     agentId: "test-intelligence-agent",
     skillId: "documentParser",
   },
+  "compliance-review": {
+    agentId: "compliance-agent",
+    skillId: "documentParser",
+  },
 };
 
 const TASK_IMPACT_SURFACES: Record<string, string[]> = {
@@ -1413,6 +1440,11 @@ const TASK_IMPACT_SURFACES: Record<string, string[]> = {
     "retry-recovery",
     "release-risk",
   ],
+  "compliance-review": [
+    "policy-docs",
+    "dependency-manifests",
+    "release-governance",
+  ],
   startup: ["control-plane"],
   "doc-change": ["document-watchers", "pending-doc-buffer"],
 };
@@ -1424,6 +1456,7 @@ const CONFIRMED_WORKER_AGENTS = new Set([
   "deployment-ops-agent",
   "code-index-agent",
   "test-intelligence-agent",
+  "compliance-agent",
 ]);
 const PARTIAL_WORKER_AGENTS = new Set(["doc-specialist"]);
 
@@ -1620,6 +1653,17 @@ const AGENT_CAPABILITY_TARGETS: Record<
       "retry pressure review",
       "release-facing verifier risk review",
       "bounded test follow-up guidance",
+    ],
+  },
+  "compliance-agent": {
+    role: "Compliance posture synthesizer",
+    spine: "trust",
+    targetCapabilities: [
+      "policy coverage review",
+      "dependency manifest review",
+      "license indicator review",
+      "release governance evidence review",
+      "bounded compliance follow-up guidance",
     ],
   },
   "skill-audit-agent": {
@@ -3467,6 +3511,36 @@ function summarizeAgentCapabilityRuntimeSignal(args: {
       `retry-recoveries:${retryRecoveryCount}`,
       `release-risk:${releaseRiskStatus}`,
     ];
+  } else if (agentId === "compliance-agent" && key === "compliance") {
+    const compliance = record as Record<string, any>;
+    const decision =
+      typeof compliance?.decision === "string" ? compliance.decision : "unknown";
+    const target =
+      typeof compliance?.target === "string" ? compliance.target : "workspace";
+    const policyStatus =
+      typeof compliance?.policyCoverage?.status === "string"
+        ? compliance.policyCoverage.status
+        : "unknown";
+    const dependencyStatus =
+      typeof compliance?.dependencyReview?.status === "string"
+        ? compliance.dependencyReview.status
+        : "unknown";
+    const releaseRiskStatus =
+      typeof compliance?.releaseRisk?.status === "string"
+        ? compliance.releaseRisk.status
+        : "unknown";
+    const missingPolicyDocs = Array.isArray(compliance?.policyCoverage?.missingDocs)
+      ? compliance.policyCoverage.missingDocs.length
+      : 0;
+    summary = `Compliance posture is ${decision} for ${target} with policy ${policyStatus}, dependency ${dependencyStatus}, release risk ${releaseRiskStatus}, and ${missingPolicyDocs} missing policy doc(s).`;
+    evidence = [
+      `decision:${decision}`,
+      `target:${target}`,
+      `policy:${policyStatus}`,
+      `dependency:${dependencyStatus}`,
+      `release-risk:${releaseRiskStatus}`,
+      `missing-policy-docs:${missingPolicyDocs}`,
+    ];
   } else if (record) {
     evidence = Object.entries(record)
       .slice(0, 5)
@@ -3734,7 +3808,8 @@ export function buildAgentCapabilityReadiness(args: {
         agent.id === "release-manager-agent" ||
         agent.id === "deployment-ops-agent" ||
         agent.id === "code-index-agent" ||
-        agent.id === "test-intelligence-agent"
+        agent.id === "test-intelligence-agent" ||
+        agent.id === "compliance-agent"
       ) &&
       (verifierHandoffCount > 0 || memoryReportedRelationships || memoryReportedHandoff)
     ) ||
@@ -3750,7 +3825,8 @@ export function buildAgentCapabilityReadiness(args: {
       agent.id === "release-manager-agent" ||
       agent.id === "deployment-ops-agent" ||
       agent.id === "code-index-agent" ||
-      agent.id === "test-intelligence-agent") &&
+      agent.id === "test-intelligence-agent" ||
+      agent.id === "compliance-agent") &&
       runtimeSignals.length > 0);
 
   const pushEvidenceProfile = (profile: AgentCapabilityEvidenceProfile) => {
@@ -3875,6 +3951,10 @@ export function buildAgentCapabilityReadiness(args: {
                     ? memoryReportedRelationships || memoryReportedHandoff
                       ? "memory-backed test follow-up evidence observed"
                       : `${runtimeSignals.length} test-intelligence signal(s) support bounded quality guidance`
+                  : agent.id === "compliance-agent"
+                    ? memoryReportedRelationships || memoryReportedHandoff
+                      ? "memory-backed compliance follow-up evidence observed"
+                      : `${runtimeSignals.length} compliance signal(s) support bounded governance guidance`
                 : `${verifierHandoffCount} downstream handoff relationship(s) observed`,
     );
     presentCapabilities.push("verification or repair evidence");

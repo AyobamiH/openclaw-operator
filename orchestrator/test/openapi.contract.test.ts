@@ -79,6 +79,7 @@ describe("OpenAPI contract", () => {
       expect.arrayContaining([
         "code-index",
         "control-plane-brief",
+        "compliance-review",
         "incident-triage",
         "release-readiness",
         "test-intelligence",

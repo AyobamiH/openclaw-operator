@@ -147,6 +147,12 @@ function mapTestIntelligenceStatus(value: string) {
   return "watching";
 }
 
+function mapComplianceStatus(value: string) {
+  if (value === "clear" || value === "strong" || value === "ready") return "ready";
+  if (value === "blocked" || value === "missing") return "blocked";
+  return "watching";
+}
+
 function buildQaSignalDeck(raw: Record<string, unknown>): OperatorSignalDeckVM | null {
   const closureRecommendation = asRecord(raw.closureRecommendation);
   const acceptanceCoverage = asRecord(raw.acceptanceCoverage);
@@ -681,6 +687,97 @@ function buildTestIntelligenceSignalDeck(
           observedTaskTypes.length > 0
             ? `Observed task types: ${observedTaskTypes.join(", ")}.`
             : null,
+        ]),
+      },
+    ],
+  };
+}
+
+function buildComplianceSignalDeck(raw: Record<string, unknown>): OperatorSignalDeckVM | null {
+  const compliance = asRecord(raw.compliance);
+  const handoffPackage = asRecord(raw.handoffPackage);
+
+  if (!compliance) {
+    return null;
+  }
+
+  const policyCoverage = asRecord(compliance.policyCoverage);
+  const dependencyReview = asRecord(compliance.dependencyReview);
+  const releaseRisk = asRecord(compliance.releaseRisk);
+  const evidenceWindow = asRecord(compliance.evidenceWindow);
+  const focus = asRecord(compliance.focus);
+  const blockers = normalizeStringList(compliance.blockers, 3);
+  const followups = normalizeStringList(compliance.followups, 3);
+  const missingDocs = normalizeStringList(policyCoverage?.missingDocs, 4);
+  const licenseIndicators = normalizeStringList(dependencyReview?.licenseIndicators, 3);
+
+  const dependencyStatus = mapComplianceStatus(str(dependencyReview?.status, "partial"));
+  const releaseStatus = mapComplianceStatus(str(releaseRisk?.status, "watching"));
+  const combinedStatus =
+    dependencyStatus === "blocked" || releaseStatus === "blocked"
+      ? "blocked"
+      : dependencyStatus === "watching" || releaseStatus === "watching"
+        ? "watching"
+        : "ready";
+
+  return {
+    title: "Compliance Review Deck",
+    summary:
+      "Bounded compliance posture across policy coverage, dependency manifests, and release-governance evidence.",
+    cards: [
+      {
+        id: "compliance-posture",
+        title: "Compliance Posture",
+        status: mapComplianceStatus(str(compliance.decision, "watching")),
+        summary: str(
+          compliance.summary,
+          "No bounded compliance summary was recorded for this run.",
+        ),
+        details: compactDetails([
+          `Target: ${str(compliance.target, "workspace")}.`,
+          focus
+            ? `Focus areas: ${normalizeStringList(focus.matchedAreas, 4).join(", ") || "all"}.`
+            : null,
+          blockers.length > 0 ? `Blockers: ${blockers.join(", ")}.` : null,
+          handoffPackage
+            ? `Handoff: ${str(handoffPackage.targetAgentId, "security-agent")} via ${str(
+                handoffPackage.recommendedTaskType,
+                "security-audit",
+              )}.`
+            : null,
+        ]),
+      },
+      {
+        id: "compliance-policy",
+        title: "Policy Coverage",
+        status: mapComplianceStatus(str(policyCoverage?.status, "partial")),
+        summary: `Policy coverage is ${str(policyCoverage?.status, "unknown")} with ${missingDocs.length} missing doc(s).`,
+        details: compactDetails([
+          missingDocs.length > 0 ? `Missing: ${missingDocs.join(", ")}.` : "No policy gaps recorded.",
+          `Required docs: ${normalizeStringList(policyCoverage?.requiredDocs, 3).join(", ") || "none"}.`,
+          followups.length > 0 ? `Follow-ups: ${followups.join(", ")}.` : null,
+        ]),
+      },
+      {
+        id: "compliance-dependency",
+        title: "Dependencies And Release Risk",
+        status: combinedStatus,
+        summary: `Dependency posture is ${str(dependencyReview?.status, "unknown")} and release risk is ${str(
+          releaseRisk?.status,
+          "unknown",
+        )}.`,
+        details: compactDetails([
+          `Manifests: ${str(dependencyReview?.manifestCount, "0")} · dependencies: ${str(
+            dependencyReview?.dependencyCount,
+            "0",
+          )}.`,
+          licenseIndicators.length > 0
+            ? `License indicators: ${licenseIndicators.join(", ")}.`
+            : "No license indicators recorded.",
+          `Recent governance runs: ${str(evidenceWindow?.recentRunCount, "0")} · latest handled ${str(
+            evidenceWindow?.latestHandledAt,
+            "unknown",
+          )}.`,
         ]),
       },
     ],
@@ -1538,6 +1635,7 @@ function buildOperatorSignalDeckVM(runType: string | null | undefined, runResult
   if (runType === "deployment-ops") return buildDeploymentOpsSignalDeck(raw);
   if (runType === "code-index") return buildCodeIndexSignalDeck(raw);
   if (runType === "test-intelligence") return buildTestIntelligenceSignalDeck(raw);
+  if (runType === "compliance-review") return buildComplianceSignalDeck(raw);
 
   return null;
 }

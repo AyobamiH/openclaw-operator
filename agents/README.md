@@ -28,6 +28,8 @@ Telemetry helpers live under [`shared/`](./shared). New agents should start from
 - [`test-intelligence-agent/`](./test-intelligence-agent) - bounded
   test-intelligence posture synthesis across local suite coverage, recent
   failures, retry signals, and release-facing risk
+- [`compliance-agent/`](./compliance-agent) - bounded compliance posture
+  synthesis across policy coverage, dependency evidence, and release governance
 - [`integration-agent/`](./integration-agent) - multi-step workflow handoffs
 - [`market-research-agent/`](./market-research-agent) - approved external
   research collection
@@ -75,6 +77,7 @@ Current runtime truth:
   - [`deployment-ops-agent/`](./deployment-ops-agent) (`2026-04-09`; bounded `deployment-ops` proof)
   - [`code-index-agent/`](./code-index-agent) (`2026-04-10`; bounded `code-index` live canary and promoted runtime-evidence proof)
   - [`test-intelligence-agent/`](./test-intelligence-agent) (`2026-04-12`; bounded `test-intelligence` live canary and promoted runtime-evidence proof)
+  - [`compliance-agent/`](./compliance-agent) (`2026-04-13`; bounded `compliance-review` live canary and promoted runtime-evidence proof)
 - **Confirmed working as spawned workers in the latest validation sweep (service availability is separate from worker proof):**
   - [`build-refactor-agent/`](./build-refactor-agent)
   - [`market-research-agent/`](./market-research-agent) (query-only mode)

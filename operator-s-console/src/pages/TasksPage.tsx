@@ -77,6 +77,8 @@ interface TaskDraftState {
   codeIndexFocusPaths: string;
   testIntelligenceTarget: string;
   testIntelligenceFocusSuites: string;
+  complianceTarget: string;
+  complianceFocusAreas: string;
   contentType: string;
   contentSourceName: string;
   contentSourceDescription: string;
@@ -155,6 +157,8 @@ const DEFAULT_TASK_DRAFT: TaskDraftState = {
   codeIndexFocusPaths: "docs/reference\norchestrator/src\noperator-s-console/src",
   testIntelligenceTarget: "workspace",
   testIntelligenceFocusSuites: "orchestrator\noperator-ui\nagents",
+  complianceTarget: "workspace",
+  complianceFocusAreas: "policies\ndependencies\nrelease",
   contentType: "readme",
   contentSourceName: "Project",
   contentSourceDescription: "Generated content",
@@ -228,6 +232,7 @@ function categorizeTask(taskType: string): TaskCategory {
     "deployment-ops": "Governance",
     "code-index": "Research",
     "test-intelligence": "Governance",
+    "compliance-review": "Governance",
     "build-refactor": "Sensitive",
     "market-research": "Research",
     "summarize-content": "Research",
@@ -346,6 +351,16 @@ function buildTaskPayload(taskType: string, draft: TaskDraftState): Record<strin
         ? { target: draft.testIntelligenceTarget.trim() }
         : {}),
       ...(focusSuites.length > 0 ? { focusSuites } : {}),
+    };
+  }
+
+  if (taskType === "compliance-review") {
+    const focusAreas = parseLines(draft.complianceFocusAreas);
+    return {
+      ...(draft.complianceTarget.trim()
+        ? { target: draft.complianceTarget.trim() }
+        : {}),
+      ...(focusAreas.length > 0 ? { focusAreas } : {}),
     };
   }
 
@@ -1660,6 +1675,45 @@ function renderTaskFields(
             Keep suites inside the bounded lane. Leave the defaults when you want a
             broad repo test posture, or narrow them when you want one focused test
             evidence slice.
+          </p>
+        </div>
+      </>
+    );
+  }
+
+  if (task.type === "compliance-review") {
+    return (
+      <>
+        <div className="console-inset p-3 rounded-sm">
+          <p className="text-[10px] font-mono text-foreground leading-relaxed">
+            This lane produces a bounded compliance posture across policy coverage,
+            dependency manifests, and release-governance evidence. It does not alter
+            policy, dependencies, or release workflows.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+            Target
+          </label>
+          <Input
+            value={draft.complianceTarget}
+            onChange={(event) => updateDraft({ complianceTarget: event.target.value })}
+            className="bg-panel-inset border-border font-mono text-sm"
+            placeholder="workspace"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-[10px] font-mono font-semibold text-muted-foreground uppercase tracking-[0.12em]">
+            Focus Areas
+          </label>
+          <Textarea
+            value={draft.complianceFocusAreas}
+            onChange={(event) => updateDraft({ complianceFocusAreas: event.target.value })}
+            className="bg-panel-inset border-border font-mono text-sm min-h-[90px]"
+            placeholder={"policies\ndependencies\nrelease"}
+          />
+          <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+            Allowed focus areas: policies, dependencies, release, security, approvals.
           </p>
         </div>
       </>

@@ -145,6 +145,7 @@ must be substantially true:
 | `deployment-ops-agent` | trust | Focused bounded lane | deployment posture synthesis now emits explicit `ready` / `watch` / `blocked` posture across rollout mode, rollback readiness, pipeline posture, docs parity, and environment drift with live contract proof | active | Expansion |
 | `code-index-agent` | truth | Focused bounded lane | code-index synthesis now emits explicit `ready` / `refresh` / `blocked` posture across bounded local coverage, doc links, search gaps, freshness, and retrieval readiness with live canary proof | active | Expansion |
 | `test-intelligence-agent` | truth | Focused bounded lane | test-intelligence synthesis now emits explicit `ready` / `watching` / `blocked` posture across bounded suite coverage, recent failures, flaky signals, release risk, and evidence windows with live canary proof | active | Expansion |
+| `compliance-agent` | trust | Focused bounded lane | compliance synthesis now emits explicit `clear` / `watching` / `blocked` posture across policy coverage, dependency evidence, and release governance signals with live canary proof | active | Expansion |
 | `build-refactor-agent` | code | Strong foundation | build lane now emits bounded scope contracts, surgery profiles, rollback/verification context, verifier handoff relationships, and repair-linked verification-loop evidence, and those governance signals are now surfaced end-to-end through agent overview with live proof | complete | Wave 3 |
 | `skill-audit-agent` | trust | Strong foundation | governance lane now promotes trust posture, policy handoff, and telemetry handoff into runtime readiness with governed-skill depth, and those signals remain proven end-to-end through the control-plane readiness surface | complete | Wave 3 |
 
@@ -748,6 +749,39 @@ All waves remain in scope. This is ordering only.
 1. bounded test-intelligence posture contract
 2. suite-coverage, recent-failure, and flaky-signal synthesis
 3. release-risk and evidence-window promotion
+4. live canary and operator-evidence confirmation
+
+### compliance-agent
+
+**Current runtime truth**
+
+- The focused public compliance-review lane is now live for the current runtime
+  slice.
+- It emits explicit `clear` / `watching` / `blocked` posture, policy coverage,
+  dependency posture, release-governance risk, and evidence-window output.
+- A live canary on `3312` on `2026-04-13` confirmed both the run-detail
+  contract and promoted `compliance` runtime evidence in `/api/agents/overview`.
+
+**Missing ultra behaviors**
+
+- Broader third-party compliance frameworks and external attestations remain
+  ahead, but the current runtime slice already proves the bounded local
+  policy/dependency posture contract.
+
+**Promotion gate**
+
+- Compliance posture stays read-only and bounded to local policy and dependency
+  evidence.
+- Missing policy documents, license indicators, and release-governance risk
+  remain explicit instead of collapsing into a flat green status.
+- Downstream users can tell when policy or dependency follow-through is the
+  real next step instead of over-trusting a shallow compliance signal.
+
+**First implementation slices**
+
+1. bounded compliance-review posture contract
+2. policy coverage and dependency evidence synthesis
+3. release-governance risk and evidence-window promotion
 4. live canary and operator-evidence confirmation
 
 ### skill-audit-agent

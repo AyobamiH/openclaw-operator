@@ -1148,6 +1148,9 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       catalog.tasks.some((task: any) => task.type === 'test-intelligence'),
     ).toBe(true);
     expect(
+      catalog.tasks.some((task: any) => task.type === 'compliance-review'),
+    ).toBe(true);
+    expect(
       catalog.tasks.some((task: any) => task.type === 'control-plane-brief'),
     ).toBe(true);
     expect(
@@ -2636,6 +2639,72 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     ).toContain('promoted runtime readiness evidence');
     expect(
       testIntelligenceAgent?.capability?.presentCapabilities,
+    ).toContain('tool execution evidence');
+  });
+
+  it('surfaces compliance posture through task runs and agent overview', { timeout: 120000 }, async () => {
+    await resetRuntimeToSeededState();
+
+    const complianceTaskId = await triggerTask('compliance-review', {
+      target: 'workspace',
+      focusAreas: ['policies', 'dependencies', 'release'],
+      maxRetries: 0,
+    });
+    await waitForTaskHistoryRecord(complianceTaskId);
+    const complianceRun = await waitForTaskRun(complianceTaskId);
+
+    const complianceDetail = await waitForRunResultSummaryKeys(
+      String(complianceRun.runId),
+      ['compliance', 'policyCoverage', 'dependencyReview', 'releaseRisk', 'evidenceWindow'],
+    ) as {
+      run?: {
+        resultSummary?: {
+          keys?: string[];
+          success?: boolean;
+          highlights?: {
+            compliance?: {
+              decision?: string;
+              target?: string;
+            };
+          };
+        };
+      };
+    };
+
+    expect(complianceDetail.run?.resultSummary?.keys).toContain('compliance');
+    expect(complianceDetail.run?.resultSummary?.keys).toContain('policyCoverage');
+    expect(complianceDetail.run?.resultSummary?.keys).toContain('dependencyReview');
+    expect(complianceDetail.run?.resultSummary?.keys).toContain('releaseRisk');
+    expect(complianceDetail.run?.resultSummary?.keys).toContain('evidenceWindow');
+    expect(complianceDetail.run?.resultSummary?.success).toBe(true);
+    expect(
+      complianceDetail.run?.resultSummary?.highlights?.compliance?.decision === 'clear' ||
+        complianceDetail.run?.resultSummary?.highlights?.compliance?.decision === 'watching',
+    ).toBe(true);
+    expect(
+      complianceDetail.run?.resultSummary?.highlights?.compliance?.target,
+    ).toBe('workspace');
+
+    const complianceAgent = await waitForAgentRuntimeSignal(
+      'compliance-agent',
+      'compliance',
+      45000,
+      {
+        runId: String(complianceRun.runId),
+        taskId: complianceTaskId,
+      },
+    );
+
+    expect(
+      complianceAgent?.capability?.runtimeEvidence?.signals?.some(
+        (entry) => entry.key === 'compliance',
+      ),
+    ).toBe(true);
+    expect(
+      complianceAgent?.capability?.presentCapabilities,
+    ).toContain('promoted runtime readiness evidence');
+    expect(
+      complianceAgent?.capability?.presentCapabilities,
     ).toContain('tool execution evidence');
   });
 

@@ -1705,6 +1705,19 @@ describe("operator contract surfaces", () => {
             caveats: ["This lane is read-only test posture synthesis; it does not run tests or shell workflows."],
             telemetryOverlay: { totalRuns: 1, successRate: 1 },
           },
+          {
+            type: "compliance-review",
+            label: "Compliance Review",
+            purpose: "Produce a bounded compliance posture across policy coverage, dependency manifests, and release governance evidence.",
+            operationalStatus: "confirmed-working",
+            approvalGated: false,
+            exposeInV1: true,
+            dependencyClass: "worker",
+            dependencyRequirements: ["compliance worker", "policy documents", "dependency manifests"],
+            baselineConfidence: "medium",
+            caveats: ["This lane is read-only compliance synthesis; it does not alter policy, dependencies, or release workflows."],
+            telemetryOverlay: { totalRuns: 1, successRate: 1 },
+          },
         ],
       },
       isLoading: false,
@@ -1780,6 +1793,22 @@ describe("operator contract surfaces", () => {
       );
     expect(focusSuitesField).toBeTruthy();
     expect(focusSuitesField).toHaveValue("orchestrator\noperator-ui\nagents");
+
+    fireEvent.click(screen.getByText("Compliance Review"));
+    expect(
+      screen.getAllByText(/bounded compliance posture/i).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByDisplayValue("workspace")).toBeInTheDocument();
+    const focusAreasField = screen
+      .getAllByRole("textbox")
+      .find(
+        (element) =>
+          "value" in element &&
+          typeof element.value === "string" &&
+          element.value.includes("dependencies"),
+      );
+    expect(focusAreasField).toBeTruthy();
+    expect(focusAreasField).toHaveValue("policies\ndependencies\nrelease");
   });
 
   it("renders reddit-response as a freshness-aware knowledge-pack lane", () => {

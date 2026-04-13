@@ -423,7 +423,7 @@ shipped honestly in open source:
 | DevOps Automator | completed | `deployment-ops-agent` | bounded deploy, rollback, release-ops, and service-runtime guidance fit the operator product directly |
 | LSP/Index Engineer | completed | `code-index-agent` | searchable code and knowledge indexing is productizable, operator-visible, and useful beyond the maintainer's private lab |
 | Test Results Analyzer | completed | `test-intelligence-agent` | multi-suite test evidence synthesis is now productized as a bounded public control-plane lane with live canary proof |
-| Legal Compliance Checker | adapt next | `compliance-agent` | bounded compliance, policy, and dependency-posture review is open-source shippable and useful for releases and operator decisions |
+| Legal Compliance Checker | completed | `compliance-agent` | bounded compliance, policy, and dependency-posture review is open-source shippable and useful for releases and operator decisions |
 | Support Responder | adapt next | `support-operations-agent` | support and FAQ response quality can be productized without turning the public repo into a private customer-ops layer |
 | Sprint Prioritizer | adapt next | `backlog-prioritization-agent` | bounded sequencing, scoping, and priority guidance is productizable for open-source workflow management |
 | UX Researcher | maybe later | `ux-research-agent` | operator and docs usability review is valuable, but it should follow the stronger operational lanes above |
@@ -906,11 +906,11 @@ and `code-index`:
 
 Immediate follow-up is now closed:
 
-1. a live `test-intelligence` canary succeeded on the running runtime on
-   `2026-04-12`
-2. `/api/agents/overview` confirmed current-run `testIntelligence` evidence
+1. a live `compliance-review` canary succeeded on the running runtime on
+   `2026-04-13`
+2. `/api/agents/overview` confirmed current-run `compliance` evidence
    for the canary run
-3. the next candidate is now `compliance-agent`
+3. the next candidate is now `support-operations-agent`
 
 ### Practical Skill-Gap Lens
 
@@ -971,22 +971,19 @@ productize it end to end before opening the next one.
 
 Current recommended next candidate:
 
-- Legal Compliance Checker -> `compliance-agent`
+- Support Responder -> `support-operations-agent`
 
 Why next:
 
-- `deployment-ops-agent`, `code-index-agent`, and
-  `test-intelligence-agent` are now all implemented and live-confirmed on the
-  running operator surface
-- bounded compliance synthesis naturally complements `release-manager-agent`,
-  `deployment-ops-agent`, `test-intelligence-agent`, and the approval /
-  governance surfaces already in repo code
-- it can produce operator-visible proof from current policy, dependency,
-  approval, and release surfaces without widening deploy, shell, or execution
-  authority
-- the next useful product question is no longer whether indexing should exist;
-  it is how test evidence should be clustered, narrated, and promoted into the
-  operator control plane
+- `deployment-ops-agent`, `code-index-agent`, `test-intelligence-agent`, and
+  `compliance-agent` are now all implemented and live-confirmed on the running
+  operator surface
+- support-response synthesis can be bounded to read-only policy + FAQ guidance
+  without expanding the live execution or deployment surface
+- it can reuse the current knowledge-pack and doc-index posture to ground
+  support guidance without introducing new external integrations
+- the next useful product question is how to route operator-safe answers into
+  support and FAQ workflows without diluting governance posture
 
 ### Sprint 1: Trust And Governance Adoption
 

@@ -55,6 +55,7 @@ export const ALLOWED_TASK_TYPES = [
   "deployment-ops",
   "code-index",
   "test-intelligence",
+  "compliance-review",
   "control-plane-brief",
   "incident-triage",
   "release-readiness",
@@ -105,6 +106,10 @@ const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
   },
   "test-intelligence": {
     agentId: "test-intelligence-agent",
+    skillId: "documentParser",
+  },
+  "compliance-review": {
+    agentId: "compliance-agent",
     skillId: "documentParser",
   },
   "control-plane-brief": {
@@ -218,6 +223,11 @@ const RUN_RESULT_HIGHLIGHT_PRIORITY = [
   "reproducibilityProfile",
   "controlPlaneBrief",
   "releaseReadiness",
+  "compliance",
+  "policyCoverage",
+  "dependencyReview",
+  "releaseRisk",
+  "evidenceWindow",
   "trustPosture",
   "policyHandoff",
   "telemetryHandoff",
@@ -505,6 +515,44 @@ function buildTestIntelligenceSummaryResult(result: Record<string, unknown>) {
   };
 }
 
+function buildComplianceSummaryResult(result: Record<string, unknown>) {
+  const compliance =
+    result.compliance && typeof result.compliance === "object"
+      ? (result.compliance as Record<string, unknown>)
+      : null;
+
+  if (!compliance) {
+    return result;
+  }
+
+  return {
+    ...result,
+    policyCoverage:
+      compliance.policyCoverage && typeof compliance.policyCoverage === "object"
+        ? compliance.policyCoverage
+        : undefined,
+    dependencyReview:
+      compliance.dependencyReview && typeof compliance.dependencyReview === "object"
+        ? compliance.dependencyReview
+        : undefined,
+    releaseRisk:
+      compliance.releaseRisk && typeof compliance.releaseRisk === "object"
+        ? compliance.releaseRisk
+        : undefined,
+    evidenceWindow:
+      compliance.evidenceWindow && typeof compliance.evidenceWindow === "object"
+        ? compliance.evidenceWindow
+        : undefined,
+    focus:
+      compliance.focus && typeof compliance.focus === "object"
+        ? compliance.focus
+        : undefined,
+    evidenceSources: Array.isArray(compliance.evidenceSources)
+      ? compliance.evidenceSources
+      : undefined,
+  };
+}
+
 function normalizeTaskExecutionSummaryResult(args: {
   taskType?: string | null;
   agentId?: string | null;
@@ -526,6 +574,10 @@ function normalizeTaskExecutionSummaryResult(args: {
 
   if (taskType === "test-intelligence" || agentId === "test-intelligence-agent") {
     return buildTestIntelligenceSummaryResult(result);
+  }
+
+  if (taskType === "compliance-review" || agentId === "compliance-agent") {
+    return buildComplianceSummaryResult(result);
   }
 
   return result;
@@ -2813,6 +2865,50 @@ const testIntelligenceHandler: TaskHandler = async (task, context) => {
   }
 };
 
+const complianceReviewHandler: TaskHandler = async (task, context) => {
+  await assertToolGatePermission(task, context, "compliance-review");
+  const payload = {
+    id: randomUUID(),
+    type: "compliance-review",
+    target:
+      typeof task.payload.target === "string" ? task.payload.target : undefined,
+    focusAreas: Array.isArray(task.payload.focusAreas)
+      ? task.payload.focusAreas.filter(
+          (entry): entry is string =>
+            typeof entry === "string" && entry.trim().length > 0,
+        )
+      : undefined,
+  };
+
+  try {
+    const result = await runSpawnedAgentJob(
+      "compliance-agent",
+      payload,
+      "COMPLIANCE_AGENT_RESULT_FILE",
+      context.logger,
+    );
+    recordTaskExecutionResultSummary(context, task, result);
+    assertSpawnedAgentReportedSuccess(result, "compliance review");
+    observeSpawnedAgentResult({
+      context,
+      task,
+      sourceAgentId: "compliance-agent",
+      result,
+    });
+    const compliance =
+      typeof result.compliance === "object" && result.compliance !== null
+        ? (result.compliance as Record<string, unknown>)
+        : null;
+    const decision =
+      compliance && typeof compliance.decision === "string"
+        ? compliance.decision
+        : "unknown";
+    return `compliance review complete (${decision})`;
+  } catch (error) {
+    throwTaskFailure("compliance review", error);
+  }
+};
+
 const incidentTriageHandler: TaskHandler = async (task, context) => {
   await assertToolGatePermission(task, context, "incident-triage");
   const payload = {
@@ -3999,6 +4095,7 @@ export const taskHandlers: Record<string, TaskHandler> = {
   "deployment-ops": deploymentOpsHandler,
   "code-index": codeIndexHandler,
   "test-intelligence": testIntelligenceHandler,
+  "compliance-review": complianceReviewHandler,
   "control-plane-brief": controlPlaneBriefHandler,
   "incident-triage": incidentTriageHandler,
   "release-readiness": releaseReadinessHandler,

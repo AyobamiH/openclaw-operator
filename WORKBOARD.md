@@ -129,22 +129,22 @@ The public repo is in a shippable state.
 
 Open the next bounded external-catalog adoption slice as a contract pass:
 
-- `Legal Compliance Checker -> compliance-agent`
+- `Support Responder -> support-operations-agent`
 
-`deployment-ops-agent`, `code-index-agent`, and `test-intelligence-agent` are
-now all implemented and live-confirmed. The next useful move is to define the
-bounded `compliance-agent` contract from current runtime code, governance
-surfaces, and release-facing evidence truth before opening another
-implementation slice.
+`deployment-ops-agent`, `code-index-agent`, `test-intelligence-agent`, and
+`compliance-agent` are now all implemented and live-confirmed. The next useful
+move is to define the bounded `support-operations-agent` contract from current
+runtime code, knowledge-pack posture, and FAQ/support surfaces before opening
+another implementation slice.
 
 Current implementation target:
 
-1. define the worker-first `compliance-agent` lane from current dependency,
-   policy, approval, and release-governance surfaces
-2. keep it bounded to read-only compliance, policy, and dependency-posture
-   synthesis on the first slice
+1. define the worker-first `support-operations-agent` lane from current
+   knowledge-pack, FAQ, and policy surfaces
+2. keep it bounded to read-only support drafting and routing guidance on the
+   first slice
 3. make its outputs operator-visible and evidence-backed before widening any
-   audit or execution authority
+   external or execution authority
 4. only after the contract pass decide whether it should be the next build
    slice or whether another queued candidate should move ahead
 

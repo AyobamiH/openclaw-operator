@@ -80,6 +80,7 @@ export const TaskTriggerSchema = z.object({
     'deployment-ops',
     'code-index',
     'test-intelligence',
+    'compliance-review',
     'control-plane-brief',
     'incident-triage',
     'release-readiness',
