@@ -37,6 +37,14 @@ Use these as the minimum working set before changing agent capability claims,
 promoting tasks into operator-facing profiles, or changing `/operator` /
 `operator-s-console` scope.
 
+Direction rule:
+
+- OpenClaw Control UI/chat is now the primary front door.
+- Treat `/operator` and `operator-s-console` as specialist orchestrator
+  surfaces, not a competing generic shell roadmap.
+- Do not reopen shell-first product plans unless the work is directly tied to a
+  unique orchestrator lane that OpenClaw does not already cover.
+
 ### Real Integration Tests
 
 Treat integration failures as real system-timing or cache problems until proven
@@ -86,6 +94,9 @@ Capture what matters. Decisions, context, things to remember. Skip the secrets u
   helps prevent drift
 - When you change repo direction, shipped status, or the next intended slice
   → update `WORKBOARD.md` and keep assistant entry points aligned with it
+- When OpenClaw itself absorbs a generic platform concern
+  → stop parallel shell/product plans here and reposition this repo around its
+  specialist orchestrator value
 - **Text > Brain** 📝
 
 ### Crash-Safe Memory Guard

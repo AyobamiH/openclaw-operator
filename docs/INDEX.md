@@ -25,6 +25,14 @@ Capability-truth rule:
   changes, review the full canonical capability pack, not only the single file
   you touched
 
+Direction rule:
+
+- OpenClaw itself is the primary front door
+- do not create new generic shell-roadmap docs here unless runtime code already
+  proves a unique orchestrator-specific need
+- treat `/operator` and `operator-s-console` as specialist surfaces, not the
+  default product center
+
 ## Authority Order
 
 Use this order when determining documentation truth:
@@ -75,7 +83,6 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [architecture/AGENT_CAPABILITY_IMPLEMENTATION_MATRIX.md](./architecture/AGENT_CAPABILITY_IMPLEMENTATION_MATRIX.md) | concrete per-agent implementation and promotion matrix for the full declared agent set |
 | [architecture/AGENT_ADAPTATION_PLAN.md](./architecture/AGENT_ADAPTATION_PLAN.md) | implementation-ready adaptation plan for strengthening the current agent portfolio using proven role patterns without changing the current runtime architecture |
 | [architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md](./architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md) | current runtime/operator exposure matrix for routes, tasks, and agents |
-| [architecture/OPERATOR_CONSOLE_AUDIT_AND_SPEC.md](./architecture/OPERATOR_CONSOLE_AUDIT_AND_SPEC.md) | backend-first audit and redesign spec for the private operator console |
 | [architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md](./architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md) | published docs-site structure and downstream publishing model |
 | [reference/api.md](./reference/api.md) | API and code-facing reference |
 | [reference/task-types.md](./reference/task-types.md) | task allowlist reference |
@@ -103,6 +110,8 @@ Use this pack when:
 - promoting tasks into operator-facing profiles
 - changing agent readiness or capability claims
 - changing `/operator` or `operator-s-console` task exposure
+- checking whether a planned `/operator` change duplicates OpenClaw-native
+  control-plane capability
 - updating the documented understanding of what OpenClaw has actually built so
   far versus what is still partial
 
@@ -119,7 +128,7 @@ Read in this order:
 Use this pack when:
 
 - wiring new backend routes into `/operator`
-- wiring or trimming routes in `operator-s-console`
+- wiring or trimming specialist routes in `operator-s-console`
 - deciding whether a route belongs in a private operator surface
 
 ## Start And Troubleshooting
@@ -139,6 +148,7 @@ These are not canonical, but they are still useful as historical evidence:
 - [../SPRINT_HARDENING_BASELINE.md](../SPRINT_HARDENING_BASELINE.md)
 - [operations/DOCUMENTATION_COMPLETE.md](./operations/DOCUMENTATION_COMPLETE.md)
 - [operations/IMPLEMENTATION_COMPLETE.md](./operations/IMPLEMENTATION_COMPLETE.md)
+- [architecture/OPERATOR_CONSOLE_AUDIT_AND_SPEC.md](./architecture/OPERATOR_CONSOLE_AUDIT_AND_SPEC.md)
 - [operations/OPERATOR_S_CONSOLE_CUTOVER_BLUEPRINT.md](./operations/OPERATOR_S_CONSOLE_CUTOVER_BLUEPRINT.md)
 - [operations/orchestrator_documentation.md](./operations/orchestrator_documentation.md)
 - [operations/orchestrator-status.md](./operations/orchestrator-status.md)

@@ -1,8 +1,10 @@
 # OpenClaw Operator — Quick Start
 
-This is the fastest way to get the repo running as a self-hosted operator
-workspace. The recommended first run is the root local-dev path, which starts
-the orchestrator and serves the canonical operator console at `/operator`.
+This is the fastest way to get the repo running as a self-hosted specialist
+orchestrator workspace. OpenClaw itself is now the recommended daily front door
+through its Control UI, chat surfaces, and the workspace bridge; the repo-local
+boot path below starts the orchestrator and serves the specialist `/operator`
+console for orchestrator-specific work.
 
 ## Deployment Paths
 
@@ -20,6 +22,11 @@ Open `http://127.0.0.1:3000/operator`.
 
 Path A now uses the repo-local `./orchestrator/data/orchestrator-state.json`
 state target by default, so a first boot does not require Mongo or Redis.
+
+Once the orchestrator is healthy, prefer OpenClaw plus `/orch` for day-to-day
+task launch and bounded read surfaces when your workspace bridge is enabled.
+Keep `/operator` for the repo-native specialist views such as runs, approvals,
+incidents, agent readiness, and deeper runtime drill-downs.
 
 Config: `./orchestrator_config.json` (repo-relative paths for local dev)
 
@@ -44,8 +51,8 @@ paths before enabling it.
 ### Path B: Official Docker Demo Stack
 
 This is the supported public Docker path. It brings up the orchestrator,
-MongoDB, and Redis from the repo root and serves the operator console on a
-localhost-only port.
+MongoDB, and Redis from the repo root and serves the specialist `/operator`
+console on a localhost-only port.
 
 ```bash
 cd openclaw-operator
@@ -121,10 +128,11 @@ curl http://127.0.0.1:3312/health
 curl http://127.0.0.1:4300/health
 ```
 
-Then open `http://127.0.0.1:3000/operator` for root local dev,
+Then either use OpenClaw through the bridge-backed `/orch` path for daily work,
+or open `http://127.0.0.1:3000/operator` for root local dev,
 `http://127.0.0.1:3312/operator` for the user service, or
-`http://127.0.0.1:4300/operator` for the Docker demo and confirm the console
-loads.
+`http://127.0.0.1:4300/operator` for the Docker demo and confirm the specialist
+console loads.
 
 ---
 
@@ -175,8 +183,9 @@ curl -X POST "$SLACK_ERROR_WEBHOOK" -d '{"text":"test"}'
 - [ ] `.env` created with the required auth vars for Path A, or full service vars for Path C
 - [ ] `npm install` run in the repo root (root `postinstall` installs orchestrator and operator console deps)
 - [ ] `npm run dev` rebuilds the operator console bundle and starts the orchestrator from the repo root
-- [ ] `http://127.0.0.1:3000/operator`, `http://127.0.0.1:3312/operator`, or `http://127.0.0.1:4300/operator` loads the canonical operator console
-- [ ] `/operator` loads the built operator console instead of a fixture bundle
+- [ ] OpenClaw plus `/orch` is the preferred daily front door once the bridge is enabled
+- [ ] `http://127.0.0.1:3000/operator`, `http://127.0.0.1:3312/operator`, or `http://127.0.0.1:4300/operator` loads the specialist operator console
+- [ ] `/operator` loads the built specialist console instead of a fixture bundle
 - [ ] Public proof routes respond from the orchestrator: `/api/milestones/latest` and `/api/command-center/overview`
 
 ## Root Command Hub

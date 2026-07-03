@@ -9,6 +9,15 @@ summary: "Deploy and manage AI agents in the orchestrator."
 
 OpenClaw agents are not one execution mode anymore.
 
+Direction note:
+
+- OpenClaw plus the orchestrator bridge (`/orch`) is now the preferred daily
+  front door for launch and bounded read surfaces
+- `/operator` remains the local specialist console when you need richer
+  repo-native drill-downs such as runs, approvals, incidents, and agent
+  readiness
+- raw `POST /api/tasks/trigger` remains the lowest-level protected contract
+
 Use these terms separately:
 
 - `spawned-worker capable`: the orchestrator can invoke the agent task lane by
@@ -175,6 +184,7 @@ Use this as the practical day-one map:
 
 Rule of thumb:
 
+- OpenClaw plus `/orch` is the preferred daily entry path
 - `logs/*-service.json` is agent memory, and only `doc-specialist` /
   `reddit-helper` should be treated as resident-service heartbeat sources
 - `/operator/runs` is the main operator-facing output surface
@@ -183,7 +193,8 @@ Rule of thumb:
 ## Service Recipes
 
 The recipes below are the fastest way to use the system for real delivery work.
-Launch them from `/operator/tasks` or through `POST /api/tasks/trigger`.
+Launch them from OpenClaw with `/orch run <task-type> ...`, from
+`/operator/tasks`, or through `POST /api/tasks/trigger`.
 
 The JSON blocks below are representative task payloads.
 
@@ -366,8 +377,9 @@ Notes:
 
 ## Operator Walkthrough
 
-If you prefer a visual path over a capability list, use the walkthrough below
-for the `Scoped feature build` recipe.
+If you prefer a visual path through the local specialist console over a
+capability list, use the walkthrough below for the `Scoped feature build`
+recipe.
 
 ![Scoped feature build operator walkthrough](../assets/scoped-feature-build-operator-walkthrough.svg)
 
