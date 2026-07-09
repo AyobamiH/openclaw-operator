@@ -12230,7 +12230,7 @@ async function bootstrap() {
   // ============================================================
 
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number.parseInt(process.env.PORT || "3000", 10);
   let isShuttingDown = false;
   let forceShutdownTimer: NodeJS.Timeout | null = null;
 
@@ -14207,8 +14207,9 @@ async function bootstrap() {
     },
   );
 
-  const server = app.listen(PORT, () => {
-    console.log(`[orchestrator] HTTP server listening on port ${PORT}`);
+  const HOST = process.env.ORCHESTRATOR_HOST || process.env.HOST || "127.0.0.1";
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`[orchestrator] HTTP server listening on ${HOST}:${PORT}`);
     void warmDocumentIndexInBackground();
     scheduleAgentOperationalOverviewWarm(state, 1000);
     void completeDeferredStartup().catch((error) => {
@@ -14217,7 +14218,7 @@ async function bootstrap() {
     console.log(
       `[orchestrator] ⚠️  AUTHENTICATION ENABLED - API key required for protected endpoints`,
     );
-    console.log(`[orchestrator] Metrics: http://localhost:9100/metrics`);
+    console.log(`[orchestrator] Metrics: http://127.0.0.1:9100/metrics`);
     console.log(
       `[orchestrator] Alert webhook: POST http://localhost:${PORT}/webhook/alerts (signature required)`,
     );

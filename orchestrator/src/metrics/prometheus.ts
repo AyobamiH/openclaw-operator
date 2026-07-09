@@ -160,7 +160,7 @@ export async function startMetricsServer(): Promise<void> {
   try {
     app = express();
     const metricsPort = Number.parseInt(process.env.PROMETHEUS_PORT || "9100", 10);
-    const metricsHost = process.env.PROMETHEUS_HOST || "0.0.0.0";
+    const metricsHost = process.env.PROMETHEUS_HOST || "127.0.0.1";
 
     // Health check endpoint
     app.get("/health", (_req: Request, res: Response) => {
