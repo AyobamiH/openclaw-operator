@@ -1,14 +1,49 @@
 {
   "id": "orchestrator-bridge",
   "name": "Orchestrator Bridge",
-  "description": "Adds a guarded /orch command that forwards a narrow allowlisted task set to the local orchestrator.",
+  "description": "Adds guarded /orch companion reads plus operator_* tools for OpenClaw-to-operator visibility, health, task catalog, and safe read-only dispatch.",
+  "contracts": {
+    "tools": [
+      "operator_status",
+      "operator_health",
+      "operator_agents",
+      "operator_task_catalog",
+      "operator_tasks",
+      "operator_runs",
+      "operator_approvals",
+      "operator_incidents",
+      "operator_dashboard_status",
+      "operator_trigger_readonly_task",
+      "operator_smoke_test"
+    ]
+  },
   "configSchema": {
     "type": "object",
     "additionalProperties": false,
-    "required": ["allowedTasks"],
+    "anyOf": [
+      {
+        "required": ["allowedViews"]
+      },
+      {
+        "required": ["allowedTasks"]
+      }
+    ],
     "properties": {
       "baseUrl": {
         "type": "string"
+      },
+      "metricsBaseUrl": {
+        "type": "string"
+      },
+      "dashboardDistPath": {
+        "type": "string"
+      },
+      "allowedViews": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "enum": ["status", "tasks", "incidents", "runs", "approvals"]
+        }
       },
       "allowedTasks": {
         "type": "array",
@@ -45,9 +80,21 @@
       "label": "Orchestrator env file",
       "help": "Optional path to the env file used for automatic operator-key discovery."
     },
+    "allowedViews": {
+      "label": "Allowed companion views",
+      "help": "Read-only companion surfaces this command may expose through /orch status, /orch tasks, /orch incidents, /orch runs, and /orch approvals."
+    },
     "allowedTasks": {
       "label": "Allowed tasks",
       "help": "Exact orchestrator task types this command may trigger."
+    },
+    "metricsBaseUrl": {
+      "label": "Operator metrics URL",
+      "help": "Optional base URL for metrics probes. Metrics are reported separately from API health."
+    },
+    "dashboardDistPath": {
+      "label": "Dashboard dist path",
+      "help": "Optional local path used to detect whether operator-s-console has been built."
     }
   }
 }

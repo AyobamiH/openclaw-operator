@@ -1,18 +1,23 @@
 import {
+  formatCompanionApprovals,
+  formatCompanionIncidents,
+  formatCompanionOverview,
+  formatCompanionRuns,
+  formatCompanionTaskList,
   formatHelp,
-  formatRecentRuns,
-  formatRunStatus,
-  formatTaskList,
   normalizeBridgeConfig,
   orchestratorRequest,
   parseBridgeCommand,
+  registerOperatorBridgeTools,
   resolveBridgeApiKey,
 } from "./src/bridge.ts";
 
 export default function registerOrchestratorBridge(api: any) {
+  registerOperatorBridgeTools(api);
+
   api.registerCommand({
     name: "orch",
-    description: "Trigger allowed orchestrator tasks and inspect recent runs",
+    description: "Read bounded companion views and trigger allowed orchestrator tasks",
     acceptsArgs: true,
     requireAuth: true,
     handler: async (ctx: any) => {
@@ -22,7 +27,7 @@ export default function registerOrchestratorBridge(api: any) {
             ? api.config.agents.defaults.workspace
             : undefined;
         const config = normalizeBridgeConfig(api.pluginConfig, workspaceDir);
-        const command = parseBridgeCommand(ctx.args, config.allowedTasks);
+        const command = parseBridgeCommand(ctx.args, config);
         const apiKey = await resolveBridgeApiKey(config);
 
         if (!apiKey) {
@@ -37,34 +42,52 @@ export default function registerOrchestratorBridge(api: any) {
         }
 
         if (command.kind === "help") {
-          return { text: formatHelp(config.allowedTasks) };
+          return { text: formatHelp(config.allowedViews, config.allowedTasks) };
         }
 
-        if (command.kind === "list") {
+        if (command.kind === "view" && command.view === "tasks") {
           const catalog = await orchestratorRequest({
             config,
             apiKey,
-            pathname: "/api/tasks/catalog",
+            pathname: "/api/companion/catalog",
           });
-          return { text: formatTaskList(config.allowedTasks, catalog) };
+          return { text: formatCompanionTaskList(config.allowedTasks, catalog) };
         }
 
-        if (command.kind === "recent") {
+        if (command.kind === "view" && command.view === "status") {
+          const overview = await orchestratorRequest({
+            config,
+            apiKey,
+            pathname: "/api/companion/overview",
+          });
+          return { text: formatCompanionOverview(overview) };
+        }
+
+        if (command.kind === "view" && command.view === "incidents") {
+          const incidents = await orchestratorRequest({
+            config,
+            apiKey,
+            pathname: `/api/companion/incidents?limit=${command.limit ?? 8}`,
+          });
+          return { text: formatCompanionIncidents(incidents) };
+        }
+
+        if (command.kind === "view" && command.view === "runs") {
           const recentRuns = await orchestratorRequest({
             config,
             apiKey,
-            pathname: `/api/tasks/runs?limit=${command.limit}`,
+            pathname: `/api/companion/runs?limit=${command.limit ?? 5}`,
           });
-          return { text: formatRecentRuns(recentRuns) };
+          return { text: formatCompanionRuns(recentRuns) };
         }
 
-        if (command.kind === "status") {
-          const runDetail = await orchestratorRequest({
+        if (command.kind === "view" && command.view === "approvals") {
+          const approvals = await orchestratorRequest({
             config,
             apiKey,
-            pathname: `/api/tasks/runs/${encodeURIComponent(command.runId)}`,
+            pathname: `/api/companion/approvals?limit=${command.limit ?? 8}`,
           });
-          return { text: formatRunStatus(runDetail) };
+          return { text: formatCompanionApprovals(approvals) };
         }
 
         const queued = (await orchestratorRequest({
@@ -87,7 +110,7 @@ export default function registerOrchestratorBridge(api: any) {
             : "";
 
         return {
-          text: `Queued ${command.taskType} as ${taskId} at ${createdAt}.${payloadSummary} Use /orch status ${taskId} for detail.`,
+          text: `Queued ${command.taskType} as ${taskId} at ${createdAt}.${payloadSummary} Use /orch runs to watch the bounded run brief.`,
         };
       } catch (error) {
         const message =
