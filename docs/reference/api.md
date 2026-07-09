@@ -7,6 +7,14 @@ summary: "Task handlers, types, and interfaces."
 
 Complete reference for task handlers, types, and interfaces used in the orchestrator.
 
+Front-door note:
+
+- OpenClaw itself is the preferred daily front door through its Control UI,
+  chat surfaces, and the orchestrator bridge
+- this file still documents the repo-native runtime routes honestly
+- `/operator` remains a specialist sidecar surface, not the generic product
+  front door
+
 Capability-truth rule:
 
 - all declared non-template agents remain in scope for full-capability uplift
@@ -38,10 +46,10 @@ Documentation maintenance:
 - if a task or route is promoted because an agent matured, reflect that here
   without flattening remaining maturity gaps elsewhere into “fully capable”
 
-Primary private operator console route family:
+Primary private specialist-console route family:
 
 - `GET /operator` (served by orchestrator runtime)
-- `GET /operator/*` (SPA route family for the canonical private
+- `GET /operator/*` (SPA route family for the private specialist
   `operator-s-console` bundle)
 
 Public monitoring/read-only:
@@ -119,6 +127,8 @@ Mission Control implementation note:
 
 - the larger Mission Control blueprint remains future operator-console work
   only
+- do not treat that blueprint as permission to restart a competing generic
+  shell roadmap; OpenClaw is the generic front door now
 - this phase adds persistent incidents, incident history/remediation routes,
   deeper workflow graphs, knowledge graphs, topology relationship edges, and
   agent capability readiness inside the existing console rails
@@ -127,7 +137,7 @@ Mission Control implementation note:
 - it does **not** adopt a new global shell, Three.js background, or starfield
   environment yet
 
-Operator Console contract truth:
+Specialist operator-console contract truth:
 
 - `GET /api/health/extended`: authoritative protected operator-health surface.
 - `GET /api/dashboard/overview`: protected operator aggregation only. Useful

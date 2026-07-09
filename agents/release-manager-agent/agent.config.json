@@ -16,11 +16,16 @@
   "maxConcurrentTasks": 2,
   "permissions": {
     "skills": {
-      "documentParser": {
+      "runtimeStateReader": {
         "allowed": true,
         "maxCalls": 40,
-        "reason": "Parse runtime evidence and release posture inputs."
+        "reason": "Read bounded runtime-state evidence for release posture."
       }
+    },
+    "fileSystem": {
+      "readPaths": [
+        "../../orchestrator/data/orchestrator-state.json"
+      ]
     },
     "network": {
       "allowed": false

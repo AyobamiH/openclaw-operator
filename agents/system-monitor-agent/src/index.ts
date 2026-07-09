@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { readdir, readFile, stat, writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -8,8 +8,6 @@ import {
   buildWorkflowBlockerSummary,
   countByStatus,
   collectProofSurfaceObservations,
-  loadRuntimeState,
-  readJsonFile,
   summarizeProofSurface,
   summarizeTaskExecutions,
   type RuntimeAgentServiceState,
@@ -17,6 +15,13 @@ import {
   type RuntimeStateSubset,
 } from "../../shared/runtime-evidence.js";
 import { loadSharedBudgetState } from "../../reddit-helper/src/coordination.ts";
+import {
+  hasAllowedSkills,
+  readRepoDirectoryWithSkill,
+  readRepoJsonWithSkill,
+  readRuntimeStateWithSkill,
+  readServiceStateWithSkill,
+} from "../../shared/governed-readers.js";
 
 interface Task {
   id: string;
@@ -296,8 +301,11 @@ interface Result {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const configPath = resolve(__dirname, "../agent.config.json");
-const workspaceRoot = resolve(__dirname, "../../..");
-const agentsRoot = resolve(workspaceRoot, "agents");
+const REQUIRED_SKILLS = [
+  "runtimeStateReader",
+  "serviceStateReader",
+  "repoFileReader",
+] as const;
 
 function loadConfig(): AgentConfig {
   return JSON.parse(readFileSync(configPath, "utf-8")) as AgentConfig;
@@ -305,34 +313,39 @@ function loadConfig(): AgentConfig {
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills?.[skillId]?.allowed === true;
+  return hasAllowedSkills(config, [skillId]);
 }
 
 async function listAgentDescriptors(): Promise<AgentDescriptor[]> {
-  const entries = await readdir(agentsRoot, { withFileTypes: true });
+  const directory = await readRepoDirectoryWithSkill(
+    loadConfig().id,
+    "../../agents",
+    "agents",
+    { recursive: false, maxEntries: 80 },
+  );
   const descriptors: AgentDescriptor[] = [];
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name === "shared" || entry.name.startsWith(".")) continue;
-    const agentConfigPath = resolve(agentsRoot, entry.name, "agent.config.json");
-    try {
-      const parsed = JSON.parse(await readFile(agentConfigPath, "utf-8")) as {
-        id?: string;
-        name?: string;
-        orchestratorTask?: string;
-        serviceStatePath?: string;
-      };
-      if (!parsed.id) continue;
-      descriptors.push({
-        id: parsed.id,
-        name: parsed.name ?? parsed.id,
-        orchestratorTask: parsed.orchestratorTask,
-        serviceStatePath: parsed.serviceStatePath,
-      });
-    } catch {
-      continue;
-    }
+  for (const entry of directory.entries) {
+    if (entry.kind !== "directory") continue;
+    const relativePath = entry.relativePath;
+    if (relativePath === "shared" || relativePath.startsWith(".")) continue;
+    const parsed = await readRepoJsonWithSkill<{
+      id?: string;
+      name?: string;
+      orchestratorTask?: string;
+      serviceStatePath?: string;
+    }>(
+      loadConfig().id,
+      `../../agents/${relativePath}/agent.config.json`,
+      `agents/${relativePath}/agent.config.json`,
+    );
+    if (!parsed?.id) continue;
+    descriptors.push({
+      id: parsed.id,
+      name: parsed.name ?? parsed.id,
+      orchestratorTask: parsed.orchestratorTask,
+      serviceStatePath: parsed.serviceStatePath,
+    });
   }
 
   return descriptors.sort((left, right) => left.id.localeCompare(right.id));
@@ -342,8 +355,11 @@ async function loadServiceState(
   descriptor: AgentDescriptor,
 ): Promise<AgentServiceState | null> {
   if (!descriptor.serviceStatePath) return null;
-  const targetPath = resolve(agentsRoot, descriptor.id, descriptor.serviceStatePath);
-  return readJsonFile<AgentServiceState | null>(targetPath, null);
+  const { state } = await readServiceStateWithSkill<AgentServiceState>(
+    loadConfig().id,
+    descriptor.serviceStatePath,
+  );
+  return state;
 }
 
 async function isServiceStateStale(
@@ -351,13 +367,12 @@ async function isServiceStateStale(
   maxAgeMs: number,
 ): Promise<boolean> {
   if (!descriptor.serviceStatePath) return false;
-  const targetPath = resolve(agentsRoot, descriptor.id, descriptor.serviceStatePath);
-  try {
-    const fileStat = await stat(targetPath);
-    return Date.now() - fileStat.mtimeMs > maxAgeMs;
-  } catch {
-    return false;
-  }
+  const { exists, metadata } = await readServiceStateWithSkill<AgentServiceState>(
+    loadConfig().id,
+    descriptor.serviceStatePath,
+  );
+  const modifiedAt = Date.parse(metadata.modifiedAt ?? "");
+  return exists && Number.isFinite(modifiedAt) && Date.now() - modifiedAt > maxAgeMs;
 }
 
 function summarizeIncidents(incidents: RuntimeIncidentLedgerRecord[]) {
@@ -970,7 +985,7 @@ function buildIncidentTriageSpecialistFields(args: {
 async function handleTask(task: Task): Promise<Result> {
   const startTime = Date.now();
 
-    if (!canUseSkill("documentParser")) {
+    if (!hasAllowedSkills(loadConfig(), [...REQUIRED_SKILLS])) {
       const specialistFields = buildSpecialistOperatorFields({
         role: "SRE Monitor",
         workflowStage: "monitor-refusal",
@@ -978,13 +993,13 @@ async function handleTask(task: Task): Promise<Result> {
           "runtime diagnosis with prioritized operator actions, dependency posture, and early-warning evidence",
         status: "refused",
         operatorSummary:
-          "System monitoring was refused because the governed documentParser path is unavailable to this agent.",
+          "System monitoring was refused because the required governed reader skills are unavailable to this agent.",
         recommendedNextActions: [
-          "Restore documentParser access for system-monitor-agent before retrying the monitor pass.",
+          "Restore runtimeStateReader, serviceStateReader, and repoFileReader access for system-monitor-agent before retrying the monitor pass.",
           "Do not treat this lane as monitored until a bounded monitor run succeeds.",
         ],
         refusalReason:
-          "Refused monitoring because documentParser skill access is not allowed for system-monitor-agent.",
+          "Refused monitoring because required governed reader skills are not allowed for system-monitor-agent.",
       });
       return {
         success: false,
@@ -992,7 +1007,7 @@ async function handleTask(task: Task): Promise<Result> {
           timestamp: new Date().toISOString(),
         agentHealth: {},
         systemMetrics: {},
-        alerts: ["documentParser skill access is required"],
+        alerts: ["governed reader skill access is required"],
         },
         relationships: [],
         toolInvocations: [],
@@ -1057,8 +1072,8 @@ async function handleTask(task: Task): Promise<Result> {
 
   try {
     const config = loadConfig();
-    const state = await loadRuntimeState<RuntimeState>(
-      configPath,
+    const { state } = await readRuntimeStateWithSkill<RuntimeState>(
+      config.id,
       config.orchestratorStatePath,
     );
     const descriptors = await listAgentDescriptors();
@@ -1690,13 +1705,28 @@ async function handleTask(task: Task): Promise<Result> {
     ];
     const toolInvocations: Result["toolInvocations"] = [
       {
-        toolId: "documentParser",
-        detail: "system-monitor-agent parsed runtime state, agent manifests, and service-state evidence.",
+        toolId: "runtimeStateReader",
+        detail: "system-monitor-agent read bounded runtime-state evidence for incident, workflow, retry, and proof posture.",
         evidence: [
           `agents:${selectedAgents.length}`,
           `incidents:${incidentSummary.openCount}`,
           `workflow-events:${(state.workflowEvents ?? []).length}`,
         ],
+        classification: "required",
+      },
+      {
+        toolId: "serviceStateReader",
+        detail: "system-monitor-agent read bounded service-state files to summarize live agent health and heartbeat freshness.",
+        evidence: [
+          `degraded-agents:${degradationTrends.degradedAgents}`,
+          `stale-agents:${degradationTrends.staleAgents}`,
+        ],
+        classification: "required",
+      },
+      {
+        toolId: "repoFileReader",
+        detail: "system-monitor-agent read bounded agent-config files to discover declared task and service surfaces.",
+        evidence: [`selected-agents:${selectedAgents.length}`],
         classification: "required",
       },
     ];

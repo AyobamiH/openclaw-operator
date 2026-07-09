@@ -39,6 +39,13 @@ Capability-access rule:
   allowlist and operator-visible policy/readiness updates, not by silently
   granting every skill/tool to every agent
 
+Front-door note:
+
+- OpenClaw plus the orchestrator bridge is the preferred shared entry path for
+  day-to-day task work
+- `/operator` remains the local specialist launch and drill-down surface for
+  repo-native workflows
+
 ## Current Allowlisted Task Types
 
 ### Core Runtime
@@ -192,9 +199,9 @@ Approval column:
   - static operational classification labels (from validated runtime policy), and
   - telemetry overlays (recent execution success/failure/retrying counts).
 - All non-internal public-triggerable task types now carry explicit
-  operator-facing profiles in `OPERATOR_TASK_PROFILES`, and both `/operator`
-  and `operator-s-console` bind task-specific forms instead of a
-  three-task-only launcher.
+  operator-facing profiles in `OPERATOR_TASK_PROFILES`. OpenClaw companion and
+  bridge flows are the preferred shared front door, while `/operator` and
+  `operator-s-console` remain the local specialist form-based launch surface.
 - Telemetry overlays are observational and do **not** auto-mutate policy
   classifications.
 - Mixed-mode task truth can still be narrower in the operator UI than in this

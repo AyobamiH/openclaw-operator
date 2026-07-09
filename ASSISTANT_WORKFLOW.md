@@ -13,6 +13,21 @@ It is a workflow contract, not a runtime spec.
 
 Last updated: `2026-04-09`
 
+## Direction Guardrail
+
+OpenClaw itself is now the primary front door for daily use.
+
+This repo should therefore be treated as:
+
+- the specialist orchestrator layer
+- the home for bounded lanes, governed runtime evidence, and bridgeable
+  operational intelligence
+- a maintenance home for `/operator` and `operator-s-console`, not a place to
+  restart generic shell-roadmap work
+
+Do not open new shell-first plans here unless the work is directly supporting a
+unique orchestrator-specific lane that OpenClaw does not already provide.
+
 ## First-Read Order
 
 When starting work in this repo:
@@ -115,6 +130,8 @@ push, not just the first visible assertion.
 2. Do not keep stale assistant instructions after a repo-direction change.
 3. Do not document private-lab assumptions as public repo truth.
 4. Do not claim progress in `WORKBOARD.md` that the code/tests do not support.
+5. Do not leave parked shell-expansion plans active after the repo direction
+   has changed.
 
 ## Preferred Pattern
 

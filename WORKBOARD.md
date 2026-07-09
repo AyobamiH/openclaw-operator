@@ -13,26 +13,24 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-04-12`
+Last updated: `2026-04-17`
 
 ## Current Headline
 
-The public repo is in a shippable state.
+The public repo direction is now explicit.
 
-- current public `main` includes the capability-closure and legacy-failure fix
-  through commit `c857273`
-- protected-branch shipping now has a repo-managed verification contract:
-  local pre-push gate plus CI-aligned publish gating
-- the Wave 4 readiness integration test is now hardened against cached stale
-  snapshots, not just early reads
-- current portfolio productization is mostly done for the shipped operator
-  product
-- the first broader external-catalog growth slice is now built in repo code as
-  the bounded `deployment-ops` lane
-- the next two bounded external-catalog growth slices are now built in repo
-  code as the read-only `code-index` and `test-intelligence` lanes
-- an uncommitted governance spike was reviewed against current code truth and
-  intentionally dropped instead of being carried forward as local drift
+- OpenClaw itself is now the primary front door for daily use through its
+  Control UI, chat surfaces, and gateway control plane
+- this public repo remains valuable as the specialist orchestrator sidecar:
+  bounded lanes, governed evidence, bridgeable operational intelligence, and
+  repo-specific runtime truth
+- `operator-s-console` remains supported for current orchestrator-specific
+  surfaces, but it is no longer the growth center or a competing shell roadmap
+- generic shell, dashboard, or parallel-control-UI expansion is now
+  intentionally stopped across planning docs and assistant entry points
+- current public `main` already includes the capability-closure, bridgeable
+  specialist lanes, and legacy-failure fixes needed for that narrower
+  direction
 
 ## Recently Finished
 
@@ -125,51 +123,94 @@ The public repo is in a shippable state.
      `recentFailures`, `flakySignals`, `releaseRisk`, and `evidenceWindow`
      output for the canary run
 
+13. Repo direction is now aligned around the OpenClaw front door.
+   - upstream OpenClaw now clearly owns the generic gateway/control-UI,
+     approvals, and task-board direction
+   - this repo is no longer treating a parallel shell as the default product
+     roadmap
+   - first-read docs and assistant entry points should now treat
+     `operator-s-console` as a maintained specialist surface only
+
+14. Active onboarding and navigation docs now match that repo direction.
+   - quickstarts, getting-started guidance, running-agents guidance, and
+     navigation/reference docs now point users toward OpenClaw plus `/orch`
+     for daily use
+   - `/operator` remains documented honestly as the repo-native specialist
+     console for deeper orchestrator work
+   - active docs now stop implying that a generic shell is still the default
+     growth path
+
+15. The first shell keep-and-deepen slice now targets closure, not shell breadth.
+   - run detail now carries an operator follow-through rail for the next
+     specialist surface to open after a run finishes or blocks
+   - the shell is being deepened where OpenClaw is thinnest for this repo:
+     approval gates, incident closure, knowledge freshness, governance review,
+     live health comparison, and owning-agent readiness
+   - this keeps `operator-s-console` focused on specialist closure work rather
+     than reopening a generic dashboard roadmap
+
+16. The next shell keep-and-deepen slice now resolves exact run handoff targets.
+   - run detail now resolves linked approval and incident handoff context from
+     live approval and incident data instead of only pointing operators toward a
+     generic queue
+   - follow-through routes now preserve run/task context into approvals and
+     incidents so operators land on the exact closure object already linked to
+     the run when that linkage exists
+   - approvals and incidents now honor run-handoff focus in-page, keeping the
+     shell deep on specialist closure detail instead of broadening the shell
+     surface
+
 ## Current Recommended Next Move
 
-Open the next bounded external-catalog adoption slice as a contract pass:
+Stabilize the OpenClaw-front-door cutover in normal use:
 
-- `Support Responder -> support-operations-agent`
-
-`deployment-ops-agent`, `code-index-agent`, `test-intelligence-agent`, and
-`compliance-agent` are now all implemented and live-confirmed. The next useful
-move is to define the bounded `support-operations-agent` contract from current
-runtime code, knowledge-pack posture, and FAQ/support surfaces before opening
-another implementation slice.
+- use OpenClaw plus the orchestrator bridge as the normal daily path and prove
+  it in routine usage
+- keep watching for shell-first planning drift before opening another growth
+  slice
+- keep `operator-s-console` maintenance-only unless a change directly supports
+  a unique orchestrator lane not already covered by OpenClaw
 
 Current implementation target:
 
-1. define the worker-first `support-operations-agent` lane from current
-   knowledge-pack, FAQ, and policy surfaces
-2. keep it bounded to read-only support drafting and routing guidance on the
-   first slice
-3. make its outputs operator-visible and evidence-backed before widening any
-   external or execution authority
-4. only after the contract pass decide whether it should be the next build
-   slice or whether another queued candidate should move ahead
-
-Do not start by bulk-researching many candidates or importing external repo
-structure wholesale.
+1. use OpenClaw Control UI/chat plus `/orch` bridge flows as the default human
+   workflow
+2. keep `/operator` and `operator-s-console` focused on unique
+   orchestrator-specific evidence and workflows, not generic shell growth
+3. prove the bridge-led path is enough for normal operation before widening the
+   local specialist surface again
+4. only after the cutover is stable reopen another bounded specialist-lane
+   build slice
 
 ## Intentionally Parked
 
 These are real work items, but they are not the immediate next build slice.
 
-1. Broader external-catalog agent growth beyond the first candidate.
-   - one candidate at a time only
+1. Generic shell growth or `operator-s-console` expansion beyond current
+   specialist surfaces.
+   - no new generic dashboards, shell redesigns, or front-door polish meant to
+     compete with OpenClaw Control UI
+   - keep shell work limited to maintenance or unique orchestrator-specific
+     specialist workflows
 
-2. Further usage-refinement polish.
+2. Broader external-catalog agent growth beyond the current proven specialist
+   lanes.
+   - one candidate at a time only
+   - do not reopen this until the OpenClaw-front-door cutover is fully
+     reflected in repo guidance and normal use
+
+3. Further usage-refinement polish.
    - better queue-style triage surfaces
    - more ledger-level next-action and freshness guidance
 
-3. Coordination scale-out beyond the current bounded Redis / Valkey slice.
+4. Coordination scale-out beyond the current bounded Redis / Valkey slice.
 
-4. Ongoing docs-truth maintenance and navigation hygiene.
+5. Ongoing docs-truth maintenance and navigation hygiene.
 
-5. Host-specific lifecycle expansion for additional resident services.
+6. Host-specific lifecycle expansion for additional resident services.
    - only if a host genuinely needs them
 
-6. Optional maintenance-visibility follow-up from retired branch archaeology.
+7. Optional maintenance-visibility follow-up from retired branch archaeology.
    - the old `feat/heartbeat-maintenance-cutover` branch was not kept as a
      merge target
    - if revisited, re-implement only from current `main`

@@ -1,31 +1,35 @@
 # OpenClaw Operator
 
-OpenClaw Operator is a self-hosted AI operations control plane built on
-OpenClaw. It gives you a bounded, observable, auditable runtime with a
-built-in operator console at `/operator`, governed task execution, approvals,
-run history, incidents, and public proof separation.
+OpenClaw Operator is a self-hosted specialist orchestration layer built on
+OpenClaw. OpenClaw itself is now the recommended front door for day-to-day use
+through its Control UI, chat surfaces, and gateway control plane. This repo
+adds bounded, observable, auditable specialist runtime lanes behind that front
+door: governed task execution, release/compliance/test/code posture, incidents,
+runs, and public-proof separation.
 
 It is built for people who are comfortable cloning a repo, setting env vars,
-and self-hosting services, but who want day-to-day work to happen through a
-GUI instead of stitching raw agent runtimes together by hand.
+and self-hosting services, but who want OpenClaw to handle the generic shell
+and messaging experience while this repo handles the orchestrator-specific
+operational intelligence.
 
 ## Why This Repo Exists
 
-This repository packages one opinionated operator product:
+This repository packages one opinionated specialist orchestrator:
 
 - a private orchestrator-first control plane
-- a canonical built-in operator console
+- a bridgeable specialist task surface behind OpenClaw
 - a governed task surface with approvals and auditability
 - an agent catalog with knowledge-backed workflows
 - public proof routes that stay separate from internal operator truth
 
-The goal is not to be a generic AI sandbox or a no-config SaaS clone. The goal
-is to run AI-assisted operational work with explicit guardrails, visibility,
-and durable state.
+The goal is not to compete with OpenClaw's generic gateway, Control UI, or
+approval/task shell. The goal is to run AI-assisted operational work with
+explicit guardrails, visibility, and durable specialist state.
 
 ## What You Get
 
-- **GUI-first operator workflow** through `/operator`
+- **Specialist orchestrator workflow** through `/operator` or the OpenClaw
+  bridge when you need bounded operational lanes
 - **Governed tasks** with allowlisting, approval gates, and run history
 - **Observable runtime** with health, incidents, agents, runs, and proof views
 - **Auditable actions** through approvals, execution records, and operator APIs
@@ -35,14 +39,26 @@ and durable state.
 ## What It Is Not
 
 - not the upstream OpenClaw project in generic platform form
+- not a second generic control UI or shell roadmap competing with OpenClaw
 - not a hardened untrusted-code sandbox
 - not a zero-config SaaS product
 - not a promise that every historical markdown file in the repo is active truth
 
+## Direction Note
+
+Current repo direction:
+
+- use OpenClaw as the front door
+- keep this repo focused on specialist orchestrator value
+- maintain `/operator` and `operator-s-console` only where they expose unique
+  orchestrator workflows or evidence that OpenClaw does not already provide
+- stop planning new generic shell/dashboard growth here
+
 ## Repository Layout
 
 - `orchestrator/` — private control plane backend
-- `operator-s-console/` — canonical operator UI source
+- `operator-s-console/` — maintained specialist console for orchestrator-only
+  workflows, not the primary product front door
 - `agents/` — task specialists and service loops
 - `skills/` — bounded capability definitions
 - `docs/` — first-party product and operator docs
@@ -125,7 +141,7 @@ Git will allow the push. You can also reapply the hook setup with
 ## Using It For Real Client Work
 
 OpenClaw Operator is most useful when you treat it as a governed web-dev
-control plane instead of a single chatbot.
+specialist orchestrator layer instead of a standalone shell.
 
 Typical service lanes:
 
@@ -138,14 +154,14 @@ Typical service lanes:
 - **Docs, handoff, and knowledge refresh** through `drift-repair`,
   `content-generate`, and `summarize-content`
 
-The operator workflow is:
+The recommended workflow is:
 
-1. choose a lane in `/operator/tasks`
-2. launch it
-3. read the result in `/operator/runs`
-4. handle approval-gated work in `/operator/approvals`
-5. use `/operator/incidents` and `/operator/system-health` when the work is
-   about repair or closure
+1. use OpenClaw plus `/orch tasks` or `/orch run ...` as the preferred daily
+   front door
+2. read bounded summaries through `/orch runs` and `/orch approvals`
+3. open `/operator/runs`, `/operator/approvals`, `/operator/incidents`, or
+   `/operator/system-health` when you need the repo-native specialist drill-down
+4. check `logs/` only for lanes that explicitly write named artifacts
 
 ## Where Project Repos Go
 
@@ -291,7 +307,7 @@ Important Docker truth:
   user can boot the product without first creating a private `.env`
 - provider-backed lanes will stay degraded until you add real provider keys
 - `npm run docker:demo:smoke` is the local proof that the official demo stack
-  actually booted, authenticated, and served the built operator shell
+  actually booted, authenticated, and served the built specialist console
 - for anything beyond a throwaway local try-out, copy
   [docker-compose.override.example.yml](./docker-compose.override.example.yml)
   to `docker-compose.override.yml` and replace the demo credentials before you
@@ -305,7 +321,8 @@ Advanced note:
 
 ## Core Product Boundary
 
-- `/operator` is the private operator control plane
+- OpenClaw is the primary front door for daily use
+- `/operator` is the private specialist sidecar control plane
 - public proof stays separate through orchestrator-owned public routes
 - task exposure is curated, not every internal path is promoted to operators
 - ToolGate and policy surfaces are real governance layers, not container-grade sandboxing
@@ -388,15 +405,17 @@ curl http://127.0.0.1:3000/api/knowledge/summary
 curl http://127.0.0.1:4300/health
 ```
 
-Then open `/operator`, authenticate with your bearer token, and verify the
-console loads real backend data. Use `3000` for repo-native local dev and
-`4300` for the Docker demo path.
+Then prefer OpenClaw plus the orchestrator bridge for day-to-day use. If you
+need the repo-native specialist console, open `/operator`, authenticate with
+your bearer token, and verify it loads real backend data. Use `3000` for
+repo-native local dev and `4300` for the Docker demo path.
 
-For a first real workflow, use:
+For a first repo-native specialist workflow, use:
 
-1. `/operator/agents` to see what each agent is for
-2. `/operator/tasks` to launch work
-3. `/operator/runs` to inspect the output
+1. `/orch tasks` or `/operator/agents` to see what lanes and agents are
+   available
+2. `/orch run ...` or `/operator/tasks` to launch work
+3. `/orch runs` or `/operator/runs` to inspect the output
 4. `logs/knowledge-packs/` or `logs/reddit-drafts.jsonl` only when that task
    writes a named artifact file
 

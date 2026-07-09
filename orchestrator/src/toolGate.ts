@@ -6,6 +6,7 @@
  * intent and records the attempt for audit.
  */
 
+import { posix } from 'node:path';
 import type { ToolInvocation, ToolInvocationLog } from './types.js';
 import { getAgentRegistry } from './agentRegistry.js';
 
@@ -16,12 +17,17 @@ export class ToolGate {
   private agentRegistry: Awaited<ReturnType<typeof getAgentRegistry>> | null = null;
 
   private normalizeBoundaryPath(value: string): string {
-    return value
-      .replace(/\\/g, '/')
+    const sanitizedValue = value.replace(/\\/g, '/').trim();
+    if (!sanitizedValue) {
+      return '';
+    }
+
+    const normalizedValue = posix.normalize(sanitizedValue)
       .replace(/^\.\//, '')
       .replace(/^\/+/, '')
-      .replace(/\/+/g, '/')
       .replace(/\/$/, '');
+
+    return normalizedValue === '.' ? '' : normalizedValue;
   }
 
   private pathMatchesBoundary(targetPath: string, boundary: string): boolean {

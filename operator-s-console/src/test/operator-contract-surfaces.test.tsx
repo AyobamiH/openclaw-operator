@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import OverviewPage from "@/pages/OverviewPage";
 import AgentsPage from "@/pages/AgentsPage";
@@ -11,6 +11,7 @@ import SystemHealthPage from "@/pages/SystemHealthPage";
 import TasksPage from "@/pages/TasksPage";
 import GovernancePage from "@/pages/GovernancePage";
 import TaskRunsPage from "@/pages/TaskRunsPage";
+import TaskRunDetailPage from "@/pages/TaskRunDetailPage";
 import { TaskRunDetailContent } from "@/components/console/TaskRunDetailContent";
 import * as consoleHooks from "@/hooks/use-console-api";
 import * as publicSurfaceHooks from "@/hooks/use-public-surface-api";
@@ -87,11 +88,13 @@ function renderTaskRunDetail(
   runOverrides: Record<string, unknown> = {},
 ) {
   const view = render(
-    <TaskRunDetailContent
-      isLoading={false}
-      run={buildTaskRun(type, runOverrides) as never}
-      runResult={runResult}
-    />,
+    <MemoryRouter>
+      <TaskRunDetailContent
+        isLoading={false}
+        run={buildTaskRun(type, runOverrides) as never}
+        runResult={runResult}
+      />
+    </MemoryRouter>,
   );
 
   return {
@@ -102,11 +105,13 @@ function renderTaskRunDetail(
       nextRunOverrides: Record<string, unknown> = {},
     ) {
       view.rerender(
-        <TaskRunDetailContent
-          isLoading={false}
-          run={buildTaskRun(nextType, nextRunOverrides) as never}
-          runResult={nextRunResult}
-        />,
+        <MemoryRouter>
+          <TaskRunDetailContent
+            isLoading={false}
+            run={buildTaskRun(nextType, nextRunOverrides) as never}
+            runResult={nextRunResult}
+          />
+        </MemoryRouter>,
       );
     },
   };
@@ -710,10 +715,12 @@ describe("operator contract surfaces", () => {
 
   it("renders workflow graph and proof links in run detail", () => {
     render(
-      <TaskRunDetailContent
-        isLoading={false}
-        run={{
+      <MemoryRouter>
+        <TaskRunDetailContent
+          isLoading={false}
+          run={{
           runId: "run-1",
+          taskId: "task-heartbeat-1",
           type: "heartbeat",
           status: "success",
           createdAt: "2026-03-11T10:00:00.000Z",
@@ -810,7 +817,7 @@ describe("operator contract surfaces", () => {
           ],
           operatorPreview: null,
         }}
-        runResult={{
+          runResult={{
           operatorSummary: "Prepared a local-only reddit draft with review posture because the knowledge pack is behind the docs mirror.",
           recommendedNextActions: [
             "Run drift-repair before broad reuse.",
@@ -834,13 +841,16 @@ describe("operator contract surfaces", () => {
               "The docs mirror changed after the latest knowledge pack was generated. Run drift-repair so reddit-helper drafts against the refreshed pack.",
             ],
           },
-        }}
-      />,
+          }}
+        />
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("Operator Summary")).toBeInTheDocument();
+    expect(screen.getByText("Operator Follow-through")).toBeInTheDocument();
     expect(screen.getByText("Knowledge Freshness")).toBeInTheDocument();
     expect(screen.getByText("Docs Ahead")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open Knowledge/i })).toBeInTheDocument();
     expect(
       screen.getAllByText(/Run drift-repair so reddit-helper drafts against the refreshed pack/i).length,
     ).toBeGreaterThan(0);
@@ -853,10 +863,12 @@ describe("operator contract surfaces", () => {
 
   it("renders verification control signals in run detail for qa-verification", () => {
     render(
-      <TaskRunDetailContent
-        isLoading={false}
-        run={{
+      <MemoryRouter>
+        <TaskRunDetailContent
+          isLoading={false}
+          run={{
           runId: "run-qa-1",
+          taskId: "task-qa-1",
           type: "qa-verification",
           status: "success",
           createdAt: "2026-03-11T10:00:00.000Z",
@@ -909,7 +921,7 @@ describe("operator contract surfaces", () => {
           proofLinks: [],
           operatorPreview: null,
         }}
-        runResult={{
+          runResult={{
           operatorSummary:
             "Verification can close the incident once the final verifier note is attached to the repair record.",
           recommendedNextActions: ["Attach the verifier note to the incident before closing it."],
@@ -957,14 +969,17 @@ describe("operator contract surfaces", () => {
             unresolvedSignals: 1,
             requiredFollowups: ["Attach verifier note"],
           },
-        }}
-      />,
+          }}
+        />
+      </MemoryRouter>,
     );
 
     expect(screen.getByText("Verification Control Deck")).toBeInTheDocument();
+    expect(screen.getByText("Operator Follow-through")).toBeInTheDocument();
     expect(screen.getByText("Closure Decision")).toBeInTheDocument();
     expect(screen.getByText("Reproducibility")).toBeInTheDocument();
     expect(screen.getByText("Closure Contract")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open Incidents/i })).toBeInTheDocument();
     expect(
       screen.getByText(
         "Verification passed the bounded checks, but the incident should stay open until the verifier note is attached.",
@@ -972,6 +987,199 @@ describe("operator contract surfaces", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Evidence still expected: verifier note, repair link.")).toBeInTheDocument();
     expect(screen.getByText("Follow-ups: Attach verifier note.")).toBeInTheDocument();
+  });
+
+  it("routes pending approvals into the run-detail follow-through rail", () => {
+    renderTaskRunDetail(
+      "build-refactor",
+      {
+        operatorSummary: "The bounded repair is ready, but approval is still required before rollout can proceed.",
+        specialistContract: {
+          workflowStage: "approval",
+          status: "pending-approval",
+          operatorSummary:
+            "The bounded repair is ready, but approval is still required before rollout can proceed.",
+          recommendedNextActions: ["Approve the bounded rollout so verification can continue."],
+        },
+      },
+      {
+        status: "pending",
+        workflow: {
+          stage: "approval",
+          graphStatus: "blocked",
+          currentStage: "approval",
+          blockedStage: "approval",
+          stopReason: "Waiting for operator approval before rollout.",
+          stopClassification: "blocked",
+          awaitingApproval: true,
+          retryScheduled: false,
+          nextRetryAt: null,
+          repairStatus: null,
+          eventCount: 3,
+          latestEventAt: "2026-03-11T10:00:05.000Z",
+          stageDurations: {},
+          timingBreakdown: {},
+          nodeCount: 3,
+          edgeCount: 2,
+        },
+        approval: {
+          required: true,
+          status: "pending",
+          requestedAt: "2026-03-11T10:00:04.000Z",
+          decidedAt: null,
+          decidedBy: null,
+          note: "Awaiting operator approval.",
+        },
+      },
+    );
+
+    expect(screen.getByText("Operator Follow-through")).toBeInTheDocument();
+    expect(screen.getByText("This run is waiting on an operator decision before the workflow can move forward.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open Approvals/i })).toBeInTheDocument();
+  });
+
+  it("resolves exact approval and incident handoff detail from run detail", () => {
+    vi.mocked(consoleHooks.useTaskRunDetail).mockReturnValue({
+      data: {
+        generatedAt: "2026-03-11T10:20:00.000Z",
+        run: {
+          ...buildTaskRun("qa-verification", {
+            runId: "run-qa-handoff",
+            taskId: "task-qa-handoff",
+            status: "failed",
+            approval: {
+              required: true,
+              status: "pending",
+              requestedAt: "2026-03-11T10:05:00.000Z",
+              decidedAt: null,
+              decidedBy: null,
+              note: "Awaiting bounded operator approval.",
+            },
+            repair: {
+              repairId: "repair-42",
+              status: "verification-required",
+              verificationSummary: "Verifier note is still missing.",
+            },
+          }),
+          result: {
+            specialistContract: {
+              workflowStage: "closure-review",
+              status: "watching",
+              operatorSummary: "Closure still depends on approval and linked incident follow-through.",
+              recommendedNextActions: ["Review the linked approval and incident before retrying closure."],
+            },
+            closureContract: {
+              targetKind: "incident",
+              targetId: "inc-42",
+              closeAllowed: false,
+              unresolvedSignals: 1,
+            },
+          },
+        },
+      },
+      isLoading: false,
+      isError: false,
+      error: null,
+    } as unknown as ReturnType<typeof consoleHooks.useTaskRunDetail>);
+
+    vi.mocked(consoleHooks.usePendingApprovals).mockReturnValue({
+      data: {
+        count: 1,
+        pending: [
+          {
+            taskId: "task-qa-handoff",
+            type: "build-refactor",
+            requestedAt: "2026-03-11T10:05:00.000Z",
+            status: "pending",
+            payload: { files: ["src/index.ts"] },
+            impact: {
+              riskLevel: "high",
+              dependencyClass: "external",
+              publicTriggerable: true,
+              internalOnly: false,
+              approvalReason: "Requires explicit code-change approval.",
+              purpose: "Bounded code repair for the linked incident.",
+              replayBehavior: "approval-requeues-same-payload",
+              affectedSurfaces: ["operator-ui", "incident-ledger"],
+            },
+            payloadPreview: { keyCount: 1, internalKeyCount: 0 },
+          },
+        ],
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof consoleHooks.usePendingApprovals>);
+
+    vi.mocked(consoleHooks.useIncidents).mockReturnValue({
+      data: {
+        incidents: [
+          {
+            id: "inc-42",
+            title: "Verifier note missing for repair closure",
+            classification: "repair",
+            severity: "warning",
+            status: "active",
+            truthLayer: "observed",
+            summary: "Repair cannot close until the verifier note is attached.",
+            owner: "AyobamiH",
+            acknowledgedAt: "2026-03-11T10:06:00.000Z",
+            lastSeenAt: "2026-03-11T10:15:00.000Z",
+            affectedSurfaces: ["incident-ledger", "verification"],
+            linkedTaskIds: ["task-qa-handoff"],
+            linkedRunIds: ["run-qa-handoff"],
+            linkedRepairIds: ["repair-42"],
+            linkedServiceIds: [],
+            linkedProofDeliveries: [],
+            evidence: ["Verifier note still missing"],
+            remediation: {
+              owner: "operator",
+              status: "blocked",
+              summary: "Waiting for verifier evidence.",
+              nextAction: "Attach the verifier note before retrying closure.",
+              blockers: ["missing verifier note"],
+            },
+            verification: {
+              required: true,
+              status: "pending",
+              summary: "Verification is still pending.",
+              verificationTaskId: "task-qa-handoff",
+              verificationRunId: "run-qa-handoff",
+            },
+            remediationTasks: [
+              {
+                remediationId: "rem-42",
+                taskType: "qa-verification",
+                taskId: "task-qa-handoff",
+                runId: "run-qa-handoff",
+                status: "blocked",
+                reason: "Verify closure evidence.",
+              },
+            ],
+          },
+        ],
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof consoleHooks.useIncidents>);
+
+    render(
+      <MemoryRouter initialEntries={["/task-runs/run-qa-handoff"]}>
+        <Routes>
+          <Route path="/task-runs/:runId" element={<TaskRunDetailPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("Approval Handoff")).toBeInTheDocument();
+    expect(screen.getByText("Incident Handoff")).toBeInTheDocument();
+    expect(screen.getByText("Bounded code repair for the linked incident.")).toBeInTheDocument();
+    expect(screen.getByText(/Verifier note missing for repair closure already links this run/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open Approval Review/i })).toHaveAttribute(
+      "href",
+      "/approvals?taskId=task-qa-handoff&fromRunId=run-qa-handoff",
+    );
+    expect(screen.getByRole("link", { name: /Open Incident Detail/i })).toHaveAttribute(
+      "href",
+      "/incidents?runId=run-qa-handoff&incidentId=inc-42&taskId=task-qa-handoff",
+    );
   });
 
   it("renders workflow and bounded-surgery control decks for integration-workflow and build-refactor", () => {
@@ -1940,6 +2148,56 @@ describe("operator contract surfaces", () => {
     expect(screen.getByText(/build-refactor is surfaced first because it carries high risk/i)).toBeInTheDocument();
   });
 
+  it("honors run handoff focus inside the approval inbox", () => {
+    vi.mocked(consoleHooks.usePendingApprovals).mockReturnValue({
+      data: {
+        count: 2,
+        pending: [
+          {
+            taskId: "approval-build-refactor",
+            type: "build-refactor",
+            requestedAt: "2026-03-11T09:00:00.000Z",
+            status: "pending-review",
+            payload: { scope: "operator console", files: ["src/pages/OverviewPage.tsx"] },
+            impact: {
+              riskLevel: "high",
+              dependencyClass: "external",
+              publicTriggerable: true,
+              internalOnly: false,
+              approvalReason: "Requires explicit code-change approval.",
+            },
+            payloadPreview: { keyCount: 2, internalKeyCount: 1 },
+          },
+          {
+            taskId: "approval-doc-sync",
+            type: "doc-sync",
+            requestedAt: "2026-03-11T10:00:00.000Z",
+            status: "pending-review",
+            payload: { reason: "refresh docs" },
+            impact: {
+              riskLevel: "low",
+              dependencyClass: "worker",
+              publicTriggerable: false,
+              internalOnly: true,
+            },
+            payloadPreview: { keyCount: 1, internalKeyCount: 0 },
+          },
+        ],
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof consoleHooks.usePendingApprovals>);
+
+    render(
+      <MemoryRouter initialEntries={["/approvals?taskId=approval-doc-sync&fromRunId=run-doc-sync-1"]}>
+        <ApprovalsPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/Run run-doc-sync-1 handed you into approval approval-doc-sync/i)).toBeInTheDocument();
+    expect(screen.getByText(/This request remains inside internal orchestration surfaces\./i)).toBeInTheDocument();
+    expect(screen.getByText(/The task is not publicly triggerable\./i)).toBeInTheDocument();
+  });
+
   it("surfaces incident triage pressure before remediation detail", () => {
     vi.mocked(consoleHooks.useExtendedHealth).mockReturnValue({
       data: {
@@ -2111,6 +2369,136 @@ describe("operator contract surfaces", () => {
       note: undefined,
       taskType: undefined,
     });
+  });
+
+  it("honors run handoff focus inside the incident command deck", () => {
+    vi.mocked(consoleHooks.useExtendedHealth).mockReturnValue({
+      data: {
+        status: "warning",
+        incidents: {
+          overallStatus: "warning",
+          openCount: 2,
+          activeCount: 2,
+          watchingCount: 0,
+          bySeverity: { critical: 1, warning: 1, info: 0 },
+        },
+      },
+      isLoading: false,
+      isError: false,
+    } as unknown as ReturnType<typeof consoleHooks.useExtendedHealth>);
+
+    const unrelatedIncident = {
+      id: "inc-unrelated",
+      title: "Queue pressure spike",
+      classification: "runtime-mode",
+      severity: "critical",
+      status: "active",
+      truthLayer: "observed",
+      summary: "Queue pressure is elevated.",
+      owner: null,
+      acknowledgedAt: null,
+      lastSeenAt: "2026-03-11T10:15:00.000Z",
+      affectedSurfaces: ["queue"],
+      linkedTaskIds: [],
+      linkedRunIds: [],
+      linkedRepairIds: [],
+      linkedServiceIds: [],
+      linkedProofDeliveries: [],
+      evidence: ["queue pressure"],
+      remediation: {
+        owner: "operator",
+        status: "watching",
+        summary: "Observe queue pressure.",
+        nextAction: "Watch the queue.",
+        blockers: [],
+      },
+      verification: { required: false, status: "not-required", summary: "No verification required." },
+      remediationTasks: [],
+    };
+
+    const focusedIncident = {
+      id: "inc-focused",
+      title: "Verifier note missing for repair closure",
+      classification: "repair",
+      severity: "warning",
+      status: "active",
+      truthLayer: "observed",
+      summary: "Repair closure is still blocked.",
+      owner: "AyobamiH",
+      acknowledgedAt: "2026-03-11T10:10:00.000Z",
+      acknowledgedBy: "AyobamiH",
+      acknowledgementNote: "Linked from run detail.",
+      firstSeenAt: "2026-03-11T10:00:00.000Z",
+      lastSeenAt: "2026-03-11T10:15:00.000Z",
+      affectedSurfaces: ["verification", "incident-ledger"],
+      linkedTaskIds: ["task-qa-handoff"],
+      linkedRunIds: ["run-qa-handoff"],
+      linkedRepairIds: ["repair-42"],
+      linkedServiceIds: [],
+      linkedProofDeliveries: [],
+      evidence: ["Verifier note missing"],
+      recommendedSteps: ["Attach verifier note"],
+      policy: {
+        policyId: "repair-verification",
+        preferredOwner: "operator",
+        remediationTaskType: "qa-verification",
+        verifierTaskType: "qa-verification",
+        targetSlaMinutes: 30,
+        escalationMinutes: 15,
+      },
+      remediation: {
+        owner: "operator",
+        status: "blocked",
+        summary: "Waiting for verifier evidence.",
+        nextAction: "Attach the verifier note before retrying closure.",
+        blockers: ["missing verifier note"],
+      },
+      verification: {
+        required: true,
+        status: "pending",
+        summary: "Verification is still pending.",
+        verificationTaskId: "task-qa-handoff",
+        verificationRunId: "run-qa-handoff",
+      },
+      history: [],
+      acknowledgements: [],
+      ownershipHistory: [],
+      remediationTasks: [
+        {
+          remediationId: "rem-focused",
+          taskType: "qa-verification",
+          taskId: "task-qa-handoff",
+          runId: "run-qa-handoff",
+          status: "blocked",
+          reason: "Verify closure evidence.",
+        },
+      ],
+    };
+
+    vi.mocked(consoleHooks.useIncidents).mockReturnValue({
+      data: {
+        incidents: [unrelatedIncident, focusedIncident],
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof consoleHooks.useIncidents>);
+
+    vi.mocked(consoleHooks.useIncidentDetail).mockImplementation((id) => ({
+      data: {
+        incident: id === "inc-focused" ? focusedIncident : unrelatedIncident,
+      },
+      isLoading: false,
+    } as unknown as ReturnType<typeof consoleHooks.useIncidentDetail>));
+
+    render(
+      <MemoryRouter initialEntries={["/incidents?incidentId=inc-focused&runId=run-qa-handoff&taskId=task-qa-handoff"]}>
+        <IncidentsPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText(/Run run-qa-handoff handed you into Verifier note missing for repair closure/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Verifier note missing for repair closure").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Attach the verifier note before retrying closure\./i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/task:task-qa-handoff · run:run-qa-handoff/i).length).toBeGreaterThan(0);
   });
 
   it("keeps system health technical after the incident split", () => {

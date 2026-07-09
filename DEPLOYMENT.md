@@ -1,9 +1,9 @@
 # OpenClaw Operator Deployment Guide
 
 This guide is for host-style deployment after you have already validated a
-local boot from the repo root. OpenClaw Operator ships one control plane and
-one operator UI entrypoint: the orchestrator serves the built
-`operator-s-console` bundle at `/operator`.
+local boot from the repo root. OpenClaw itself is the preferred daily front
+door; this repo ships the specialist orchestrator sidecar and serves the built
+`operator-s-console` bundle at `/operator` for repo-native runtime work.
 
 > **Two Docker Compose files exist — use the right one:**
 > - `./docker-compose.yml` — **Official public quickstart**. Root localhost-only demo stack with orchestrator + MongoDB + Redis.
@@ -59,8 +59,8 @@ plane to `3312`.
 
 ## Docker Deployment (Official Public Path)
 
-Uses `./docker-compose.yml`. Brings up orchestrator + MongoDB + Redis.
-The operator console is served by that same orchestrator process at `/operator`;
+Uses `./docker-compose.yml`. Brings up orchestrator + MongoDB + Redis. The
+specialist console is served by that same orchestrator process at `/operator`;
 there is no second UI server to deploy.
 
 ### Prerequisites

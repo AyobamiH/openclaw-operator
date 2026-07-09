@@ -1273,7 +1273,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(auditPayload.total).toBeGreaterThan(0);
     expect(auditPayload.page?.returned).toBeGreaterThan(0);
     expect(auditPayload.records?.some(
-      (record) => record.agentId === 'system-monitor-agent' && record.skillId === 'documentParser' && record.allowed === true,
+      (record) => record.agentId === 'system-monitor-agent' && record.skillId === 'runtimeStateReader' && record.allowed === true,
     )).toBe(true);
   });
 

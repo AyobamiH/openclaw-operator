@@ -16,10 +16,15 @@
   "maxConcurrentTasks": 2,
   "permissions": {
     "skills": {
-      "documentParser": {
+      "runtimeStateReader": {
+        "allowed": true,
+        "maxCalls": 20,
+        "reason": "Read bounded runtime-state governance evidence."
+      },
+      "repoFileReader": {
         "allowed": true,
         "maxCalls": 60,
-        "reason": "Parse bounded local policy and dependency evidence."
+        "reason": "Read bounded local policy, manifest, and lockfile evidence."
       }
     },
     "fileSystem": {

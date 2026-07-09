@@ -1,10 +1,11 @@
 import { useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useTaskRunDetail } from "@/hooks/use-console-api";
+import { useIncidents, usePendingApprovals, useTaskRunDetail } from "@/hooks/use-console-api";
 import { SummaryCard } from "@/components/console/SummaryCard";
 import { TaskRunDetailContent } from "@/components/console/TaskRunDetailContent";
 import { AlertTriangle, ArrowLeft, History } from "lucide-react";
 import { buildRunDetail } from "@/lib/task-runs";
+import { buildRunHandoffContext } from "@/lib/run-handoff";
 
 export default function TaskRunDetailPage() {
   const navigate = useNavigate();
@@ -12,7 +13,22 @@ export default function TaskRunDetailPage() {
   const decodedRunId = runId ? decodeURIComponent(runId) : null;
 
   const { data, isLoading, isError, error } = useTaskRunDetail(decodedRunId);
+  const { data: approvalsData } = usePendingApprovals();
+  const { data: incidentsData } = useIncidents({
+    includeResolved: true,
+    limit: 100,
+  });
   const run = useMemo(() => buildRunDetail(data), [data]);
+  const handoffContext = useMemo(
+    () =>
+      buildRunHandoffContext({
+        run,
+        runResult: data?.run?.result,
+        pendingApprovals: approvalsData?.pending ?? [],
+        incidents: incidentsData?.incidents ?? [],
+      }),
+    [approvalsData?.pending, data?.run?.result, incidentsData?.incidents, run],
+  );
 
   return (
     <div className="space-y-5">
@@ -44,6 +60,7 @@ export default function TaskRunDetailPage() {
         <TaskRunDetailContent
           run={run}
           runResult={data?.run?.result}
+          handoffContext={handoffContext}
           isLoading={isLoading}
         />
       </SummaryCard>

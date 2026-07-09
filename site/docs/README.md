@@ -42,7 +42,7 @@ npm run docs:site:build
 - [Operator Guide](./OPERATOR_GUIDE.md)
 - [System Architecture](./concepts/architecture.md)
 - [Agent Adaptation Plan](./architecture/AGENT_ADAPTATION_PLAN.md)
-- [Operator Console Audit And Spec](./architecture/OPERATOR_CONSOLE_AUDIT_AND_SPEC.md)
+- [Operator Surface Capability Matrix](./architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md)
 - [Documentation Site Information Architecture](./architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md)
 - [Configuration Guide](./guides/configuration.md)
 - [Knowledge Mirror Policy](./operations/KNOWLEDGE_MIRROR_POLICY.md)
@@ -52,6 +52,7 @@ npm run docs:site:build
 
 ## Historical Implementation Docs
 
+- [Operator Console Audit And Spec](./architecture/OPERATOR_CONSOLE_AUDIT_AND_SPEC.md)
 - [Operator-s-console Cutover Blueprint](./operations/OPERATOR_S_CONSOLE_CUTOVER_BLUEPRINT.md)
 
 Retired proof-surface runbooks were removed from `main`; use Git history if you

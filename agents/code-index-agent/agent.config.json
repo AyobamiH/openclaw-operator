@@ -17,10 +17,20 @@
   "maxConcurrentTasks": 2,
   "permissions": {
     "skills": {
-      "documentParser": {
+      "runtimeStateReader": {
         "allowed": true,
-        "maxCalls": 60,
-        "reason": "Parse bounded local repo, docs, and knowledge-pack evidence."
+        "maxCalls": 20,
+        "reason": "Read bounded runtime-state freshness and repair evidence."
+      },
+      "repoFileReader": {
+        "allowed": true,
+        "maxCalls": 80,
+        "reason": "Read bounded local repo, docs, and code surfaces for index posture."
+      },
+      "knowledgePackReader": {
+        "allowed": true,
+        "maxCalls": 20,
+        "reason": "Read bounded knowledge-pack artifacts for retrieval freshness and contradiction posture."
       }
     },
     "fileSystem": {

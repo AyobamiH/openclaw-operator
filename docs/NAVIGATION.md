@@ -9,6 +9,14 @@ Use this file when you know your goal but not the right document.
 
 For the canonical file map, start with [INDEX.md](./INDEX.md).
 
+Direction note:
+
+- OpenClaw is the preferred daily front door
+- this repo documents the specialist orchestrator sidecar and its bridge-backed
+  runtime surfaces
+- treat `/operator` docs as specialist-surface guidance, not a competing shell
+  roadmap
+
 When implementation changes materially, update the appropriate existing `.md`
 file in the same change set and cross-reference the relevant code/config paths
 where it helps prevent drift.
@@ -23,11 +31,12 @@ where it helps prevent drift.
 ## I Need To Operate Or Deploy The System
 
 1. [../QUICKSTART.md](../QUICKSTART.md)
-2. [../DEPLOYMENT.md](../DEPLOYMENT.md)
-3. [operations/deployment.md](./operations/deployment.md)
-4. [guides/monitoring.md](./guides/monitoring.md)
-5. [operations/backup-recovery.md](./operations/backup-recovery.md)
-6. [operations/KNOWLEDGE_MIRROR_POLICY.md](./operations/KNOWLEDGE_MIRROR_POLICY.md)
+2. [OPENCLAW_KB/02_GATEWAY_AND_POLICY.md](./OPENCLAW_KB/02_GATEWAY_AND_POLICY.md)
+3. [../DEPLOYMENT.md](../DEPLOYMENT.md)
+4. [operations/deployment.md](./operations/deployment.md)
+5. [guides/monitoring.md](./guides/monitoring.md)
+6. [operations/backup-recovery.md](./operations/backup-recovery.md)
+7. [operations/KNOWLEDGE_MIRROR_POLICY.md](./operations/KNOWLEDGE_MIRROR_POLICY.md)
 
 ## I Need To Understand The Architecture
 
@@ -44,9 +53,9 @@ still matters for the current operator surface is:
 
 ## I Need To Close Remaining Gaps
 
-Sprint To Completion is the primary orchestrator-first execution tracker for
-unfinished repository work. Use it to finish the control plane before taking on
-broader exposure work.
+Sprint To Completion is the primary specialist-orchestrator execution tracker
+for unfinished repository work. Use it to finish the bounded runtime before
+taking on broader exposure work.
 
 1. [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md)
 2. [operations/DOCUMENT_AUDIT.md](./operations/DOCUMENT_AUDIT.md)

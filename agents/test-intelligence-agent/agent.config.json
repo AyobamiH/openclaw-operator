@@ -16,10 +16,15 @@
   "maxConcurrentTasks": 2,
   "permissions": {
     "skills": {
-      "documentParser": {
+      "runtimeStateReader": {
         "allowed": true,
-        "maxCalls": 60,
-        "reason": "Parse bounded local package, test, and runtime evidence."
+        "maxCalls": 20,
+        "reason": "Read bounded runtime-state evidence for recent failures, retries, and release posture."
+      },
+      "repoFileReader": {
+        "allowed": true,
+        "maxCalls": 80,
+        "reason": "Read bounded package manifests and local test surfaces."
       }
     },
     "fileSystem": {

@@ -24,7 +24,9 @@ read:
 
 - this repository is the public product repo
 - `orchestrator/` is the backend control plane
-- `operator-s-console/` is the canonical UI
+- OpenClaw Control UI/chat is the primary front door
+- `operator-s-console/` is a maintained specialist surface for
+  orchestrator-specific workflows, not the default product-growth center
 - `agents/` are bounded specialists
 - `WORKBOARD.md` is the first-read tracker for done / next / parked work
 
@@ -88,3 +90,5 @@ Integration tests must use real runtime paths and real completion conditions.
 2. no bulk external-catalog imports
 3. no widened permissions just to support a speculative feature
 4. code and tests beat prose when they disagree
+5. no new generic shell or dashboard expansion work unless it directly
+   supports a unique orchestrator-specific lane not already covered by OpenClaw

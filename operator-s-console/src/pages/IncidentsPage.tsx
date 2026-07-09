@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useExtendedHealth,
@@ -163,6 +164,7 @@ function buildIncidentActionPlaybook(
 }
 
 export default function IncidentsPage() {
+  const [searchParams] = useSearchParams();
   const { user, hasRole } = useAuth();
   const isOperator = hasRole("operator");
   const acknowledgeIncident = useIncidentAcknowledge();
@@ -173,6 +175,9 @@ export default function IncidentsPage() {
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   const [remediationTaskType, setRemediationTaskType] = useState("auto");
   const [remediationNote, setRemediationNote] = useState("");
+  const requestedIncidentId = searchParams.get("incidentId");
+  const requestedRunId = searchParams.get("runId");
+  const requestedTaskId = searchParams.get("taskId");
 
   const { data: extended, isError: extError } = useExtendedHealth();
   const { data: incidentsData, isLoading: incidentsLoading } = useIncidents({
@@ -224,6 +229,28 @@ export default function IncidentsPage() {
     };
   }, [allIncidents]);
 
+  const focusedIncident = useMemo(() => {
+    const incidentDetails = toArray(incidentsData?.incidents)
+      .map((incident) => buildIncidentDetail(incident))
+      .filter((incident): incident is IncidentDetailView => incident !== null);
+
+    if (requestedIncidentId) {
+      return incidentDetails.find((incident) => incident.id === requestedIncidentId) ?? null;
+    }
+
+    if (!requestedRunId && !requestedTaskId) {
+      return null;
+    }
+
+    const matches = incidentDetails.filter((incident) => {
+      const linkedRun = requestedRunId ? incident.linkedRunIds.includes(requestedRunId) : false;
+      const linkedTask = requestedTaskId ? incident.linkedTaskIds.includes(requestedTaskId) : false;
+      return linkedRun || linkedTask;
+    });
+
+    return matches[0] ?? null;
+  }, [incidentsData?.incidents, requestedIncidentId, requestedRunId, requestedTaskId]);
+
   const filteredIncidents = useMemo(() => {
     return allIncidents.filter((incident) => {
       if (incidentFilter === "all") return true;
@@ -237,6 +264,22 @@ export default function IncidentsPage() {
       return incident.status === "active";
     });
   }, [allIncidents, incidentFilter]);
+
+  useEffect(() => {
+    if ((requestedIncidentId || requestedRunId || requestedTaskId) && incidentFilter !== "all") {
+      setIncidentFilter("all");
+    }
+  }, [incidentFilter, requestedIncidentId, requestedRunId, requestedTaskId]);
+
+  useEffect(() => {
+    if (!focusedIncident) {
+      return;
+    }
+
+    if (selectedIncidentId !== focusedIncident.id) {
+      setSelectedIncidentId(focusedIncident.id);
+    }
+  }, [focusedIncident, selectedIncidentId]);
 
   useEffect(() => {
     if (!filteredIncidents.length) {
@@ -351,6 +394,20 @@ export default function IncidentsPage() {
 
       <SummaryCard title="Incident Posture" icon={<AlertTriangle className="w-4 h-4" />} variant="highlight">
         <div className="space-y-4">
+          {(requestedIncidentId || requestedRunId || requestedTaskId) && (
+            <GuidancePanel
+              title="Run handoff focus"
+              eyebrow="Linked Incident"
+              tone={focusedIncident ? "tip" : "warning"}
+            >
+              <p>
+                {focusedIncident
+                  ? `Run ${requestedRunId ?? "unknown"} handed you into ${focusedIncident.title}. The command deck is focused on the incident already linked to this run or task instead of the generic queue head.`
+                  : `Run ${requestedRunId ?? "unknown"} pointed at incident context, but the current incident ledger did not return a matching record for ${requestedIncidentId ?? requestedTaskId ?? "that handoff"}.`}
+              </p>
+            </GuidancePanel>
+          )}
+
           <div className="grid grid-cols-2 lg:grid-cols-6 gap-2">
             <div className="console-inset p-3 rounded-sm text-center">
               <p className="metric-value text-xl">{incidentSummary.openCount}</p>

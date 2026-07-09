@@ -4,12 +4,15 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildSpecialistOperatorFields,
-  loadRuntimeState,
   summarizeProofSurface,
   type RuntimeIncidentLedgerRecord,
   type RuntimeStateSubset,
   type RuntimeTaskExecution,
 } from "../../shared/runtime-evidence.js";
+import {
+  hasAllowedSkill,
+  readRuntimeStateWithSkill,
+} from "../../shared/governed-readers.js";
 
 interface AgentConfig {
   id: string;
@@ -82,6 +85,7 @@ interface Result {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const configPath = resolve(__dirname, "../agent.config.json");
+const REQUIRED_SKILL = "runtimeStateReader";
 
 function loadConfig(): AgentConfig {
   return JSON.parse(readFileSync(configPath, "utf-8")) as AgentConfig;
@@ -89,7 +93,7 @@ function loadConfig(): AgentConfig {
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills?.[skillId]?.allowed === true;
+  return hasAllowedSkill(config, skillId);
 }
 
 function resolveProofFreshness(
@@ -132,19 +136,19 @@ function buildOpenIncidentSummary(incidents: RuntimeIncidentLedgerRecord[]) {
 async function handleTask(task: Task): Promise<Result> {
   const startedAt = Date.now();
 
-  if (!canUseSkill("documentParser")) {
+  if (!canUseSkill(REQUIRED_SKILL)) {
     const specialistFields = buildSpecialistOperatorFields({
       role: "Release Manager",
       workflowStage: "release-refusal",
       deliverable: "bounded release readiness posture",
       status: "refused",
       operatorSummary:
-        "Release-readiness synthesis was refused because documentParser access is unavailable to release-manager-agent.",
+        "Release-readiness synthesis was refused because runtimeStateReader access is unavailable to release-manager-agent.",
       recommendedNextActions: [
-        "Restore documentParser access for release-manager-agent before retrying.",
+        "Restore runtimeStateReader access for release-manager-agent before retrying.",
       ],
       refusalReason:
-        "Refused release-readiness synthesis because documentParser skill access is not allowed for release-manager-agent.",
+        "Refused release-readiness synthesis because runtimeStateReader skill access is not allowed for release-manager-agent.",
     });
 
     return {
@@ -156,7 +160,7 @@ async function handleTask(task: Task): Promise<Result> {
             ? task.releaseTarget.trim()
             : null,
         summary: "Release posture could not be assembled.",
-        blockers: ["documentParser unavailable"],
+        blockers: ["runtimeStateReader unavailable"],
         followups: ["Restore release-manager-agent governed access."],
         evidenceWindow: {
           openIncidents: 0,
@@ -177,7 +181,10 @@ async function handleTask(task: Task): Promise<Result> {
   }
 
   const config = loadConfig();
-  const state = await loadRuntimeState<RuntimeState>(configPath, config.orchestratorStatePath);
+  const { state } = await readRuntimeStateWithSkill<RuntimeState>(
+    config.id,
+    config.orchestratorStatePath,
+  );
   const executions = state.taskExecutions ?? [];
   const incidentSummary = buildOpenIncidentSummary(state.incidentLedger ?? []);
   const pendingApprovals = (state.approvals ?? []).filter(
@@ -335,9 +342,9 @@ async function handleTask(task: Task): Promise<Result> {
     : null;
   const toolInvocations = [
     {
-      toolId: "documentParser",
+      toolId: REQUIRED_SKILL,
       detail:
-        "release-manager-agent parsed runtime state, latest bounded verifier runs, and proof freshness evidence to synthesize release posture.",
+        "release-manager-agent read bounded runtime-state evidence, latest verifier runs, and proof freshness signals to synthesize release posture.",
       evidence: [
         `decision:${decision}`,
         `pending-approvals:${pendingApprovals}`,

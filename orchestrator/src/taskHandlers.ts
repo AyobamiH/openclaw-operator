@@ -90,7 +90,7 @@ const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
   },
   "system-monitor": {
     agentId: "system-monitor-agent",
-    skillId: "documentParser",
+    skillId: "runtimeStateReader",
   },
   "build-refactor": {
     agentId: "build-refactor-agent",
@@ -119,7 +119,7 @@ const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
   "content-generate": { agentId: "content-agent", skillId: "documentParser" },
   "incident-triage": {
     agentId: "system-monitor-agent",
-    skillId: "documentParser",
+    skillId: "runtimeStateReader",
   },
   "integration-workflow": {
     agentId: "integration-agent",

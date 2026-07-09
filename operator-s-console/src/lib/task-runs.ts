@@ -2,6 +2,7 @@ import { num, str, toArray, toNullableString } from "@/lib/safe-render";
 
 export interface RunRowVM {
   runId: string;
+  taskId: string | null;
   type: string;
   status: string;
   createdAt: string | null;
@@ -132,6 +133,7 @@ export function buildRunOperatorPreview(result: unknown): RunOperatorPreviewVM |
 export function buildRunRows(data: any): { runs: RunRowVM[]; total: number; hasMore: boolean } {
   const runs = toArray(data?.runs).map((r: any) => ({
     runId: str(r?.runId ?? r?.id, ""),
+    taskId: toNullableString(r?.taskId ?? r?.task_id),
     type: str(r?.type, "unknown"),
     status: str(r?.status, "unknown"),
     createdAt: toNullableString(r?.createdAt ?? r?.created_at),
@@ -223,6 +225,7 @@ export function buildRunDetail(data: any): RunRowVM | null {
 
   return {
     runId: str(r?.runId ?? r?.id, ""),
+    taskId: toNullableString(r?.taskId ?? r?.task_id),
     type: str(r?.type, "unknown"),
     status: str(r?.status, "unknown"),
     createdAt: toNullableString(r?.createdAt ?? r?.created_at),

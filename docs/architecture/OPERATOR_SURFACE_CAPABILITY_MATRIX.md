@@ -1,6 +1,6 @@
 ---
 title: "Operator Surface Capability Matrix"
-summary: "Backend-first matrix for deciding what should be exposed now, later, or never across /operator and operator-s-console."
+summary: "Backend-first matrix for deciding what specialist orchestrator capability should remain exposed through /operator while OpenClaw is the primary front door."
 ---
 
 # Operator Surface Capability Matrix
@@ -23,8 +23,9 @@ lane?” decision, read this together with
 
 `V1` in the current repo mostly means:
 
-- the curated first console scope for `operator-s-console`
+- the curated maintained specialist scope for `operator-s-console`
 - not the full limit of what orchestrator can route or expose
+- not a plan to keep growing a competing generic shell
 
 The orchestrator backend is broader than the current curated frontend scope.
 
@@ -52,8 +53,11 @@ Current local-runtime note:
 - Public proof is now served from orchestrator-owned public routes.
 - `/operator` and `/operator/*` now serve the built `operator-s-console`
   bundle from orchestrator itself.
-- `operator-s-console/` is the canonical tracked operator UI in the root
-  workspace repo and the only supported `/operator` delivery path.
+- `operator-s-console/` remains the only supported `/operator` delivery path,
+  but OpenClaw Control UI/chat is now the preferred general front door for
+  daily use.
+- `/operator` should therefore be treated as a specialist sidecar surface, not
+  as a competing generic operator shell roadmap.
 
 ## Documentation Maintenance
 
@@ -315,12 +319,13 @@ Keep public proof separate from the private operator control plane:
 If we want to expose more backend capability without creating chaos, the correct
 order is:
 
-1. Add operator-facing task profiles for any proven backend task we want to make
-   user-runnable.
-2. Decide whether that task belongs in the default overview/task rails, deeper
-   console pages, or should remain visible only through runs/incidents/agents.
-3. Keep everything else visible through runs, incidents, agents, and governance
-   until the operator workflow is explicit.
+1. Do not add new generic shell or dashboard scope just because backend
+   capability exists.
+2. Prefer OpenClaw Control UI/chat plus the bridge for shared operator needs.
+3. Only widen `/operator` when the added surface exposes unique
+   orchestrator-specific value that OpenClaw does not already cover.
+4. Keep everything else visible through runs, incidents, agents, governance,
+   and bridgeable specialist workflows until the operator value is explicit.
 
 That keeps the backend broad, the frontend honest, and the operator experience
 trustworthy.

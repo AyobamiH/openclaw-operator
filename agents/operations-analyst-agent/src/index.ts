@@ -1,17 +1,22 @@
 import { readFileSync } from "node:fs";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildIncidentPriorityQueue,
   buildSpecialistOperatorFields,
-  loadRuntimeState,
-  readJsonFile,
   summarizeProofSurface,
   type RuntimeAgentServiceState,
   type RuntimeIncidentLedgerRecord,
   type RuntimeStateSubset,
 } from "../../shared/runtime-evidence.js";
+import {
+  hasAllowedSkills,
+  readRepoDirectoryWithSkill,
+  readRepoJsonWithSkill,
+  readRuntimeStateWithSkill,
+  readServiceStateWithSkill,
+} from "../../shared/governed-readers.js";
 
 interface AgentConfig {
   id: string;
@@ -130,7 +135,11 @@ interface Result {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const configPath = resolve(__dirname, "../agent.config.json");
-const agentsRoot = resolve(__dirname, "../../");
+const REQUIRED_SKILLS = [
+  "runtimeStateReader",
+  "serviceStateReader",
+  "repoFileReader",
+] as const;
 
 function loadConfig(): AgentConfig {
   return JSON.parse(readFileSync(configPath, "utf-8")) as AgentConfig;
@@ -138,34 +147,45 @@ function loadConfig(): AgentConfig {
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills?.[skillId]?.allowed === true;
+  return hasAllowedSkills(config, [skillId]);
 }
 
 async function listAgentDescriptors(): Promise<AgentDescriptor[]> {
-  const entries = await readdir(agentsRoot, { withFileTypes: true });
+  const directory = await readRepoDirectoryWithSkill(
+    loadConfig().id,
+    "../../agents",
+    "agents",
+    { recursive: false, maxEntries: 80 },
+  );
   const descriptors: AgentDescriptor[] = [];
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    if (entry.name === "shared" || entry.name === "AGENT_TEMPLATE" || entry.name.startsWith(".")) {
+  for (const entry of directory.entries) {
+    if (entry.kind !== "directory") continue;
+    const relativePath = entry.relativePath;
+    if (
+      relativePath === "shared" ||
+      relativePath === "AGENT_TEMPLATE" ||
+      relativePath.startsWith(".")
+    ) {
       continue;
     }
-    const agentConfigPath = resolve(agentsRoot, entry.name, "agent.config.json");
-    try {
-      const parsed = JSON.parse(await readFile(agentConfigPath, "utf-8")) as {
-        id?: string;
-        name?: string;
-        serviceStatePath?: string;
-      };
-      if (!parsed.id) continue;
-      descriptors.push({
-        id: parsed.id,
-        name: parsed.name ?? parsed.id,
-        serviceStatePath: parsed.serviceStatePath,
-      });
-    } catch {
+    const parsed = await readRepoJsonWithSkill<{
+      id?: string;
+      name?: string;
+      serviceStatePath?: string;
+    }>(
+      loadConfig().id,
+      `../../agents/${relativePath}/agent.config.json`,
+      `agents/${relativePath}/agent.config.json`,
+    );
+    if (!parsed?.id) {
       continue;
     }
+    descriptors.push({
+      id: parsed.id,
+      name: parsed.name ?? parsed.id,
+      serviceStatePath: parsed.serviceStatePath,
+    });
   }
 
   return descriptors.sort((left, right) => left.id.localeCompare(right.id));
@@ -175,8 +195,11 @@ async function loadServiceState(
   descriptor: AgentDescriptor,
 ): Promise<RuntimeAgentServiceState | null> {
   if (!descriptor.serviceStatePath) return null;
-  const targetPath = resolve(agentsRoot, descriptor.id, descriptor.serviceStatePath);
-  return readJsonFile<RuntimeAgentServiceState | null>(targetPath, null);
+  const { state } = await readServiceStateWithSkill<RuntimeAgentServiceState>(
+    loadConfig().id,
+    descriptor.serviceStatePath,
+  );
+  return state;
 }
 
 async function isServiceStateMissingOrStale(
@@ -184,13 +207,12 @@ async function isServiceStateMissingOrStale(
   maxAgeMs: number,
 ): Promise<boolean> {
   if (!descriptor.serviceStatePath) return true;
-  const targetPath = resolve(agentsRoot, descriptor.id, descriptor.serviceStatePath);
-  try {
-    const fileStat = await stat(targetPath);
-    return Date.now() - fileStat.mtimeMs > maxAgeMs;
-  } catch {
-    return true;
-  }
+  const { exists, metadata } = await readServiceStateWithSkill<RuntimeAgentServiceState>(
+    loadConfig().id,
+    descriptor.serviceStatePath,
+  );
+  const modifiedAt = Date.parse(metadata.modifiedAt ?? "");
+  return !exists || !Number.isFinite(modifiedAt) || Date.now() - modifiedAt > maxAgeMs;
 }
 
 function resolveProofFreshness(
@@ -392,19 +414,19 @@ function buildPrimaryMove(args: {
 async function handleTask(task: Task): Promise<Result> {
   const startedAt = Date.now();
 
-  if (!canUseSkill("documentParser")) {
+  if (!hasAllowedSkills(loadConfig(), [...REQUIRED_SKILLS])) {
     const specialistFields = buildSpecialistOperatorFields({
       role: "Operations Analyst",
       workflowStage: "brief-refusal",
       deliverable: "bounded control-plane brief",
       status: "refused",
       operatorSummary:
-        "Control-plane brief generation was refused because documentParser access is unavailable to operations-analyst-agent.",
+        "Control-plane brief generation was refused because the required governed reader skills are unavailable to operations-analyst-agent.",
       recommendedNextActions: [
-        "Restore documentParser access for operations-analyst-agent before retrying.",
+        "Restore runtimeStateReader, serviceStateReader, and repoFileReader access for operations-analyst-agent before retrying.",
       ],
       refusalReason:
-        "Refused control-plane synthesis because documentParser skill access is not allowed for operations-analyst-agent.",
+        "Refused control-plane synthesis because required governed reader skills are not allowed for operations-analyst-agent.",
     });
 
     return {
@@ -421,12 +443,12 @@ async function handleTask(task: Task): Promise<Result> {
           detail: "The control-plane synthesis lane is currently missing required governed access.",
           route: "/system-health",
           tone: "warning",
-          supportingSignals: ["documentParser unavailable"],
+          supportingSignals: ["governed readers unavailable"],
         },
         pressureStory: {
           headline: "Control-plane brief unavailable",
           detail: "The operations analyst lane is blocked before it can assemble trustworthy runtime evidence.",
-          signals: ["documentParser unavailable"],
+          signals: ["governed readers unavailable"],
         },
         queue: {
           queued: 0,
@@ -465,7 +487,10 @@ async function handleTask(task: Task): Promise<Result> {
   }
 
   const config = loadConfig();
-  const state = await loadRuntimeState<RuntimeState>(configPath, config.orchestratorStatePath);
+  const { state } = await readRuntimeStateWithSkill<RuntimeState>(
+    config.id,
+    config.orchestratorStatePath,
+  );
   const descriptors = await listAgentDescriptors();
   const serviceStates = await Promise.all(
     descriptors.map(async (descriptor) => ({
@@ -611,15 +636,33 @@ async function handleTask(task: Task): Promise<Result> {
     : null;
   const toolInvocations = [
     {
-      toolId: "documentParser",
+      toolId: "runtimeStateReader",
       detail:
-        "operations-analyst-agent parsed runtime state, service-state files, and proof freshness evidence to assemble the bounded control-plane brief.",
+        "operations-analyst-agent read bounded runtime-state, service-state, and agent-config evidence to assemble the control-plane brief.",
       evidence: [
         `open-incidents:${openIncidents.length}`,
         `pending-approvals:${pendingApprovalsCount}`,
         `queued:${queueSummary.queued}`,
         `processing:${queueSummary.processing}`,
       ],
+      classification: "required",
+    },
+    {
+      toolId: "serviceStateReader",
+      detail:
+        "operations-analyst-agent read bounded service-state files to summarize live service coverage and heartbeat freshness.",
+      evidence: [
+        `declared-services:${serviceSummary.declaredCount}`,
+        `healthy-services:${serviceSummary.healthyCount}`,
+        `missing-heartbeats:${serviceSummary.missingHeartbeatCount}`,
+      ],
+      classification: "required",
+    },
+    {
+      toolId: "repoFileReader",
+      detail:
+        "operations-analyst-agent read bounded agent-config files to discover declared service-state surfaces.",
+      evidence: [`declared-agents:${descriptors.length}`],
       classification: "required",
     },
   ];

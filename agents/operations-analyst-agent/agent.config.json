@@ -16,11 +16,28 @@
   "maxConcurrentTasks": 2,
   "permissions": {
     "skills": {
-      "documentParser": {
+      "runtimeStateReader": {
+        "allowed": true,
+        "maxCalls": 20,
+        "reason": "Read bounded runtime-state evidence for control-plane synthesis."
+      },
+      "serviceStateReader": {
+        "allowed": true,
+        "maxCalls": 80,
+        "reason": "Read bounded service-state evidence for declared agent health coverage."
+      },
+      "repoFileReader": {
         "allowed": true,
         "maxCalls": 40,
-        "reason": "Parse runtime state, service-state evidence, and bounded control-plane summaries."
+        "reason": "Read bounded agent-config files to discover declared service surfaces."
       }
+    },
+    "fileSystem": {
+      "readPaths": [
+        "../../orchestrator/data/orchestrator-state.json",
+        "../../agents",
+        "../../logs"
+      ]
     },
     "network": {
       "allowed": false

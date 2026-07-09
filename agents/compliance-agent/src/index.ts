@@ -1,14 +1,18 @@
 import { readFileSync } from "node:fs";
-import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildSpecialistOperatorFields,
-  loadRuntimeState,
   type RuntimeStateSubset,
   type RuntimeTaskExecution,
 } from "../../shared/runtime-evidence.js";
+import {
+  hasAllowedSkills,
+  readRepoJsonWithSkill,
+  readRuntimeStateWithSkill,
+  repoPathExistsWithSkill,
+} from "../../shared/governed-readers.js";
 
 interface AgentConfig {
   id: string;
@@ -110,6 +114,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const configPath = resolve(__dirname, "../agent.config.json");
 const repoRoot = resolve(__dirname, "../../..");
+const REQUIRED_SKILLS = ["runtimeStateReader", "repoFileReader"] as const;
 
 const EVIDENCE_WINDOW_HOURS = 96;
 const DEFAULT_FOCUS_AREAS = ["policies", "dependencies", "release"] as const;
@@ -157,7 +162,7 @@ function loadConfig(): AgentConfig {
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills?.[skillId]?.allowed === true;
+  return hasAllowedSkills(config, [skillId]);
 }
 
 function normalizeTarget(value: string | undefined) {
@@ -188,28 +193,6 @@ function normalizeFocusAreas(value: unknown) {
   return unique.slice(0, 8);
 }
 
-function resolveAbsoluteRepoPath(relativePath: string) {
-  return resolve(repoRoot, relativePath);
-}
-
-async function pathExists(targetPath: string) {
-  try {
-    await access(targetPath, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readJsonFile<T>(targetPath: string, fallback: T): Promise<T> {
-  try {
-    const raw = await readFile(targetPath, "utf-8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function toTimestamp(value: string | null | undefined) {
   const parsed = Date.parse(value ?? "");
   return Number.isFinite(parsed) ? parsed : 0;
@@ -236,19 +219,19 @@ async function handleTask(task: Task): Promise<Result> {
   );
   const missingAreas = requestedAreas.filter((area) => !matchedAreas.includes(area));
 
-  if (!canUseSkill("documentParser")) {
+  if (!hasAllowedSkills(loadConfig(), [...REQUIRED_SKILLS])) {
     const specialistFields = buildSpecialistOperatorFields({
       role: "Compliance Review",
       workflowStage: "compliance-refusal",
       deliverable: "bounded compliance posture across policies and dependency evidence",
       status: "refused",
       operatorSummary:
-        "Compliance review was refused because documentParser access is unavailable to compliance-agent.",
+        "Compliance review was refused because the required governed reader skills are unavailable to compliance-agent.",
       recommendedNextActions: [
-        "Restore documentParser access for compliance-agent before retrying.",
+        "Restore runtimeStateReader and repoFileReader access for compliance-agent before retrying.",
       ],
       refusalReason:
-        "Refused compliance review because documentParser skill access is not allowed for compliance-agent.",
+        "Refused compliance review because required governed reader skills are not allowed for compliance-agent.",
     });
 
     return {
@@ -257,7 +240,7 @@ async function handleTask(task: Task): Promise<Result> {
         decision: "blocked",
         target,
         summary: "Compliance posture could not be assembled.",
-        blockers: ["documentParser unavailable"],
+        blockers: ["governed readers unavailable"],
         followups: ["Restore compliance-agent governed access."],
         focus: {
           requestedAreas,
@@ -308,7 +291,7 @@ async function handleTask(task: Task): Promise<Result> {
   const policyChecks = await Promise.all(
     policyDocs.map(async (doc) => ({
       path: doc,
-      exists: await pathExists(resolveAbsoluteRepoPath(doc)),
+      exists: await repoPathExistsWithSkill(config.id, `../../${doc}`, doc),
     })),
   );
   const presentDocs = policyChecks.filter((doc) => doc.exists).map((doc) => doc.path);
@@ -326,11 +309,14 @@ async function handleTask(task: Task): Promise<Result> {
 
   const manifestReports = await Promise.all(
     MANIFEST_PATHS.map(async (entry) => {
-      const absolutePath = resolveAbsoluteRepoPath(entry);
-      if (!(await pathExists(absolutePath))) {
+      const manifest = await readRepoJsonWithSkill<Record<string, unknown>>(
+        config.id,
+        `../../${entry}`,
+        entry,
+      );
+      if (!manifest) {
         return { path: entry, exists: false, dependencyCount: 0, license: null };
       }
-      const manifest = await readJsonFile<Record<string, unknown>>(absolutePath, {});
       const dependencyCount =
         Object.keys((manifest.dependencies as Record<string, unknown>) ?? {}).length +
         Object.keys((manifest.devDependencies as Record<string, unknown>) ?? {}).length +
@@ -364,7 +350,7 @@ async function handleTask(task: Task): Promise<Result> {
   const lockfilesFound = (
     await Promise.all(
       LOCKFILE_PATHS.map(async (entry) =>
-        (await pathExists(resolveAbsoluteRepoPath(entry))) ? entry : null,
+        (await repoPathExistsWithSkill(config.id, `../../${entry}`, entry)) ? entry : null,
       ),
     )
   ).filter((entry): entry is string => typeof entry === "string");
@@ -376,8 +362,8 @@ async function handleTask(task: Task): Promise<Result> {
         ? "strong"
         : "partial";
 
-  const runtimeState = await loadRuntimeState<RuntimeState>(
-    configPath,
+  const { state: runtimeState } = await readRuntimeStateWithSkill<RuntimeState>(
+    config.id,
     config.orchestratorStatePath,
   );
 
@@ -492,15 +478,26 @@ async function handleTask(task: Task): Promise<Result> {
 
   const toolInvocations = [
     {
-      toolId: "documentParser",
+      toolId: "repoFileReader",
       detail:
-        "compliance-agent parsed bounded policy documents, manifest metadata, and runtime governance evidence to synthesize compliance posture.",
+        "compliance-agent read bounded policy documents, manifest metadata, and lockfile presence to synthesize repo governance posture.",
       evidence: [
         `decision:${decision}`,
         `policy-status:${policyStatus}`,
         `manifest-count:${manifestCount}`,
         `dependency-count:${dependencyCount}`,
         `release-risk:${releaseRiskStatus}`,
+      ],
+      classification: "required",
+    },
+    {
+      toolId: "runtimeStateReader",
+      detail:
+        "compliance-agent read bounded runtime-state evidence for release, security, and test governance posture.",
+      evidence: [
+        `release-status:${latestReleaseStatus ?? "missing"}`,
+        `security-status:${latestSecurityStatus ?? "missing"}`,
+        `test-status:${latestTestStatus ?? "missing"}`,
       ],
       classification: "required",
     },

@@ -25,7 +25,9 @@ task exposure, governance, proof delivery, or API contracts, also read:
 
 - this repository itself is the public product repo
 - `orchestrator/` is the control plane backend
-- `operator-s-console/` is the canonical operator UI
+- OpenClaw Control UI/chat is the primary front door
+- `operator-s-console/` is a maintained specialist orchestrator surface, not
+  the default product-growth center
 - `agents/` contains bounded task specialists
 - `WORKBOARD.md` is the first-read tracker for done / next / parked work
 
@@ -95,3 +97,5 @@ conditions.
 3. Do not treat prose or docs as implementation truth when code disagrees.
 4. Do not leave assistant entry points inconsistent after a repo-direction
    change.
+5. Do not reopen generic shell or dashboard growth plans unless they directly
+   support unique orchestrator-specific value not already provided by OpenClaw.

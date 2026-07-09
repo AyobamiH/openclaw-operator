@@ -2,9 +2,12 @@ import { StatusBadge } from "@/components/console/StatusBadge";
 import { JsonRenderer } from "@/components/console/JsonRenderer";
 import { RunRowVM, buildTimelineEvents } from "@/lib/task-runs";
 import { WorkflowGraphRail } from "@/components/console/WorkflowGraphRail";
-import { Loader2, AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Loader2, AlertTriangle, ArrowRight } from "lucide-react";
+import type { RunHandoffContextVM } from "@/lib/run-handoff";
 import { str, toArray, toNullableString } from "@/lib/safe-render";
 import { useMemo } from "react";
+import { Link } from "react-router-dom";
 
 interface OperatorSignalCardVM {
   id: string;
@@ -19,6 +22,33 @@ interface OperatorSignalDeckVM {
   summary: string;
   cards: OperatorSignalCardVM[];
 }
+
+interface FollowThroughActionVM {
+  id: string;
+  label: string;
+  title: string;
+  to: string;
+  status: string;
+  summary: string;
+}
+
+interface FollowThroughRailVM {
+  summary: string;
+  actions: FollowThroughActionVM[];
+}
+
+const HEALTH_DRILLDOWN_TASKS = new Set([
+  "control-plane-brief",
+  "system-monitor",
+  "release-readiness",
+  "deployment-ops",
+]);
+
+const GOVERNANCE_DRILLDOWN_TASKS = new Set([
+  "security-audit",
+  "skill-audit",
+  "compliance-review",
+]);
 
 function TimelineTone({ tone }: { tone: "healthy" | "warning" | "error" | "info" | "neutral" }) {
   const className =
@@ -97,6 +127,180 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function buildFollowThroughRailVM({
+  run,
+  runResult,
+  specialistContract,
+  knowledgeFreshness,
+  handoffContext,
+}: {
+  run: RunRowVM;
+  runResult?: unknown;
+  specialistContract: ReturnType<typeof buildSpecialistContractVM>;
+  knowledgeFreshness: ReturnType<typeof buildKnowledgeFreshnessVM>;
+  handoffContext: RunHandoffContextVM | null;
+}): FollowThroughRailVM | null {
+  const raw = asRecord(runResult);
+  const closureContract = asRecord(raw?.closureContract);
+  const repair = asRecord(run.repair);
+  const approvalPending =
+    run.approval.required &&
+    (run.approval.status === "pending" ||
+      run.approval.status === "pending-approval" ||
+      run.workflow.awaitingApproval ||
+      run.workflow.blockedStage === "approval");
+  const unresolvedSignals =
+    typeof closureContract?.unresolvedSignals === "number" ? closureContract.unresolvedSignals : 0;
+  const incidentLinked = str(closureContract?.targetKind, "") === "incident";
+  const runBlocked =
+    run.status === "failed" ||
+    run.status === "error" ||
+    run.workflow.stopClassification === "failed" ||
+    run.workflow.stopClassification === "blocked";
+  const repairNeedsReview =
+    ["failed", "blocked", "verification-required", "pending"].includes(str(repair?.status, "")) ||
+    ["failed", "blocked", "verification-required"].includes(str(run.workflow.repairStatus, ""));
+  const knowledgeNeedsReview =
+    knowledgeFreshness?.reviewRecommended === true || (knowledgeFreshness?.warnings.length ?? 0) > 0;
+  const shouldSurface =
+    approvalPending ||
+    incidentLinked ||
+    unresolvedSignals > 0 ||
+    runBlocked ||
+    repairNeedsReview ||
+    knowledgeNeedsReview ||
+    specialistContract !== null ||
+    HEALTH_DRILLDOWN_TASKS.has(run.type) ||
+    GOVERNANCE_DRILLDOWN_TASKS.has(run.type);
+
+  if (!shouldSurface) {
+    return null;
+  }
+
+  const actions: FollowThroughActionVM[] = [];
+  const seen = new Set<string>();
+  const addAction = (action: FollowThroughActionVM) => {
+    if (seen.has(action.id)) return;
+    seen.add(action.id);
+    actions.push(action);
+  };
+
+  if (approvalPending) {
+    addAction({
+      id: "approvals",
+      label: "Open Approvals",
+      title: "Resolve Approval Gate",
+      to:
+        handoffContext?.approval?.route ??
+        (run.taskId ? `/approvals?taskId=${encodeURIComponent(run.taskId)}&fromRunId=${encodeURIComponent(run.runId)}` : "/approvals"),
+      status: "blocked",
+      summary:
+        "This run is paused behind operator approval. Clear the approval gate before treating the workflow as closed.",
+    });
+  }
+
+  if (incidentLinked || unresolvedSignals > 0 || runBlocked || repairNeedsReview) {
+    addAction({
+      id: "incidents",
+      label: "Open Incidents",
+      title: "Close Incident Fallout",
+      to:
+        handoffContext?.incident?.route ??
+        (() => {
+          const params = new URLSearchParams();
+          params.set("runId", run.runId);
+          if (run.taskId) params.set("taskId", run.taskId);
+          return `/incidents?${params.toString()}`;
+        })(),
+      status: runBlocked || unresolvedSignals > 0 ? "blocked" : "watching",
+      summary: incidentLinked
+        ? `This run still points at incident closure work for ${str(
+            closureContract?.targetId,
+            "the linked incident",
+          )}.`
+        : "This run left failure or repair signals behind. Check incident and remediation posture before moving on.",
+    });
+  }
+
+  if (knowledgeNeedsReview) {
+    addAction({
+      id: "knowledge",
+      label: "Open Knowledge",
+      title: "Refresh Knowledge Truth",
+      to: "/knowledge",
+      status: "watching",
+      summary:
+        "The knowledge pack or docs mirror moved during this run. Refresh the knowledge surface before broad reuse.",
+    });
+  }
+
+  if (GOVERNANCE_DRILLDOWN_TASKS.has(run.type)) {
+    addAction({
+      id: "governance",
+      label: "Open Governance",
+      title: "Review Governance Posture",
+      to: "/governance",
+      status: "watching",
+      summary:
+        "This lane is governance-heavy. Review approvals, policy signals, and bounded trust posture before calling it settled.",
+    });
+  }
+
+  if (HEALTH_DRILLDOWN_TASKS.has(run.type)) {
+    addAction({
+      id: "system-health",
+      label: "Open System Health",
+      title: "Compare Live Runtime Health",
+      to: "/system-health",
+      status: runBlocked ? "blocked" : "watching",
+      summary:
+        "This run speaks to live runtime posture. Compare the run output against the current system-health surface before closure.",
+    });
+  }
+
+  if (actions.length < 4) {
+    addAction({
+      id: "agents",
+      label: "Open Agents",
+      title: "Check Owning Agent Readiness",
+      to: "/agents",
+      status: specialistContract?.status ?? "watching",
+      summary:
+        "Use the live agent overview to compare this run against current readiness, runtime evidence, and capability gaps.",
+    });
+  }
+
+  if (actions.length < 4) {
+    addAction({
+      id: "tasks",
+      label: "Open Tasks",
+      title: "Queue The Next Specialist Step",
+      to: "/tasks",
+      status: "watching",
+      summary:
+        "Trigger the next bounded task from the catalog once the linked approval, evidence, or runtime questions are resolved.",
+    });
+  }
+
+  const summary = approvalPending
+    ? "This run is waiting on an operator decision before the workflow can move forward."
+    : incidentLinked || unresolvedSignals > 0
+      ? "This run is not closure-complete yet; incident or remediation follow-through is still active."
+      : knowledgeNeedsReview
+        ? "The run completed, but the supporting knowledge surface needs another look before reuse."
+        : specialistContract?.recommendedNextActions[0]
+          ?? (HEALTH_DRILLDOWN_TASKS.has(run.type)
+            ? "This runtime lane should be closed against the live health surface, not from the run in isolation."
+            : GOVERNANCE_DRILLDOWN_TASKS.has(run.type)
+              ? "This governance lane still benefits from policy and approval review before we call it done."
+              : "Use the specialist surfaces below to close the loop on what this run changed.");
+
+  return {
+    summary,
+    actions: actions.slice(0, 4),
+  };
 }
 
 function normalizeStringList(value: unknown, limit = 3) {
@@ -1643,10 +1847,12 @@ function buildOperatorSignalDeckVM(runType: string | null | undefined, runResult
 export function TaskRunDetailContent({
   run,
   runResult,
+  handoffContext,
   isLoading,
 }: {
   run: RunRowVM | null;
   runResult?: unknown;
+  handoffContext?: RunHandoffContextVM | null;
   isLoading?: boolean;
 }) {
   const timelineEvents = useMemo(() => (run ? buildTimelineEvents(run) : []), [run]);
@@ -1655,6 +1861,19 @@ export function TaskRunDetailContent({
   const operatorSignalDeck = useMemo(
     () => buildOperatorSignalDeckVM(run?.type, runResult),
     [run?.type, runResult],
+  );
+  const followThroughRail = useMemo(
+    () =>
+      run
+        ? buildFollowThroughRailVM({
+            run,
+            runResult,
+            specialistContract,
+            knowledgeFreshness,
+            handoffContext: handoffContext ?? null,
+          })
+        : null,
+    [handoffContext, knowledgeFreshness, run, runResult, specialistContract],
   );
 
   if (isLoading) {
@@ -1888,6 +2107,172 @@ export function TaskRunDetailContent({
                     {index + 1}. {entry}
                   </p>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {followThroughRail && (
+          <div className="console-inset p-3 rounded-sm space-y-3">
+            <div className="space-y-1">
+              <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+                Operator Follow-through
+              </p>
+              <p className="text-[10px] font-mono text-foreground leading-relaxed">
+                {followThroughRail.summary}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+              {followThroughRail.actions.map((action) => (
+                <div key={action.id} className="activity-cell p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-mono font-semibold uppercase tracking-wide text-foreground">
+                      {action.title}
+                    </p>
+                    <StatusBadge label={action.status} size="sm" />
+                  </div>
+                  <p className="text-[10px] font-mono text-foreground leading-relaxed">
+                    {action.summary}
+                  </p>
+                  <Button
+                    asChild
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-between font-mono text-[10px] uppercase tracking-wider"
+                  >
+                    <Link to={action.to}>
+                      {action.label}
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(handoffContext?.approval || handoffContext?.incident) && (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-2">
+            {handoffContext?.approval && (
+              <div className="console-inset p-3 rounded-sm space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+                    Approval Handoff
+                  </p>
+                  <div className="flex gap-2">
+                    <StatusBadge label={handoffContext.approval.status} size="sm" />
+                    <StatusBadge label={handoffContext.approval.riskLevel} size="sm" />
+                  </div>
+                </div>
+                <p className="text-[10px] font-mono text-foreground leading-relaxed">
+                  {handoffContext.approval.summary}
+                </p>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    Task: {handoffContext.approval.type} · id {handoffContext.approval.taskId}
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    Queue visibility: {handoffContext.approval.foundInQueue ? "pending approval is still live in the inbox" : "run still reports approval pressure, but the current inbox snapshot no longer shows the matching record"}
+                  </p>
+                  {handoffContext.approval.requestedAt && (
+                    <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                      Requested: {new Date(handoffContext.approval.requestedAt).toLocaleString()}
+                    </p>
+                  )}
+                  {(handoffContext.approval.approvalReason || handoffContext.approval.replayBehavior) && (
+                    <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                      {handoffContext.approval.approvalReason ?? "approval-gated"}{handoffContext.approval.replayBehavior ? ` · replay ${handoffContext.approval.replayBehavior}` : ""}
+                    </p>
+                  )}
+                  {handoffContext.approval.affectedSurfaces.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {handoffContext.approval.affectedSurfaces.map((surface) => (
+                        <span
+                          key={`approval-handoff-${surface}`}
+                          className="activity-cell px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-muted-foreground"
+                        >
+                          {surface}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-between font-mono text-[10px] uppercase tracking-wider"
+                >
+                  <Link to={handoffContext.approval.route}>
+                    Open Approval Review
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
+              </div>
+            )}
+
+            {handoffContext?.incident && (
+              <div className="console-inset p-3 rounded-sm space-y-3">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+                    Incident Handoff
+                  </p>
+                  <div className="flex gap-2">
+                    <StatusBadge label={handoffContext.incident.severity} size="sm" />
+                    <StatusBadge label={handoffContext.incident.status} size="sm" />
+                    <StatusBadge label={handoffContext.incident.remediationStatus} size="sm" />
+                  </div>
+                </div>
+                <p className="text-[10px] font-mono text-foreground leading-relaxed">
+                  {handoffContext.incident.summary}
+                </p>
+                <div className="space-y-1">
+                  <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    Incident: {handoffContext.incident.title} · id {handoffContext.incident.incidentId}
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    Ledger visibility: {handoffContext.incident.foundInLedger ? "linked incident is present in the current ledger" : "run points at an incident, but the current ledger snapshot did not return it"}
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    Truth: {handoffContext.incident.truthLayer} · owner {handoffContext.incident.owner ?? "unowned"} · verify {handoffContext.incident.verificationStatus}
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                    Next action: {handoffContext.incident.nextAction}
+                  </p>
+                  {handoffContext.incident.remediationTaskType && (
+                    <p className="text-[10px] font-mono text-muted-foreground leading-relaxed">
+                      Remediation lane: {handoffContext.incident.remediationTaskType}
+                      {handoffContext.incident.remediationTaskId ? ` · task ${handoffContext.incident.remediationTaskId}` : ""}
+                      {handoffContext.incident.remediationRunId ? ` · run ${handoffContext.incident.remediationRunId}` : ""}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {handoffContext.incident.linkedSignals.map((signal) => (
+                      <span
+                        key={`incident-handoff-${signal}`}
+                        className="activity-cell px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-muted-foreground"
+                      >
+                        {signal}
+                      </span>
+                    ))}
+                    {handoffContext.incident.additionalCount > 0 && (
+                      <span className="activity-cell px-2 py-1 text-[9px] font-mono uppercase tracking-wide text-muted-foreground">
+                        +{handoffContext.incident.additionalCount} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-between font-mono text-[10px] uppercase tracking-wider"
+                >
+                  <Link to={handoffContext.incident.route}>
+                    Open Incident Detail
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </Button>
               </div>
             )}
           </div>

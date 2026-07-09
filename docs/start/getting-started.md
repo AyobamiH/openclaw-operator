@@ -9,8 +9,9 @@ read_when:
 # Getting Started with OpenClaw Operator
 
 Get OpenClaw Operator running locally from the repo root in under 10 minutes.
-The recommended first run installs both the control plane and the canonical
-operator console, then serves the UI at `/operator`.
+The recommended first run installs the specialist orchestrator sidecar, then
+serves the repo-native `/operator` console while OpenClaw itself remains the
+preferred daily front door.
 
 ## Prerequisites
 
@@ -159,13 +160,18 @@ curl http://127.0.0.1:3000/health
 curl http://127.0.0.1:3000/api/knowledge/summary
 ```
 
-### Open the Operator Console
+### Confirm the Front Door or Specialist Console
 
 ```bash
 xdg-open http://127.0.0.1:3000/operator
 ```
 
 If you are on a headless machine, open that URL in your browser manually.
+
+If your OpenClaw workspace already has the orchestrator bridge enabled, prefer
+OpenClaw plus `/orch status`, `/orch tasks`, and `/orch runs` for normal
+day-to-day work. Keep `/operator` for specialist drill-downs such as runs,
+approvals, incidents, agent readiness, and system health.
 
 ### Check Task History
 
@@ -176,7 +182,8 @@ curl -fsS -H "Authorization: Bearer <your-api-key>" \
 
 ## Where To Look For Output
 
-Use this rule of thumb from day one:
+Use this rule of thumb from day one, whether you arrive through OpenClaw plus
+`/orch` or the local specialist console:
 
 1. `Tasks` launches work
 2. `Runs` is the main output surface
@@ -261,8 +268,9 @@ curl -fsS -H "Authorization: Bearer <your-api-key>" \
   "http://127.0.0.1:3000/api/tasks/runs?limit=1&type=drift-repair" | jq '.runs[0]'
 ```
 
-Then look in the operator:
+Then inspect either the bridge-backed read path or the specialist console:
 
+- `/orch runs` for the bounded daily summary path in OpenClaw
 - `/operator/runs` for the run summary
 - `/operator/agents` for agent readiness and lifecycle
 - `/operator/incidents` if you are using repair or verification lanes

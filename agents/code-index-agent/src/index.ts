@@ -1,14 +1,18 @@
 import { readFileSync } from "node:fs";
-import { constants } from "node:fs";
-import { access, readFile, readdir, stat } from "node:fs/promises";
-import { dirname, extname, relative, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, extname, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DocIndexer } from "../../../orchestrator/src/docIndexer.js";
 import {
   buildSpecialistOperatorFields,
-  loadRuntimeState,
   type RuntimeStateSubset,
 } from "../../shared/runtime-evidence.js";
+import {
+  hasAllowedSkills,
+  readLatestKnowledgePackWithSkill,
+  readRepoDirectoryWithSkill,
+  readRuntimeStateWithSkill,
+  repoPathExistsWithSkill,
+} from "../../shared/governed-readers.js";
 
 interface AgentConfig {
   id: string;
@@ -127,6 +131,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const configPath = resolve(__dirname, "../agent.config.json");
 const repoRoot = resolve(__dirname, "../../..");
+const REQUIRED_SKILLS = [
+  "runtimeStateReader",
+  "repoFileReader",
+  "knowledgePackReader",
+] as const;
 
 const DEFAULT_INDEX_ROOTS = [
   "docs",
@@ -179,16 +188,21 @@ function loadConfig(): AgentConfig {
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills?.[skillId]?.allowed === true;
+  return hasAllowedSkills(config, [skillId]);
 }
 
 function normalizeBoundaryPath(value: string) {
-  return value
-    .replace(/\\/g, "/")
+  const sanitizedValue = value.replace(/\\/g, "/").trim();
+  if (!sanitizedValue) {
+    return "";
+  }
+
+  const normalizedValue = posix.normalize(sanitizedValue)
     .replace(/^\.\//, "")
     .replace(/^\/+/, "")
-    .replace(/\/+/g, "/")
     .replace(/\/$/, "");
+
+  return normalizedValue === "." ? "" : normalizedValue;
 }
 
 function pathMatchesBoundary(targetPath: string, boundary: string) {
@@ -235,13 +249,12 @@ function toIsoFromMs(value: number | null | undefined) {
     : null;
 }
 
-async function pathExists(targetPath: string) {
-  try {
-    await access(targetPath, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
+function toRepoSkillPath(relativePath: string) {
+  return `../../${relativePath}`;
+}
+
+async function pathExistsWithinRepo(agentId: string, relativePath: string) {
+  return repoPathExistsWithSkill(agentId, toRepoSkillPath(relativePath), relativePath);
 }
 
 function resolveReadBoundaries(config: AgentConfig) {
@@ -253,65 +266,38 @@ function resolveReadBoundaries(config: AgentConfig) {
     .filter(Boolean);
 }
 
-function resolveAbsoluteRepoPath(relativePath: string) {
-  return resolve(repoRoot, relativePath);
+function resolveKnowledgePackLocation(config: AgentConfig) {
+  const configuredPath =
+    typeof config.knowledgePackDir === "string" && config.knowledgePackDir.length > 0
+      ? config.knowledgePackDir
+      : "../../logs/knowledge-packs";
+  const logicalPath = normalizeBoundaryPath(
+    relative(repoRoot, resolve(dirname(configPath), configuredPath)),
+  );
+  return {
+    filePath: configuredPath,
+    logicalPath,
+  };
 }
 
-async function loadOrchestratorConfig() {
-  const orchestratorConfigPath = process.env.ORCHESTRATOR_CONFIG;
-  if (!orchestratorConfigPath) {
-    return null;
-  }
-
-  try {
-    return JSON.parse(await readFile(orchestratorConfigPath, "utf-8")) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    return null;
-  }
-}
-
-async function resolveKnowledgePackDir(config: AgentConfig) {
-  const orchestratorConfig = await loadOrchestratorConfig();
-  const orchestratorConfigPath = process.env.ORCHESTRATOR_CONFIG;
-
-  if (
-    orchestratorConfigPath &&
-    orchestratorConfig &&
-    typeof orchestratorConfig.knowledgePackDir === "string"
-  ) {
-    return resolve(dirname(orchestratorConfigPath), orchestratorConfig.knowledgePackDir);
-  }
-
-  if (typeof config.knowledgePackDir === "string" && config.knowledgePackDir.length > 0) {
-    return resolve(dirname(configPath), config.knowledgePackDir);
-  }
-
-  return resolve(repoRoot, "logs/knowledge-packs");
-}
-
-async function gatherScanRoots(focusPaths: string[]) {
+/**
+ * Scan roots are intentionally bounded to the operator-owned repo surfaces.
+ * Requested focus paths can only widen that scope if they already exist inside
+ * the manifest read allowlist.
+ */
+async function gatherScanRoots(agentId: string, focusPaths: string[]) {
   const scanRoots = new Set<string>(DEFAULT_INDEX_ROOTS);
 
   for (const focusPath of focusPaths) {
-    const absoluteFocusPath = resolveAbsoluteRepoPath(focusPath);
-    if (!(await pathExists(absoluteFocusPath))) {
+    if (!(await pathExistsWithinRepo(agentId, focusPath))) {
       continue;
     }
-
-    const focusStats = await stat(absoluteFocusPath);
-    const rootCandidate = focusStats.isDirectory() ? focusPath : dirname(focusPath);
-    if (rootCandidate && rootCandidate !== ".") {
-      scanRoots.add(normalizeBoundaryPath(rootCandidate));
-    }
+    scanRoots.add(normalizeBoundaryPath(dirname(focusPath)));
   }
 
   const resolvedRoots: string[] = [];
   for (const root of scanRoots) {
-    const absoluteRoot = resolveAbsoluteRepoPath(root);
-    if (await pathExists(absoluteRoot)) {
+    if (await pathExistsWithinRepo(agentId, root)) {
       resolvedRoots.push(root);
     }
   }
@@ -319,16 +305,27 @@ async function gatherScanRoots(focusPaths: string[]) {
   return resolvedRoots.sort();
 }
 
-async function buildIndexedEntries(scanRoots: string[]) {
+async function buildIndexedEntries(agentId: string, scanRoots: string[]) {
   const entries: IndexedEntry[] = [];
 
   for (const root of scanRoots) {
-    const indexer = new DocIndexer(resolveAbsoluteRepoPath(root));
-    await indexer.buildInitialIndex();
-    for (const record of indexer.getIndex().values()) {
+    const directory = await readRepoDirectoryWithSkill(
+      agentId,
+      toRepoSkillPath(root),
+      root,
+      {
+        recursive: true,
+        maxEntries: 2500,
+        extensions: [".md", ".mdx", ".txt", ".ts", ".tsx", ".js", ".mjs", ".cjs", ".json"],
+      },
+    );
+    for (const record of directory.entries) {
+      if (record.kind !== "file") {
+        continue;
+      }
       entries.push({
-        path: normalizeBoundaryPath(relative(repoRoot, record.path)),
-        lastModified: record.lastModified,
+        path: normalizeBoundaryPath(record.path),
+        lastModified: Date.parse(record.modifiedAt ?? "") || 0,
       });
     }
   }
@@ -345,43 +342,23 @@ async function buildIndexedEntries(scanRoots: string[]) {
 }
 
 async function findLatestKnowledgePack(
-  knowledgePackDir: string,
+  agentId: string,
+  knowledgePackDirPath: string,
+  logicalKnowledgePackDir: string,
 ): Promise<KnowledgePackSummary | null> {
-  if (!(await pathExists(knowledgePackDir))) {
-    return null;
-  }
-
-  const entries = await readdir(knowledgePackDir);
-  const candidates = entries.filter(
-    (entry) => entry.startsWith("knowledge-pack-") && entry.endsWith(".json"),
-  );
-
-  if (candidates.length === 0) {
-    return null;
-  }
-
-  let latest: { path: string; mtimeMs: number } | null = null;
-  for (const entry of candidates) {
-    const absolutePath = resolve(knowledgePackDir, entry);
-    const currentStat = await stat(absolutePath);
-    if (!latest || currentStat.mtimeMs > latest.mtimeMs) {
-      latest = { path: absolutePath, mtimeMs: currentStat.mtimeMs };
-    }
-  }
-
-  if (!latest) {
-    return null;
-  }
-
-  const raw = JSON.parse(await readFile(latest.path, "utf-8")) as {
+  const { exists, latest } = await readLatestKnowledgePackWithSkill<{
     generatedAt?: string;
     contradictionLedger?: unknown[];
     repairDrafts?: unknown[];
     targetAgents?: unknown[];
-  };
+  }>(agentId, knowledgePackDirPath, logicalKnowledgePackDir);
+  if (!exists || !latest) {
+    return null;
+  }
+  const raw = latest.data;
 
   return {
-    path: normalizeBoundaryPath(relative(repoRoot, latest.path)),
+    path: latest.path,
     generatedAt: typeof raw.generatedAt === "string" ? raw.generatedAt : null,
     contradictionCount: Array.isArray(raw.contradictionLedger)
       ? raw.contradictionLedger.length
@@ -407,6 +384,10 @@ function latestSuccessfulExecutionAt(state: RuntimeState, types: string[]) {
   return timestamps[0] ?? null;
 }
 
+/**
+ * Coverage is intentionally coarse-grained. This lane is reporting bounded
+ * retrieval posture, not pretending to be a full semantic index over the repo.
+ */
 function buildIndexCoverage(entries: IndexedEntry[], indexedRootCount: number) {
   const docEntryCount = entries.filter((entry) => {
     const extension = extname(entry.path).toLowerCase();
@@ -433,12 +414,15 @@ function buildIndexCoverage(entries: IndexedEntry[], indexedRootCount: number) {
   };
 }
 
-async function buildCanonicalDocLinks(requestedFocusPaths: string[]) {
+async function buildCanonicalDocLinks(
+  agentId: string,
+  requestedFocusPaths: string[],
+) {
   const links: Array<{ docPath: string; codePath: string; reason: string }> = [];
 
   for (const candidate of CANONICAL_LINKS) {
-    const docExists = await pathExists(resolveAbsoluteRepoPath(candidate.docPath));
-    const codeExists = await pathExists(resolveAbsoluteRepoPath(candidate.codePath));
+    const docExists = await pathExistsWithinRepo(agentId, candidate.docPath);
+    const codeExists = await pathExistsWithinRepo(agentId, candidate.codePath);
     if (!docExists || !codeExists) {
       continue;
     }
@@ -465,8 +449,8 @@ async function buildCanonicalDocLinks(requestedFocusPaths: string[]) {
 
   const fallbackLinks: Array<{ docPath: string; codePath: string; reason: string }> = [];
   for (const candidate of CANONICAL_LINKS) {
-    const docExists = await pathExists(resolveAbsoluteRepoPath(candidate.docPath));
-    const codeExists = await pathExists(resolveAbsoluteRepoPath(candidate.codePath));
+    const docExists = await pathExistsWithinRepo(agentId, candidate.docPath);
+    const codeExists = await pathExistsWithinRepo(agentId, candidate.codePath);
     if (docExists && codeExists) {
       fallbackLinks.push(candidate);
     }
@@ -475,11 +459,11 @@ async function buildCanonicalDocLinks(requestedFocusPaths: string[]) {
   return fallbackLinks.slice(0, 4);
 }
 
-async function buildCoreSurfaceGaps() {
+async function buildCoreSurfaceGaps(agentId: string) {
   const gaps: string[] = [];
 
   for (const expectedPath of CORE_EXPECTED_PATHS) {
-    if (!(await pathExists(resolveAbsoluteRepoPath(expectedPath)))) {
+    if (!(await pathExistsWithinRepo(agentId, expectedPath))) {
       gaps.push(`Required bounded surface is missing: ${expectedPath}.`);
     }
   }
@@ -487,6 +471,11 @@ async function buildCoreSurfaceGaps() {
   return gaps;
 }
 
+/**
+ * Freshness blends file/document truth with runtime truth: the latest knowledge
+ * pack proves downstream retrieval context exists, while the latest successful
+ * repair/sync run tells us whether that context is being kept current.
+ */
 function buildFreshness(args: {
   entries: IndexedEntry[];
   latestKnowledgePack: KnowledgePackSummary | null;
@@ -533,6 +522,11 @@ function buildFreshness(args: {
   };
 }
 
+/**
+ * Retrieval readiness is stricter than raw index coverage. We only call the
+ * lane "ready" when bounded repo coverage, canonical linkage, and freshness
+ * all line up well enough for operator-facing reuse.
+ */
 function buildRetrievalReadiness(args: {
   coverage: {
     status: "broad" | "focused" | "thin";
@@ -583,19 +577,19 @@ async function handleTask(task: Task): Promise<Result> {
   const target = normalizeTarget(task.target);
   const requestedFocusPaths = normalizeFocusPaths(task.focusPaths);
 
-  if (!canUseSkill("documentParser")) {
+  if (!hasAllowedSkills(loadConfig(), [...REQUIRED_SKILLS])) {
     const specialistFields = buildSpecialistOperatorFields({
       role: "Code Index",
       workflowStage: "code-index-refusal",
       deliverable: "bounded code index posture",
       status: "refused",
       operatorSummary:
-        "Code-index synthesis was refused because documentParser access is unavailable to code-index-agent.",
+        "Code-index synthesis was refused because the required governed reader skills are unavailable to code-index-agent.",
       recommendedNextActions: [
-        "Restore documentParser access for code-index-agent before retrying.",
+        "Restore runtimeStateReader, repoFileReader, and knowledgePackReader access for code-index-agent before retrying.",
       ],
       refusalReason:
-        "Refused code-index synthesis because documentParser skill access is not allowed for code-index-agent.",
+        "Refused code-index synthesis because required governed reader skills are not allowed for code-index-agent.",
     });
 
     return {
@@ -604,7 +598,7 @@ async function handleTask(task: Task): Promise<Result> {
         decision: "blocked",
         target,
         summary: "Code-index posture could not be assembled.",
-        blockers: ["documentParser unavailable"],
+        blockers: ["governed readers unavailable"],
         followups: ["Restore code-index-agent governed access."],
         indexScope: {
           target,
@@ -649,6 +643,7 @@ async function handleTask(task: Task): Promise<Result> {
   }
 
   const config = loadConfig();
+  const agentId = config.id;
   const allowedReadBoundaries = resolveReadBoundaries(config);
   const deniedFocusPaths = requestedFocusPaths.filter(
     (focusPath) => !allowedReadBoundaries.some((boundary) => pathMatchesBoundary(focusPath, boundary)),
@@ -660,30 +655,34 @@ async function handleTask(task: Task): Promise<Result> {
   const matchedFocusPaths: string[] = [];
 
   for (const focusPath of allowedFocusPaths) {
-    if (await pathExists(resolveAbsoluteRepoPath(focusPath))) {
+    if (await pathExistsWithinRepo(agentId, focusPath)) {
       matchedFocusPaths.push(focusPath);
     } else {
       missingFocusPaths.push(focusPath);
     }
   }
 
-  const scanRoots = await gatherScanRoots(allowedFocusPaths);
-  const indexedEntries = await buildIndexedEntries(scanRoots);
-  const runtimeState = await loadRuntimeState<RuntimeState>(
-    configPath,
+  const scanRoots = await gatherScanRoots(agentId, allowedFocusPaths);
+  const indexedEntries = await buildIndexedEntries(agentId, scanRoots);
+  const { state: runtimeState } = await readRuntimeStateWithSkill<RuntimeState>(
+    agentId,
     config.orchestratorStatePath,
   );
-  const knowledgePackDir = await resolveKnowledgePackDir(config);
-  const latestKnowledgePack = await findLatestKnowledgePack(knowledgePackDir);
+  const knowledgePackLocation = resolveKnowledgePackLocation(config);
+  const latestKnowledgePack = await findLatestKnowledgePack(
+    agentId,
+    knowledgePackLocation.filePath,
+    knowledgePackLocation.logicalPath,
+  );
   const lastRepairRunAt = latestSuccessfulExecutionAt(runtimeState, ["doc-sync", "drift-repair"]);
   const coverage = buildIndexCoverage(indexedEntries, scanRoots.length);
-  const docLinks = await buildCanonicalDocLinks(allowedFocusPaths);
+  const docLinks = await buildCanonicalDocLinks(agentId, allowedFocusPaths);
   const freshness = buildFreshness({
     entries: indexedEntries,
     latestKnowledgePack,
     lastRepairRunAt,
   });
-  const coreSurfaceGaps = await buildCoreSurfaceGaps();
+  const coreSurfaceGaps = await buildCoreSurfaceGaps(agentId);
   const searchGapItems = [
     ...coreSurfaceGaps,
     ...missingFocusPaths.map(
@@ -797,14 +796,34 @@ async function handleTask(task: Task): Promise<Result> {
 
   const toolInvocations = [
     {
-      toolId: "documentParser",
+      toolId: "repoFileReader",
       detail:
-        "code-index-agent parsed bounded repo roots, the latest local knowledge-pack artifact, and runtime freshness signals to synthesize index posture.",
+        "code-index-agent read bounded repo roots to synthesize coverage, linkage, and search-gap posture.",
       evidence: [
         `decision:${decision}`,
         `indexed-entries:${coverage.totalIndexedEntries}`,
         `doc-links:${docLinks.length}`,
         `freshness:${freshness.status}`,
+      ],
+      classification: "required",
+    },
+    {
+      toolId: "runtimeStateReader",
+      detail:
+        "code-index-agent read bounded runtime-state evidence to anchor freshness and repair-run posture.",
+      evidence: [
+        `last-repair-run:${lastRepairRunAt ?? "missing"}`,
+        `freshness:${freshness.status}`,
+      ],
+      classification: "required",
+    },
+    {
+      toolId: "knowledgePackReader",
+      detail:
+        "code-index-agent read the latest bounded knowledge-pack artifact to ground retrieval freshness and contradiction posture.",
+      evidence: [
+        `knowledge-pack:${latestKnowledgePack?.path ?? "missing"}`,
+        `knowledge-pack-generated-at:${latestKnowledgePack?.generatedAt ?? "missing"}`,
       ],
       classification: "required",
     },

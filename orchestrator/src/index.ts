@@ -1345,7 +1345,7 @@ const TASK_AGENT_SKILL_REQUIREMENTS: Record<
   },
   "system-monitor": {
     agentId: "system-monitor-agent",
-    skillId: "documentParser",
+    skillId: "runtimeStateReader",
   },
   "build-refactor": {
     agentId: "build-refactor-agent",
@@ -1379,7 +1379,7 @@ const TASK_AGENT_SKILL_REQUIREMENTS: Record<
   },
   "incident-triage": {
     agentId: "system-monitor-agent",
-    skillId: "documentParser",
+    skillId: "runtimeStateReader",
   },
   "release-readiness": {
     agentId: "release-manager-agent",

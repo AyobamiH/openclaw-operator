@@ -170,14 +170,31 @@ export const agentFixtures = {
     tier: 'cheap',
     permissions: {
       skills: {
-        documentParser: { allowed: true, maxCalls: 100 },
+        runtimeStateReader: { allowed: true, maxCalls: 40 },
+        serviceStateReader: { allowed: true, maxCalls: 120 },
+        repoFileReader: { allowed: true, maxCalls: 60 },
+      },
+      network: { allowed: false },
+    },
+  } as MockAgentConfig,
+
+  codeIndex: {
+    id: 'code-index-agent',
+    name: 'Code Index Agent',
+    model: 'claude-3-5-sonnet',
+    tier: 'balanced',
+    permissions: {
+      skills: {
+        runtimeStateReader: { allowed: true, maxCalls: 20 },
+        repoFileReader: { allowed: true, maxCalls: 80 },
+        knowledgePackReader: { allowed: true, maxCalls: 20 },
       },
       network: { allowed: false },
     },
   } as MockAgentConfig,
 };
 
-// All 11 agents as a list
+// Common simulated agents as a list
 export const allAgents = [
   agentFixtures.marketResearch,
   agentFixtures.dataExtraction,
@@ -190,6 +207,7 @@ export const allAgents = [
   agentFixtures.integration,
   agentFixtures.skillAudit,
   agentFixtures.systemMonitor,
+  agentFixtures.codeIndex,
 ];
 
 // Skill fixtures
@@ -223,6 +241,30 @@ export const skillFixtures = {
     name: 'Test Runner',
     description: 'Execute whitelisted test commands',
     allowedAgents: ['qa-verification-agent', 'build-refactor-agent', 'skill-audit-agent'],
+  },
+  runtimeStateReader: {
+    id: 'runtimeStateReader',
+    name: 'Runtime State Reader',
+    description: 'Read bounded orchestrator runtime-state JSON',
+    allowedAgents: ['system-monitor-agent', 'code-index-agent'],
+  },
+  serviceStateReader: {
+    id: 'serviceStateReader',
+    name: 'Service State Reader',
+    description: 'Read bounded agent service-state JSON',
+    allowedAgents: ['system-monitor-agent'],
+  },
+  repoFileReader: {
+    id: 'repoFileReader',
+    name: 'Repo File Reader',
+    description: 'Read bounded repo files and directory listings',
+    allowedAgents: ['system-monitor-agent', 'code-index-agent'],
+  },
+  knowledgePackReader: {
+    id: 'knowledgePackReader',
+    name: 'Knowledge Pack Reader',
+    description: 'Read bounded knowledge-pack artifacts',
+    allowedAgents: ['code-index-agent'],
   },
 };
 

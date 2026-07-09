@@ -35,11 +35,12 @@ describe('Unit Simulation: Agent Bootup', () => {
       'integration-agent',
       'skill-audit-agent',
       'system-monitor-agent',
+      'code-index-agent',
     ];
 
     const agentIds = allAgents.map((a) => a.id);
 
-    expect(agentIds).toHaveLength(11);
+    expect(agentIds).toHaveLength(12);
     expect(agentIds).toEqual(expect.arrayContaining(expectedAgentIds));
   });
 
@@ -132,8 +133,8 @@ describe('Unit Simulation: Agent Bootup', () => {
       ]),
     );
 
-    // Should have 5 balanced tier agents
-    expect(balancedAgents).toHaveLength(5);
+    // Should have 6 balanced tier agents
+    expect(balancedAgents).toHaveLength(6);
     expect(balancedAgents.map((a) => a.id)).toEqual(
       expect.arrayContaining([
         'qa-verification-agent',
@@ -141,6 +142,7 @@ describe('Unit Simulation: Agent Bootup', () => {
         'code-security-agent',
         'integration-agent',
         'skill-audit-agent',
+        'code-index-agent',
       ]),
     );
   });
@@ -220,10 +222,20 @@ describe('Unit Simulation: Agent Bootup', () => {
       }
     }
 
-    // Should have exactly 5 core skills
-    expect(skillsUsed.size).toBe(5);
+    // Should have the full governed core plus read-side truth readers
+    expect(skillsUsed.size).toBe(9);
     expect(Array.from(skillsUsed)).toEqual(
-      expect.arrayContaining(['sourceFetch', 'documentParser', 'normalizer', 'workspacePatch', 'testRunner']),
+      expect.arrayContaining([
+        'sourceFetch',
+        'documentParser',
+        'normalizer',
+        'workspacePatch',
+        'testRunner',
+        'runtimeStateReader',
+        'serviceStateReader',
+        'repoFileReader',
+        'knowledgePackReader',
+      ]),
     );
   });
 
@@ -254,7 +266,7 @@ describe('Unit Simulation: Agent Bootup', () => {
     }
 
     // Verify all agents have independent state
-    expect(states.size).toBe(11);
+    expect(states.size).toBe(12);
 
     // Modify one agent's state
     const marketResearchState = states.get('market-research-agent')!;

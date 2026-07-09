@@ -40,12 +40,17 @@ async function runAgentEntryPointWithDeniedSkill(args: {
   const fixtureRoot = await mkdtemp(join(tmpdir(), `${args.agentId}-fixture-`));
   const sourceRoot = join(process.cwd(), '..', 'agents', args.agentId);
   const sharedSourceRoot = join(process.cwd(), '..', 'agents', 'shared');
-  const stagedRoot = join(fixtureRoot, args.agentId);
-  const stagedSharedRoot = join(fixtureRoot, 'shared');
+  const sourceSkillsRoot = join(process.cwd(), '..', 'skills');
+  const sourceOrchestratorRoot = join(process.cwd(), '..', 'orchestrator', 'src');
+  const stagedAgentsRoot = join(fixtureRoot, 'agents');
+  const stagedRoot = join(stagedAgentsRoot, args.agentId);
+  const stagedSharedRoot = join(stagedAgentsRoot, 'shared');
   const stagedSiblingAgents = args.agentId === 'system-monitor-agent' ? ['reddit-helper'] : [];
   const payloadPath = join(fixtureRoot, 'payload.json');
   const resultPath = join(fixtureRoot, 'result.json');
   const configPath = join(stagedRoot, 'agent.config.json');
+  const orchestratorConfigPath = join(fixtureRoot, 'orchestrator_config.json');
+  const stateFilePath = join(fixtureRoot, 'orchestrator_state.json');
   const tsxLoaderPath = join(
     process.cwd(),
     '..',
@@ -56,15 +61,33 @@ async function runAgentEntryPointWithDeniedSkill(args: {
   );
 
   try {
+    await mkdir(stagedAgentsRoot, { recursive: true });
     await cp(sourceRoot, stagedRoot, { recursive: true });
     await cp(sharedSourceRoot, stagedSharedRoot, { recursive: true });
+    await cp(sourceSkillsRoot, join(fixtureRoot, 'skills'), { recursive: true });
+    await cp(sourceOrchestratorRoot, join(fixtureRoot, 'orchestrator', 'src'), { recursive: true });
     for (const siblingAgentId of stagedSiblingAgents) {
       await cp(
         join(process.cwd(), '..', 'agents', siblingAgentId),
-        join(fixtureRoot, siblingAgentId),
+        join(stagedAgentsRoot, siblingAgentId),
         { recursive: true },
       );
     }
+    await writeFile(
+      orchestratorConfigPath,
+      JSON.stringify(
+        {
+          docsPath: fixtureRoot,
+          logsDir: join(fixtureRoot, 'logs'),
+          stateFile: stateFilePath,
+          knowledgePackDir: join(fixtureRoot, 'logs', 'knowledge-packs'),
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+    await writeFile(stateFilePath, JSON.stringify(createDefaultState(), null, 2), 'utf-8');
     const config = JSON.parse(await readFile(configPath, 'utf-8'));
     config.permissions.skills[args.deniedSkillId].allowed = false;
     await writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
@@ -82,6 +105,8 @@ async function runAgentEntryPointWithDeniedSkill(args: {
           cwd: stagedRoot,
           env: {
             ...process.env,
+            ORCHESTRATOR_CONFIG: orchestratorConfigPath,
+            STATE_FILE: stateFilePath,
             [args.resultEnvVar]: resultPath,
           },
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -510,11 +535,14 @@ async function runRedditHelperTaskFixture(args?: {
 async function runSystemMonitorFixture() {
   const fixtureRoot = await mkdtemp(join(tmpdir(), 'system-monitor-fixture-'));
   const sourceAgentsRoot = join(process.cwd(), '..', 'agents');
+  const sourceSkillsRoot = join(process.cwd(), '..', 'skills');
+  const sourceOrchestratorRoot = join(process.cwd(), '..', 'orchestrator', 'src');
   const stagedAgentsRoot = join(fixtureRoot, 'agents');
   const logsRoot = join(fixtureRoot, 'logs');
   const resultPath = join(fixtureRoot, 'result.json');
   const payloadPath = join(fixtureRoot, 'payload.json');
   const statePath = join(fixtureRoot, 'orchestrator_state.json');
+  const orchestratorConfigPath = join(fixtureRoot, 'orchestrator_config.json');
   const tsxLoaderPath = join(
     process.cwd(),
     '..',
@@ -529,12 +557,56 @@ async function runSystemMonitorFixture() {
     await cp(join(sourceAgentsRoot, 'security-agent'), join(stagedAgentsRoot, 'security-agent'), { recursive: true });
     await cp(join(sourceAgentsRoot, 'reddit-helper'), join(stagedAgentsRoot, 'reddit-helper'), { recursive: true });
     await cp(join(sourceAgentsRoot, 'shared'), join(stagedAgentsRoot, 'shared'), { recursive: true });
+    await cp(sourceSkillsRoot, join(fixtureRoot, 'skills'), { recursive: true });
+    await writeFile(
+      join(fixtureRoot, 'skills', 'index.ts'),
+      `
+import { executeRuntimeStateReader } from './runtimeStateReader.js';
+import { executeServiceStateReader } from './serviceStateReader.js';
+import { executeRepoFileReader } from './repoFileReader.js';
+
+const executors = {
+  runtimeStateReader: executeRuntimeStateReader,
+  serviceStateReader: executeServiceStateReader,
+  repoFileReader: executeRepoFileReader,
+};
+
+export async function executeSkill(skillId: keyof typeof executors, input: any) {
+  const executor = executors[skillId];
+  if (!executor) {
+    return { success: false, error: \`Unsupported fixture skill: \${skillId}\` };
+  }
+  const result = await executor(input);
+  return { success: result.success !== false, data: result };
+}
+`,
+      'utf-8',
+    );
+    await cp(sourceOrchestratorRoot, join(fixtureRoot, 'orchestrator', 'src'), { recursive: true });
     await mkdir(logsRoot, { recursive: true });
+    await writeFile(
+      orchestratorConfigPath,
+      JSON.stringify(
+        {
+          docsPath: fixtureRoot,
+          logsDir: logsRoot,
+          stateFile: statePath,
+          knowledgePackDir: join(logsRoot, 'knowledge-packs'),
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
 
     const systemMonitorConfigPath = join(stagedAgentsRoot, 'system-monitor-agent', 'agent.config.json');
     const securityConfigPath = join(stagedAgentsRoot, 'security-agent', 'agent.config.json');
     const systemMonitorConfig = JSON.parse(await readFile(systemMonitorConfigPath, 'utf-8'));
     systemMonitorConfig.orchestratorStatePath = '../../orchestrator_state.json';
+    systemMonitorConfig.permissions.fileSystem.readPaths = [
+      ...systemMonitorConfig.permissions.fileSystem.readPaths,
+      '../../orchestrator_state.json',
+    ];
     await writeFile(systemMonitorConfigPath, JSON.stringify(systemMonitorConfig, null, 2), 'utf-8');
 
     const securityConfig = JSON.parse(await readFile(securityConfigPath, 'utf-8'));
@@ -739,6 +811,8 @@ async function runSystemMonitorFixture() {
           env: {
             ...process.env,
             ALLOW_ORCHESTRATOR_TASK_RUN: 'true',
+            ORCHESTRATOR_CONFIG: orchestratorConfigPath,
+            STATE_FILE: statePath,
             SYSTEM_MONITOR_AGENT_RESULT_FILE: resultPath,
           },
           stdio: ['ignore', 'ignore', 'pipe'],
@@ -3518,7 +3592,7 @@ function buildPublicProofOverview() {
     const execution = await runAgentEntryPointWithDeniedSkill({
       agentId: 'system-monitor-agent',
       resultEnvVar: 'SYSTEM_MONITOR_AGENT_RESULT_FILE',
-      deniedSkillId: 'documentParser',
+      deniedSkillId: 'runtimeStateReader',
       payload: {
         id: 'system-monitor-negative-1',
         type: 'health',
@@ -4927,7 +5001,7 @@ describe('Reddit helper token safety', () => {
       agent: {
         id: 'system-monitor-agent',
         model: { tier: 'balanced' },
-        permissions: { skills: { documentParser: { allowed: true } } },
+        permissions: { skills: { runtimeStateReader: { allowed: true } } },
       },
       orchestratorTask: 'system-monitor',
       spawnedWorkerCapable: true,
@@ -4947,7 +5021,7 @@ describe('Reddit helper token safety', () => {
         lastSuccessfulRunId: 'run-monitor-1',
         lastSuccessfulTaskId: 'task-monitor-1',
         lastToolGateMode: 'execute',
-        lastToolGateSkillId: 'documentParser',
+        lastToolGateSkillId: 'runtimeStateReader',
         lastToolGateAt: '2026-03-16T08:03:00.000Z',
       },
       state,

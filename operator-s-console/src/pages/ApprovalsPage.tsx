@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePendingApprovals, useApprovalDecision } from "@/hooks/use-console-api";
 import { useAuth } from "@/contexts/AuthContext";
+import { useSearchParams } from "react-router-dom";
 import { SummaryCard } from "@/components/console/SummaryCard";
 import { StatusBadge } from "@/components/console/StatusBadge";
 import { GuidancePanel } from "@/components/console/GuidancePanel";
@@ -125,14 +126,24 @@ function buildApprovalAttentionReason(
 }
 
 export default function ApprovalsPage() {
+  const [searchParams] = useSearchParams();
   const { data: approvalsData, isLoading } = usePendingApprovals();
   const { hasRole, user } = useAuth();
   const isOperator = hasRole("operator");
   const decisionMutation = useApprovalDecision();
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [note, setNote] = useState("");
+  const requestedTaskId = searchParams.get("taskId");
+  const requestedRunId = searchParams.get("fromRunId");
 
   const approvals = useMemo(() => buildApprovalRows(approvalsData), [approvalsData]);
+  const focusedApproval = useMemo(
+    () =>
+      requestedTaskId
+        ? approvals.find((item) => item.taskId === requestedTaskId) ?? null
+        : null,
+    [approvals, requestedTaskId],
+  );
   const selectedApproval = approvals.find((item) => item.taskId === selectedTaskId) ?? approvals[0] ?? null;
   const approvalSummary = useMemo(
     () => {
@@ -181,6 +192,17 @@ export default function ApprovalsPage() {
       setNote("");
     }
   }, [approvals, selectedTaskId]);
+
+  useEffect(() => {
+    if (!requestedTaskId || !focusedApproval) {
+      return;
+    }
+
+    if (selectedTaskId !== focusedApproval.taskId) {
+      setSelectedTaskId(focusedApproval.taskId);
+      setNote("");
+    }
+  }, [focusedApproval, requestedTaskId, selectedTaskId]);
 
   const handleDecision = (decision: "approved" | "rejected") => {
     if (!selectedApproval) return;
@@ -246,6 +268,20 @@ export default function ApprovalsPage() {
           {!isOperator && <span className="text-status-warning ml-2">Read-only — operator role required to approve or reject.</span>}
         </p>
       </div>
+
+      {requestedTaskId && (
+        <GuidancePanel
+          title="Run handoff focus"
+          eyebrow="Linked Review"
+          tone={focusedApproval ? "tip" : "warning"}
+        >
+          <p>
+            {focusedApproval
+              ? `Run ${requestedRunId ?? "unknown"} handed you into approval ${focusedApproval.taskId}. The review detail below is now focused on that exact request instead of the generic queue head.`
+              : `Run ${requestedRunId ?? "unknown"} pointed at approval ${requestedTaskId}, but no matching pending approval is visible in the current inbox snapshot. It may already have been decided or replayed.`}
+          </p>
+        </GuidancePanel>
+      )}
 
       <div className="grid grid-cols-2 xl:grid-cols-4 gap-2">
         <div className="console-inset p-3 rounded-sm text-center">

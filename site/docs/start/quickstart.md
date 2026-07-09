@@ -6,7 +6,8 @@ summary: "Minimal root-first checklist to boot OpenClaw Operator."
 # Quick Start Checklist
 
 Use this page when you want the shortest repo-truth path from clone to a
-working `/operator` console.
+running specialist orchestrator sidecar. OpenClaw itself remains the preferred
+front door; `/operator` is the repo-native specialist console.
 
 ## Local Root Path
 
@@ -34,6 +35,9 @@ Open:
 
 - `http://127.0.0.1:3000/operator`
 
+If your OpenClaw workspace bridge is enabled, prefer OpenClaw plus `/orch`
+after the boot succeeds and keep `/operator` for specialist runtime views.
+
 This path is local-file-backed by default, so Mongo and Redis are optional
 upgrades instead of first-boot requirements.
 
@@ -59,7 +63,8 @@ curl http://127.0.0.1:3312/health
 curl http://127.0.0.1:4300/health
 ```
 
-Then authenticate in `/operator` with your bearer token.
+Then either use OpenClaw through `/orch`, or authenticate in `/operator` with
+your bearer token for the local specialist console.
 
 ## Docker Demo Path
 
@@ -83,7 +88,8 @@ Demo bearer keys:
 This path is localhost-only by default and already carries demo-local auth,
 MongoDB, and Redis credentials so first boot does not require a private `.env`
 file. `npm run docker:demo:smoke` is the local proof that the demo stack came
-up healthy and served the built operator shell. Before any shared or non-local deployment, copy
+up healthy and served the built specialist console. Before any shared or
+non-local deployment, copy
 `docker-compose.override.example.yml` to `docker-compose.override.yml` and
 replace the demo values.
 

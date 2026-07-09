@@ -16,11 +16,30 @@
   "maxConcurrentTasks": 2,
   "permissions": {
     "skills": {
-      "documentParser": {
+      "runtimeStateReader": {
         "allowed": true,
-        "maxCalls": 40,
-        "reason": "Parse deployment docs and bounded runtime evidence."
+        "maxCalls": 20,
+        "reason": "Read bounded runtime-state evidence for deployment posture."
+      },
+      "repoFileReader": {
+        "allowed": true,
+        "maxCalls": 60,
+        "reason": "Read bounded deployment files, workflow definitions, and docs parity surfaces."
       }
+    },
+    "fileSystem": {
+      "readPaths": [
+        "../../orchestrator/data/orchestrator-state.json",
+        "../../systemd/orchestrator.service",
+        "../../docker-compose.yml",
+        "../../Dockerfile",
+        "../../.github/workflows/deploy.yml",
+        "../../.github/workflows/docker-demo-smoke.yml",
+        "../../DEPLOYMENT.md",
+        "../../docs/operations/deployment.md",
+        "../../QUICKSTART.md",
+        "../../docs/start/quickstart.md"
+      ]
     },
     "network": {
       "allowed": false

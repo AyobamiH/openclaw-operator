@@ -1,15 +1,19 @@
 import { readFileSync } from "node:fs";
-import { constants } from "node:fs";
 import { access, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildSpecialistOperatorFields,
-  loadRuntimeState,
   type RuntimeIncidentLedgerRecord,
   type RuntimeStateSubset,
   type RuntimeTaskExecution,
 } from "../../shared/runtime-evidence.js";
+import {
+  hasAllowedSkills,
+  readRepoTextWithSkill,
+  readRuntimeStateWithSkill,
+  repoPathExistsWithSkill,
+} from "../../shared/governed-readers.js";
 
 interface AgentConfig {
   id: string;
@@ -101,6 +105,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const configPath = resolve(__dirname, "../agent.config.json");
 const repoRoot = resolve(__dirname, "../../..");
+const REQUIRED_SKILLS = ["runtimeStateReader", "repoFileReader"] as const;
 
 function loadConfig(): AgentConfig {
   return JSON.parse(readFileSync(configPath, "utf-8")) as AgentConfig;
@@ -108,24 +113,7 @@ function loadConfig(): AgentConfig {
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills?.[skillId]?.allowed === true;
-}
-
-async function pathExists(targetPath: string) {
-  try {
-    await access(targetPath, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readTextIfExists(targetPath: string) {
-  try {
-    return await readFile(targetPath, "utf-8");
-  } catch {
-    return null;
-  }
+  return hasAllowedSkills(config, [skillId]);
 }
 
 function normalizeRolloutMode(value: string | undefined): RolloutMode {
@@ -295,16 +283,6 @@ function buildPipelinePosture(executions: RuntimeTaskExecution[]) {
 }
 
 async function buildSurfaceChecks(): Promise<SurfaceChecks> {
-  const servicePath = resolve(repoRoot, "systemd/orchestrator.service");
-  const dockerComposePath = resolve(repoRoot, "docker-compose.yml");
-  const dockerfilePath = resolve(repoRoot, "Dockerfile");
-  const deployWorkflowPath = resolve(repoRoot, ".github/workflows/deploy.yml");
-  const dockerDemoSmokeWorkflowPath = resolve(repoRoot, ".github/workflows/docker-demo-smoke.yml");
-  const deploymentRootDocPath = resolve(repoRoot, "DEPLOYMENT.md");
-  const deploymentOpsDocPath = resolve(repoRoot, "docs/operations/deployment.md");
-  const quickstartRootDocPath = resolve(repoRoot, "QUICKSTART.md");
-  const quickstartDocPath = resolve(repoRoot, "docs/start/quickstart.md");
-
   const [
     systemdService,
     dockerCompose,
@@ -316,15 +294,15 @@ async function buildSurfaceChecks(): Promise<SurfaceChecks> {
     quickstartRootDoc,
     quickstartDoc,
   ] = await Promise.all([
-    pathExists(servicePath),
-    pathExists(dockerComposePath),
-    pathExists(dockerfilePath),
-    pathExists(deployWorkflowPath),
-    pathExists(dockerDemoSmokeWorkflowPath),
-    readTextIfExists(deploymentRootDocPath),
-    readTextIfExists(deploymentOpsDocPath),
-    readTextIfExists(quickstartRootDocPath),
-    readTextIfExists(quickstartDocPath),
+    repoPathExistsWithSkill("deployment-ops-agent", "../../systemd/orchestrator.service", "systemd/orchestrator.service"),
+    repoPathExistsWithSkill("deployment-ops-agent", "../../docker-compose.yml", "docker-compose.yml"),
+    repoPathExistsWithSkill("deployment-ops-agent", "../../Dockerfile", "Dockerfile"),
+    repoPathExistsWithSkill("deployment-ops-agent", "../../.github/workflows/deploy.yml", ".github/workflows/deploy.yml"),
+    repoPathExistsWithSkill("deployment-ops-agent", "../../.github/workflows/docker-demo-smoke.yml", ".github/workflows/docker-demo-smoke.yml"),
+    readRepoTextWithSkill("deployment-ops-agent", "../../DEPLOYMENT.md", "DEPLOYMENT.md"),
+    readRepoTextWithSkill("deployment-ops-agent", "../../docs/operations/deployment.md", "docs/operations/deployment.md"),
+    readRepoTextWithSkill("deployment-ops-agent", "../../QUICKSTART.md", "QUICKSTART.md"),
+    readRepoTextWithSkill("deployment-ops-agent", "../../docs/start/quickstart.md", "docs/start/quickstart.md"),
   ]);
 
   return {
@@ -354,19 +332,19 @@ async function handleTask(task: Task): Promise<Result> {
       ? task.target.trim()
       : "public-runtime";
 
-  if (!canUseSkill("documentParser")) {
+  if (!hasAllowedSkills(loadConfig(), [...REQUIRED_SKILLS])) {
     const specialistFields = buildSpecialistOperatorFields({
       role: "Deployment Ops",
       workflowStage: "deployment-refusal",
       deliverable: "bounded deployment posture",
       status: "refused",
       operatorSummary:
-        "Deployment-ops synthesis was refused because documentParser access is unavailable to deployment-ops-agent.",
+        "Deployment-ops synthesis was refused because the required governed reader skills are unavailable to deployment-ops-agent.",
       recommendedNextActions: [
-        "Restore documentParser access for deployment-ops-agent before retrying.",
+        "Restore runtimeStateReader and repoFileReader access for deployment-ops-agent before retrying.",
       ],
       refusalReason:
-        "Refused deployment-ops synthesis because documentParser skill access is not allowed for deployment-ops-agent.",
+        "Refused deployment-ops synthesis because required governed reader skills are not allowed for deployment-ops-agent.",
     });
 
     return {
@@ -376,7 +354,7 @@ async function handleTask(task: Task): Promise<Result> {
         target,
         rolloutMode,
         summary: "Deployment posture could not be assembled.",
-        blockers: ["documentParser unavailable"],
+        blockers: ["governed readers unavailable"],
         followups: ["Restore deployment-ops-agent governed access."],
         rollbackReadiness: {
           status: "missing",
@@ -408,7 +386,10 @@ async function handleTask(task: Task): Promise<Result> {
   }
 
   const config = loadConfig();
-  const state = await loadRuntimeState<RuntimeState>(configPath, config.orchestratorStatePath);
+  const { state } = await readRuntimeStateWithSkill<RuntimeState>(
+    config.id,
+    config.orchestratorStatePath,
+  );
   const executions = state.taskExecutions ?? [];
   const incidentSummary = buildOpenIncidentSummary(state.incidentLedger ?? []);
   const pendingApprovals = (state.approvals ?? []).filter(
@@ -527,14 +508,25 @@ async function handleTask(task: Task): Promise<Result> {
     : null;
   const toolInvocations = [
     {
-      toolId: "documentParser",
+      toolId: "runtimeStateReader",
       detail:
-        "deployment-ops-agent parsed bounded runtime evidence plus local deployment and docs parity surfaces to synthesize deployment posture.",
+        "deployment-ops-agent read bounded runtime-state evidence to synthesize deployment posture across rollout and verifier lanes.",
       evidence: [
         `decision:${decision}`,
         `rollout-mode:${rolloutMode}`,
         `pipeline-status:${pipelinePosture.status}`,
         `surface-blockers:${surfaceBlockers.length}`,
+      ],
+      classification: "required",
+    },
+    {
+      toolId: "repoFileReader",
+      detail:
+        "deployment-ops-agent read bounded rollout files, workflow definitions, and docs parity surfaces to verify deployment readiness.",
+      evidence: [
+        `systemd-service:${surfaceChecks.systemdService}`,
+        `docker-compose:${surfaceChecks.dockerCompose}`,
+        `deploy-workflow:${surfaceChecks.deployWorkflow}`,
       ],
       classification: "required",
     },

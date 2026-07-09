@@ -1,14 +1,19 @@
 import { readFileSync } from "node:fs";
-import { constants } from "node:fs";
-import { access, readFile, readdir } from "node:fs/promises";
-import { dirname, relative, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { dirname, posix, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildSpecialistOperatorFields,
-  loadRuntimeState,
   type RuntimeStateSubset,
   type RuntimeTaskExecution,
 } from "../../shared/runtime-evidence.js";
+import {
+  hasAllowedSkills,
+  readRepoDirectoryWithSkill,
+  readRepoJsonWithSkill,
+  readRuntimeStateWithSkill,
+  repoPathExistsWithSkill,
+} from "../../shared/governed-readers.js";
 
 interface AgentConfig {
   id: string;
@@ -133,6 +138,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const configPath = resolve(__dirname, "../agent.config.json");
 const repoRoot = resolve(__dirname, "../../..");
+const REQUIRED_SKILLS = ["runtimeStateReader", "repoFileReader"] as const;
 const EVIDENCE_WINDOW_HOURS = 96;
 const MAX_SAMPLE_FILES = 4;
 const MAX_RECENT_RUNS = 16;
@@ -185,16 +191,21 @@ function loadConfig(): AgentConfig {
 
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
-  return config.permissions.skills?.[skillId]?.allowed === true;
+  return hasAllowedSkills(config, [skillId]);
 }
 
 function normalizeBoundaryPath(value: string) {
-  return value
-    .replace(/\\/g, "/")
+  const sanitizedValue = value.replace(/\\/g, "/").trim();
+  if (!sanitizedValue) {
+    return "";
+  }
+
+  const normalizedValue = posix.normalize(sanitizedValue)
     .replace(/^\.\//, "")
     .replace(/^\/+/, "")
-    .replace(/\/+/g, "/")
     .replace(/\/$/, "");
+
+  return normalizedValue === "." ? "" : normalizedValue;
 }
 
 function pathMatchesBoundary(targetPath: string, boundary: string) {
@@ -237,28 +248,6 @@ function normalizeFocusSuites(value: unknown) {
   return [...new Set(raw)].slice(0, 8);
 }
 
-function resolveAbsoluteRepoPath(relativePath: string) {
-  return resolve(repoRoot, relativePath);
-}
-
-async function pathExists(targetPath: string) {
-  try {
-    await access(targetPath, constants.F_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function readJsonFile<T>(targetPath: string, fallback: T): Promise<T> {
-  try {
-    const raw = await readFile(targetPath, "utf-8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
 function resolveReadBoundaries(config: AgentConfig) {
   return (config.permissions.fileSystem?.readPaths ?? [])
     .map((entry) =>
@@ -271,48 +260,52 @@ function isPathAllowed(relativePath: string, boundaries: string[]) {
   return boundaries.some((boundary) => pathMatchesBoundary(relativePath, boundary));
 }
 
-async function collectTestFiles(relativeRoot: string): Promise<string[]> {
-  const absoluteRoot = resolveAbsoluteRepoPath(relativeRoot);
-  if (!(await pathExists(absoluteRoot))) {
-    return [];
-  }
-
-  const collected: string[] = [];
-
-  const walk = async (targetPath: string) => {
-    const entries = await readdir(targetPath, { withFileTypes: true });
-    for (const entry of entries) {
-      if (IGNORED_DIRS.has(entry.name)) {
-        continue;
-      }
-
-      const absoluteEntry = resolve(targetPath, entry.name);
-      if (entry.isDirectory()) {
-        await walk(absoluteEntry);
-        continue;
-      }
-
-      const relativeEntry = normalizeBoundaryPath(relative(repoRoot, absoluteEntry));
-      if (TEST_FILE_PATTERN.test(relativeEntry)) {
-        collected.push(relativeEntry);
-      }
-    }
-  };
-
-  await walk(absoluteRoot);
-  collected.sort();
-  return collected;
+function toRepoSkillPath(relativePath: string) {
+  return `../../${relativePath}`;
 }
 
-async function collectPackageScripts(packageJsonPath?: string) {
-  if (!packageJsonPath || !(await pathExists(resolveAbsoluteRepoPath(packageJsonPath)))) {
+async function collectTestFiles(
+  agentId: string,
+  relativeRoot: string,
+): Promise<string[]> {
+  const directory = await readRepoDirectoryWithSkill(
+    agentId,
+    toRepoSkillPath(relativeRoot),
+    relativeRoot,
+    {
+      recursive: true,
+      maxEntries: 2000,
+      extensions: [".ts", ".tsx", ".js", ".jsx"],
+    },
+  );
+  if (!directory.exists) {
     return [];
   }
 
-  const packageJson = await readJsonFile<{ scripts?: Record<string, string> }>(
-    resolveAbsoluteRepoPath(packageJsonPath),
-    {},
+  return directory.entries
+    .filter((entry) => entry.kind === "file")
+    .map((entry) => normalizeBoundaryPath(entry.path))
+    .filter((entry) => !entry.split("/").some((segment) => IGNORED_DIRS.has(segment)))
+    .filter((entry) => TEST_FILE_PATTERN.test(entry))
+    .sort();
+}
+
+async function collectPackageScripts(
+  agentId: string,
+  packageJsonPath?: string,
+) {
+  if (!packageJsonPath) {
+    return [];
+  }
+
+  const packageJson = await readRepoJsonWithSkill<{ scripts?: Record<string, string> }>(
+    agentId,
+    toRepoSkillPath(packageJsonPath),
+    packageJsonPath,
   );
+  if (!packageJson) {
+    return [];
+  }
   return Object.keys(packageJson.scripts ?? {})
     .filter(
       (name) =>
@@ -324,7 +317,36 @@ async function collectPackageScripts(packageJsonPath?: string) {
     .sort();
 }
 
+async function collectConfigSignals(
+  agentId: string,
+  configFiles: string[],
+  boundaries: string[],
+) {
+  const signals = await Promise.all(
+    configFiles.map(async (configPath) => {
+      if (!isPathAllowed(configPath, boundaries)) {
+        return null;
+      }
+
+      const exists = await repoPathExistsWithSkill(
+        agentId,
+        toRepoSkillPath(configPath),
+        configPath,
+      );
+      return exists ? `config:${normalizeBoundaryPath(configPath)}` : null;
+    }),
+  );
+
+  return signals.filter((value): value is string => Boolean(value));
+}
+
+/**
+ * The suite surface intentionally combines file truth with later runtime truth:
+ * local repo reads establish what test coverage exists, while runtime-state
+ * evidence decides whether that coverage is healthy enough to trust.
+ */
 async function buildSuiteSurface(
+  agentId: string,
   definition: SuiteDefinition,
   boundaries: string[],
 ): Promise<SuiteSurface | null> {
@@ -333,23 +355,21 @@ async function buildSuiteSurface(
   );
   const packageScripts =
     definition.packageJsonPath && isPathAllowed(definition.packageJsonPath, boundaries)
-      ? await collectPackageScripts(definition.packageJsonPath)
+      ? await collectPackageScripts(agentId, definition.packageJsonPath)
       : [];
-  const configSignals = (
-    await Promise.all(
-      definition.configFiles.map(async (path) =>
-        (await pathExists(resolveAbsoluteRepoPath(path)))
-          ? `config:${normalizeBoundaryPath(path)}`
-          : null,
-      ),
-    )
-  ).filter((value): value is string => Boolean(value));
+  const configSignals = await collectConfigSignals(
+    agentId,
+    definition.configFiles,
+    boundaries,
+  );
 
   if (allowedRoots.length === 0 && packageScripts.length === 0 && configSignals.length === 0) {
     return null;
   }
 
-  const fileLists = await Promise.all(allowedRoots.map((root) => collectTestFiles(root)));
+  const fileLists = await Promise.all(
+    allowedRoots.map((root) => collectTestFiles(agentId, root)),
+  );
   const allFiles = fileLists.flat();
 
   return {
@@ -403,24 +423,29 @@ function summarizeRunExample(execution: RuntimeTaskExecution) {
   return `${execution.type ?? "unknown"}:${execution.status ?? "unknown"}${errorSummary}`;
 }
 
+/**
+ * This lane is intentionally bounded to recent control-plane evidence. It is
+ * meant to answer "can we trust the local test posture right now?" rather than
+ * reconstructing the full historical CI story.
+ */
 async function handleTask(task: Task): Promise<Result> {
   const startedAt = Date.now();
   const target = normalizeTarget(task.target);
   const requestedSuites = normalizeFocusSuites(task.focusSuites);
 
-  if (!canUseSkill("documentParser")) {
+  if (!hasAllowedSkills(loadConfig(), [...REQUIRED_SKILLS])) {
     const specialistFields = buildSpecialistOperatorFields({
       role: "Test Intelligence",
       workflowStage: "test-intelligence-refusal",
       deliverable: "bounded test-intelligence posture",
       status: "refused",
       operatorSummary:
-        "Test-intelligence synthesis was refused because documentParser access is unavailable to test-intelligence-agent.",
+        "Test-intelligence synthesis was refused because the required governed reader skills are unavailable to test-intelligence-agent.",
       recommendedNextActions: [
-        "Restore documentParser access for test-intelligence-agent before retrying.",
+        "Restore runtimeStateReader and repoFileReader access for test-intelligence-agent before retrying.",
       ],
       refusalReason:
-        "Refused test-intelligence synthesis because documentParser skill access is not allowed for test-intelligence-agent.",
+        "Refused test-intelligence synthesis because required governed reader skills are not allowed for test-intelligence-agent.",
     });
 
     return {
@@ -429,7 +454,7 @@ async function handleTask(task: Task): Promise<Result> {
         decision: "blocked",
         target,
         summary: "Test-intelligence posture could not be assembled.",
-        blockers: ["documentParser unavailable"],
+        blockers: ["governed readers unavailable"],
         followups: ["Restore test-intelligence-agent governed access."],
         focus: {
           requestedSuites,
@@ -499,7 +524,9 @@ async function handleTask(task: Task): Promise<Result> {
 
   const discoveredSuites = (
     await Promise.all(
-      selectedDefinitions.map((definition) => buildSuiteSurface(definition, boundaries)),
+      selectedDefinitions.map((definition) =>
+        buildSuiteSurface(config.id, definition, boundaries),
+      ),
     )
   ).filter((entry): entry is SuiteSurface => Boolean(entry));
 
@@ -510,8 +537,8 @@ async function handleTask(task: Task): Promise<Result> {
   );
   const coverageStatus = buildCoverageStatus(totalTestFiles, discoveredSuites.length);
 
-  const runtimeState = await loadRuntimeState<RuntimeState>(
-    configPath,
+  const { state: runtimeState } = await readRuntimeStateWithSkill<RuntimeState>(
+    config.id,
     config.orchestratorStatePath,
   );
   const allRelevantRuns = sortExecutions(
@@ -687,15 +714,26 @@ async function handleTask(task: Task): Promise<Result> {
 
   const toolInvocations = [
     {
-      toolId: "documentParser",
+      toolId: "repoFileReader",
       detail:
-        "test-intelligence-agent parsed bounded package manifests, local test roots, and runtime execution evidence to synthesize test posture.",
+        "test-intelligence-agent read bounded package manifests and local test roots to synthesize test-surface coverage.",
       evidence: [
         `decision:${decision}`,
         `suite-count:${discoveredSuites.length}`,
         `total-test-files:${totalTestFiles}`,
         `recent-run-count:${recentRuns.length}`,
         `release-risk:${releaseRiskStatus}`,
+      ],
+      classification: "required",
+    },
+    {
+      toolId: "runtimeStateReader",
+      detail:
+        "test-intelligence-agent read bounded runtime-state evidence to inspect recent failures, retries, and release-facing verifier posture.",
+      evidence: [
+        `failed-runs:${failedRuns.length}`,
+        `retrying-runs:${retryingRuns.length}`,
+        `retry-recoveries:${retryRecoveries.length}`,
       ],
       classification: "required",
     },

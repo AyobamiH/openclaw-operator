@@ -14,6 +14,10 @@ import { documentParserDefinition, executeDocumentParser } from './documentParse
 import { normalizerDefinition, executeNormalizer } from './normalizer.js';
 import { workspacePatchDefinition, executeWorkspacePatch } from './workspacePatch.js';
 import { testRunnerDefinition, executeTestRunner } from './testRunner.js';
+import { runtimeStateReaderDefinition, executeRuntimeStateReader } from './runtimeStateReader.js';
+import { serviceStateReaderDefinition, executeServiceStateReader } from './serviceStateReader.js';
+import { repoFileReaderDefinition, executeRepoFileReader } from './repoFileReader.js';
+import { knowledgePackReaderDefinition, executeKnowledgePackReader } from './knowledgePackReader.js';
 import { getToolGate } from '../orchestrator/src/toolGate.js';
 import { auditSkill } from '../orchestrator/src/skillAudit.js';
 import { loadConfig } from '../orchestrator/src/config.js';
@@ -80,6 +84,10 @@ const skillExecutors: Record<string, SkillExecutor> = {
   normalizer: executeNormalizer,
   workspacePatch: executeWorkspacePatch,
   testRunner: executeTestRunner,
+  runtimeStateReader: executeRuntimeStateReader,
+  serviceStateReader: executeServiceStateReader,
+  repoFileReader: executeRepoFileReader,
+  knowledgePackReader: executeKnowledgePackReader,
 };
 
 const skillDefinitions: Record<string, RuntimeSkillDefinition> = {
@@ -88,6 +96,10 @@ const skillDefinitions: Record<string, RuntimeSkillDefinition> = {
   normalizer: normalizerDefinition,
   workspacePatch: workspacePatchDefinition,
   testRunner: testRunnerDefinition,
+  runtimeStateReader: runtimeStateReaderDefinition,
+  serviceStateReader: serviceStateReaderDefinition,
+  repoFileReader: repoFileReaderDefinition,
+  knowledgePackReader: knowledgePackReaderDefinition,
 };
 
 /**
