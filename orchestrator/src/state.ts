@@ -16,6 +16,7 @@ import {
   TaskRetryRecoveryRecord,
   WorkflowEventRecord,
 } from "./types.js";
+import { createDefaultBusinessValueState } from "./business/valueLoop.js";
 
 const DEFAULT_HISTORY_LIMIT = 50;
 const DRIFT_LOG_LIMIT = 25;
@@ -31,6 +32,8 @@ const REPAIR_RECORD_LIMIT = 500;
 const INCIDENT_LEDGER_LIMIT = 1000;
 const WORKFLOW_EVENT_LIMIT = 20000;
 const RELATIONSHIP_OBSERVATION_LIMIT = 20000;
+const BUSINESS_VALUE_CYCLE_LIMIT = 200;
+const BUSINESS_VALUE_CANDIDATE_LIMIT = 500;
 type StateRetentionOptions = {
   taskHistoryLimit?: number;
 };
@@ -487,6 +490,15 @@ export async function loadState(
           .map(normalizeRelationshipObservation)
           .filter((item): item is RelationshipObservationRecord => item !== null) ??
         [],
+      businessValue: {
+        ...createDefaultBusinessValueState(),
+        ...(parsed.businessValue ?? {}),
+        cycles: parsed.businessValue?.cycles?.slice(-BUSINESS_VALUE_CYCLE_LIMIT) ?? [],
+        candidates:
+          parsed.businessValue?.candidates?.slice(0, BUSINESS_VALUE_CANDIDATE_LIMIT) ?? [],
+        approvalGatedCandidates: parsed.businessValue?.approvalGatedCandidates ?? [],
+        unsupportedCandidates: parsed.businessValue?.unsupportedCandidates ?? [],
+      },
     };
   };
 
@@ -541,6 +553,13 @@ export async function saveStateWithOptions(
     relationshipObservations: state.relationshipObservations.slice(
       -RELATIONSHIP_OBSERVATION_LIMIT,
     ),
+    businessValue: state.businessValue
+      ? {
+          ...state.businessValue,
+          cycles: state.businessValue.cycles.slice(-BUSINESS_VALUE_CYCLE_LIMIT),
+          candidates: state.businessValue.candidates.slice(0, BUSINESS_VALUE_CANDIDATE_LIMIT),
+        }
+      : createDefaultBusinessValueState(),
     updatedAt: new Date().toISOString(),
   };
 
@@ -569,6 +588,7 @@ export function createDefaultState(): OrchestratorState {
     incidentLedger: [],
     workflowEvents: [],
     relationshipObservations: [],
+    businessValue: createDefaultBusinessValueState(),
     lastDriftRepairAt: null,
     lastRedditResponseAt: null,
     lastAgentDeployAt: null,

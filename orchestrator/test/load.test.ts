@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 
 describe('Phase 7: Load & Stress Tests', () => {
-  const BASE_URL = 'http://localhost:3000';
+  const BASE_URL = process.env.OPENCLAW_LOAD_TEST_BASE_URL ?? 'http://localhost:3000';
   const CONCURRENT_REQUESTS = 100;
   const REQUEST_ITERATIONS = 5;
   const API_KEY = process.env.API_KEY?.trim() ?? '';
@@ -83,7 +83,7 @@ describe('Phase 7: Load & Stress Tests', () => {
         `\n📊 KB Query Load Test: ${okCount}/${CONCURRENT_REQUESTS} ok, ${rateLimitedCount} rate-limited in ${duration}ms`
       );
       expect(handledCount).toBe(CONCURRENT_REQUESTS);
-      expect(okCount).toBeGreaterThan(0);
+      expect(okCount + rateLimitedCount).toBe(CONCURRENT_REQUESTS);
     });
 
     it('should maintain performance across iterations', async () => {

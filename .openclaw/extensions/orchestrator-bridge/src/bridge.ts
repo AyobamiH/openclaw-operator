@@ -26,6 +26,7 @@ export const KNOWN_PUBLIC_TASK_TYPES = [
   "nightly-batch",
   "send-digest",
   "heartbeat",
+  "business-value-cycle",
   "agent-deploy",
   "doc-sync",
 ] as const;
@@ -260,6 +261,12 @@ export const TASK_RISK_CLASSIFICATION: Record<KnownPublicTaskType, TaskRiskProfi
     readonlyTriggerAllowed: false,
     notes: "Updates heartbeat/digest state and should run only through approved scheduling.",
   },
+  "business-value-cycle": {
+    risk: "safe-write",
+    approvalRequired: true,
+    readonlyTriggerAllowed: false,
+    notes: "Records business-value cycle state and may enqueue one bounded allowlisted downstream task.",
+  },
   "agent-deploy": {
     risk: "dangerous/mutating",
     approvalRequired: true,
@@ -336,6 +343,8 @@ function buildShorthandPayload(
       return { scope: trimmed };
     case "release-readiness":
       return { scope: trimmed };
+    case "business-value-cycle":
+      return { reason: trimmed };
     case "deployment-ops":
       return { scope: trimmed, mode: "readiness-review" };
     case "code-index":

@@ -45,6 +45,7 @@ import {
   markDocRepairCooldown,
   releaseDocRepairLock,
 } from "./coordination/runtime-coordination.js";
+import { runBusinessValueCycle } from "./business/valueLoop.js";
 
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
@@ -75,6 +76,7 @@ export const ALLOWED_TASK_TYPES = [
   "nightly-batch",
   "send-digest",
   "heartbeat",
+  "business-value-cycle",
   "agent-deploy",
 ] as const;
 
@@ -4082,6 +4084,39 @@ const sendDigestHandler: TaskHandler = async (task, context) => {
   }
 };
 
+const businessValueCycleHandler: TaskHandler = async (task, context) => {
+  const result = await runBusinessValueCycle({
+    config: context.config,
+    state: context.state,
+    enqueueTask: context.enqueueTask,
+    isTaskTypeAllowed: validateTaskType,
+    logger: context.logger,
+  });
+
+  recordTaskExecutionResultSummary(context, task, {
+    success: result.cycle.status === "completed" || result.cycle.status === "idle",
+    businessValueCycle: {
+      cycleId: result.cycle.cycleId,
+      status: result.cycle.status,
+      candidateCount: result.cycle.candidates.length,
+      selectedTask: result.cycle.selectedTask,
+      approvalGatedCount: result.cycle.approvalGatedCandidates.length,
+      unsupportedCount: result.cycle.unsupportedCandidates.length,
+      evidence: result.cycle.evidence,
+    },
+  });
+
+  await context.saveState();
+
+  if (result.cycle.selectedTask) {
+    return `business-value cycle selected ${result.cycle.selectedTask.taskType} for ${result.cycle.selectedTask.title}`;
+  }
+  if (result.cycle.status === "idle") {
+    return "business-value cycle found no evidence-backed safe candidate";
+  }
+  return `business-value cycle ${result.cycle.status}: ${result.cycle.nextSafeAction ?? "no next action recorded"}`;
+};
+
 const unknownTaskHandler: TaskHandler = async (task, context) => {
   const allowed = ALLOWED_TASK_TYPES.join(", ");
   throw new Error(`Invalid task type: ${task.type}. Allowed: ${allowed}`);
@@ -4115,6 +4150,7 @@ export const taskHandlers: Record<string, TaskHandler> = {
   "nightly-batch": nightlyBatchHandler,
   "send-digest": sendDigestHandler,
   heartbeat: heartbeatHandler,
+  "business-value-cycle": businessValueCycleHandler,
   "agent-deploy": agentDeployHandler,
 };
 

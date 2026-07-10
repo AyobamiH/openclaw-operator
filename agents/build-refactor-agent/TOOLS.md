@@ -5,7 +5,7 @@
 ### Requirements
 - Node.js 22.x
 - TypeScript 5.5+
-- Anthropic API key (for claude-3-5-sonnet model)
+- OpenAI/Codex runtime auth (for openai/gpt-5.5 model)
 - Git (for diff generation)
 
 ### Installation
@@ -19,7 +19,6 @@ npm install
 
 Create `.env.local`:
 ```
-ANTHROPIC_API_KEY=sk-ant-...
 AGENT_ID=build-refactor-agent
 CODEBASE_PATH=../../src
 LOG_LEVEL=debug
@@ -105,14 +104,14 @@ DEBUG=refactor:* npm run test:local
 
 ## Credentials (Dev Only)
 
-Create `credentials.local.json`:
+Do not commit credentials. Local runtime credentials are managed by OpenClaw/Codex auth; if a local credentials file is used for development, keep it untracked:
 
 ```json
 {
-  "anthropic": {
-    "apiKey": "sk-ant-...",
-    "model": "claude-3-5-sonnet",
-    "maxTokens": 4000
+  "codex": {
+    "runtimeAuth": "managed by OpenClaw/Codex provider",
+    "model": "openai/gpt-5.5",
+    "maxTokens": 4096
   }
 }
 ```

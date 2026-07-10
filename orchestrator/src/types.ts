@@ -1,4 +1,8 @@
 import type { SkillDefinition as RuntimeSkillDefinition } from "./skills/types.js";
+import type {
+  BusinessValueState,
+  TaskTraceabilityMetadata,
+} from "./business/types.js";
 
 export interface OrchestratorConfig {
   docsPath: string;
@@ -35,6 +39,8 @@ export interface OrchestratorConfig {
   corsExposedHeaders?: string[];
   corsAllowCredentials?: boolean;
   corsMaxAgeSeconds?: number;
+  businessRegistryPath?: string;
+  businessEvidenceDir?: string;
 }
 
 export interface DocRecord {
@@ -351,6 +357,7 @@ export interface TaskExecutionRecord {
     keys: string[];
     highlights?: Record<string, unknown>;
   };
+  businessTraceability?: TaskTraceabilityMetadata | null;
   accounting?: TaskExecutionAccounting | null;
 }
 
@@ -637,6 +644,7 @@ export interface OrchestratorState {
   incidentLedger: IncidentLedgerRecord[];
   workflowEvents: WorkflowEventRecord[];
   relationshipObservations: RelationshipObservationRecord[];
+  businessValue?: BusinessValueState;
   lastDriftRepairAt: string | null;
   lastRedditResponseAt: string | null;
   lastAgentDeployAt: string | null;

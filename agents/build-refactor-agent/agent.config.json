@@ -6,9 +6,9 @@
   "name": "Build & Refactor Agent",
   "description": "Analyzes codebases for refactoring opportunities, applies safe code transformations, and optimizes build processes",
   "model": {
-    "primary": "claude-3-5-sonnet",
-    "fallback": "gpt-4o-mini",
-    "tier": "balanced",
+    "primary": "openai/gpt-5.5",
+    "fallback": "openai/gpt-5.3-codex",
+    "tier": "strategic",
     "temperature": 0.15,
     "maxTokens": 4096
   },
@@ -29,8 +29,12 @@
       }
     },
     "fileSystem": {
-      "readPaths": ["workspace"],
-      "writePaths": ["workspace"]
+      "readPaths": [
+        "workspace"
+      ],
+      "writePaths": [
+        "workspace"
+      ]
     },
     "network": {
       "allowed": false,

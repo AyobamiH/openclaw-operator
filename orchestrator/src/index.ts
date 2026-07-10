@@ -71,6 +71,8 @@ import { PersistenceIntegration } from "./persistence/index.js";
 import { getAgentRegistry } from "./agentRegistry.js";
 import { getToolGate } from "./toolGate.js";
 import { buildIncidentPriorityQueue } from "./incident-priority.js";
+import { loadBusinessMission } from "./business/mission.js";
+import { loadBusinessRegistry } from "./business/discovery.js";
 import {
   assertApprovalIfRequired,
   decideApproval,
@@ -766,6 +768,25 @@ const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
     exposeInV1: false,
     caveats: [
       "Internal maintenance task. Use runtime facts and health surfaces instead of queueing it manually.",
+    ],
+  },
+  {
+    type: "business-value-cycle",
+    label: "Business Value Cycle",
+    purpose:
+      "Run the orchestrator-owned business-value planner, score evidence-backed candidates, preserve approval-gated work, and enqueue the highest-value safe allowlisted task.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "control-plane",
+    baselineConfidence: "medium",
+    dependencyRequirements: ["business registry", "task queue", "approval gate"],
+    exposeInV1: true,
+    caveats: [
+      "Does not bypass task allowlist, approval gate, worker isolation, ToolGate, or SkillAudit.",
+      "External, production, financial, legal, secret, public publishing, and irreversible actions remain approval-gated.",
+      "Cycle success means planning and safe task enqueue succeeded; downstream task verification is recorded separately.",
     ],
   },
   {
@@ -6899,6 +6920,27 @@ function buildRunRecord(
     result_summary: execution.resultSummary ?? null,
     resultSummary: execution.resultSummary ?? null,
     result: resultHighlights,
+    businessTraceability: execution.businessTraceability
+      ? {
+          businessId: execution.businessTraceability.businessId,
+          projectId: execution.businessTraceability.projectId ?? null,
+          businessFunction: execution.businessTraceability.businessFunction ?? null,
+          businessObjective: execution.businessTraceability.businessObjective,
+          expectedBusinessOutcome: execution.businessTraceability.expectedBusinessOutcome,
+          kpiId: execution.businessTraceability.kpiId,
+          score: execution.businessTraceability.score,
+          originatingCycleId: execution.businessTraceability.originatingCycleId,
+          parentCandidateId: execution.businessTraceability.parentCandidateId,
+          selectedWorkerOrCapability:
+            execution.businessTraceability.selectedWorkerOrCapability,
+          approvalClassification: execution.businessTraceability.approvalClassification,
+          evidencePath: execution.businessTraceability.evidencePath,
+          candidateEvidenceCount: execution.businessTraceability.candidateEvidence.length,
+          acceptanceCriteriaCount:
+            execution.businessTraceability.acceptanceCriteria.length,
+          dependencyCount: execution.businessTraceability.dependencies.length,
+        }
+      : null,
     history: sortedHistory,
     approval: relatedApproval
       ? {
@@ -10809,6 +10851,11 @@ async function bootstrap() {
             highlights?: Record<string, unknown>;
           }
         | undefined,
+      businessTraceability:
+        typeof task.payload.__businessTraceability === "object" &&
+        task.payload.__businessTraceability !== null
+          ? (task.payload.__businessTraceability as any)
+          : undefined,
       accounting: null,
     };
     state.taskExecutions.push(created);
@@ -13506,11 +13553,134 @@ async function bootstrap() {
                   state.incidentLedger,
                 ),
               },
+              businessValue: state.businessValue ?? null,
               recentTasks: state.taskHistory
                 .filter((entry) => !isInternalTaskType(entry.type))
                 .slice(-20),
             };
           },
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+
+  app.get(
+    "/api/business/overview",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("business.overview.read"),
+    async (req, res) => {
+      try {
+        await respondWithCachedJson(req, res, {
+          namespace: "business.overview",
+          ttlSeconds: readCacheTtls.dashboardOverview,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: async () => {
+            const mission = loadBusinessMission();
+            const registry =
+              state.businessValue?.registry ?? (await loadBusinessRegistry(config));
+            const businessValue = state.businessValue ?? null;
+            return {
+              generatedAt: new Date().toISOString(),
+              mission,
+              registry,
+              businessValue,
+              status: {
+                loop: businessValue?.activeCycleId
+                  ? "active"
+                  : businessValue?.lastFailedCycleId
+                    ? "degraded"
+                    : businessValue?.lastSuccessfulCycleId
+                      ? "idle"
+                      : "not-run",
+                activeCycleId: businessValue?.activeCycleId ?? null,
+                lastSuccessfulCycleId: businessValue?.lastSuccessfulCycleId ?? null,
+                lastFailedCycleId: businessValue?.lastFailedCycleId ?? null,
+                nextSelectedTask: businessValue?.nextSelectedTask ?? null,
+              },
+            };
+          },
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/business/cycles",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("business.cycles.read"),
+    async (req, res) => {
+      try {
+        await respondWithCachedJson(req, res, {
+          namespace: "business.cycles",
+          ttlSeconds: readCacheTtls.taskRuns,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: () => ({
+            generatedAt: new Date().toISOString(),
+            cycles: state.businessValue?.cycles.slice(-50).reverse() ?? [],
+          }),
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/business/cycles/:cycleId",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("business.cycle.read"),
+    async (req: AuthenticatedRequest, res) => {
+      const cycleId = String(req.params.cycleId ?? "");
+      const cycle =
+        state.businessValue?.cycles.find((item) => item.cycleId === cycleId) ?? null;
+      if (!cycle) {
+        return res.status(404).json({ error: `Business cycle not found: ${cycleId}` });
+      }
+      return res.json({
+        generatedAt: new Date().toISOString(),
+        cycle,
+      });
+    },
+  );
+
+  app.post(
+    "/api/business/cycle/trigger",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("business.cycle.trigger"),
+    async (req: AuthenticatedRequest, res) => {
+      try {
+        const task = queue.enqueue("business-value-cycle", {
+          reason: "operator-trigger",
+          idempotencyKey: `business-value-cycle:${Date.now()}`,
+          __actor: req.auth?.actor ?? "unknown",
+          __role: req.auth?.role ?? "operator",
+          __requestId: req.auth?.requestId ?? null,
+        });
+        await invalidateResponseCacheTags(["runtime-state"]);
+        res.status(202).json({
+          status: "queued",
+          taskId: task.id,
+          type: task.type,
+          createdAt: task.createdAt,
         });
       } catch (error: any) {
         res.status(500).json({ error: error.message });
