@@ -1618,6 +1618,10 @@ async function runSpawnedAgentJob(
         logger.log(`[${agentId}] ${chunk.toString().trim()}`);
       });
 
+      child.once("error", (error) => {
+        reject(error);
+      });
+
       child.on("close", (code) => {
         if (code === 0) {
           resolve();

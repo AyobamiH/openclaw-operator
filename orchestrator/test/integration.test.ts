@@ -108,6 +108,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   let seededStateRaw = '';
   let serviceStateLogsDir = '';
   let serviceStateBackupDir = '';
+  let runtimeStopRequested = false;
 
   const clearAgentServiceStateFiles = async () => {
     if (!serviceStateLogsDir) {
@@ -174,6 +175,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
   const stopRuntimeProcess = async () => {
     if (serverProcess && serverProcess.exitCode === null) {
+      runtimeStopRequested = true;
       serverProcess.kill('SIGTERM');
       await new Promise<void>((resolveExit) => {
         const timeout = setTimeout(() => {
@@ -196,6 +198,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     const tsxCliPath = resolve(process.cwd(), '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
     stdoutBuffer = '';
     stderrBuffer = '';
+    runtimeStopRequested = false;
 
     serverProcess = spawn(process.execPath, [tsxCliPath, 'src/index.ts'], {
       cwd: process.cwd(),
@@ -226,6 +229,13 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     });
     serverProcess.stderr.on('data', (chunk: Buffer) => {
       stderrBuffer += chunk.toString();
+    });
+    serverProcess.once('exit', (code, signal) => {
+      if (!runtimeStopRequested) {
+        console.error(
+          `[integration-runtime-exit] code=${code} signal=${signal}\nSTDOUT:\n${stdoutBuffer}\nSTDERR:\n${stderrBuffer}`,
+        );
+      }
     });
 
     await new Promise<void>((resolveReady, rejectReady) => {

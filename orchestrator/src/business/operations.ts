@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { OrchestratorState, Task } from "../types.js";
 import type {
@@ -11,6 +11,8 @@ import type {
 export const DEFAULT_BUSINESS_VALUE_CADENCE_MINUTES = 6 * 60;
 export const BUSINESS_VALUE_TRIGGER_COOLDOWN_MS = 30_000;
 export const BUSINESS_VALUE_STALE_LOCK_MS = 30 * 60_000;
+
+const schedulerWriteQueues = new Map<string, Promise<void>>();
 
 export function createDefaultBusinessValueSchedulerState(): BusinessValueSchedulerState {
   return {
@@ -63,10 +65,27 @@ export async function saveBusinessValueSchedulerState(
   path: string,
   scheduler: BusinessValueSchedulerState,
 ) {
-  await mkdir(dirname(path), { recursive: true });
-  const tempPath = `${path}.${process.pid}.tmp`;
-  await writeFile(tempPath, JSON.stringify(normalizeSchedulerState(scheduler), null, 2), "utf8");
-  await rename(tempPath, path);
+  const serialized = JSON.stringify(normalizeSchedulerState(scheduler), null, 2);
+  const previous = schedulerWriteQueues.get(path) ?? Promise.resolve();
+  const write = previous.catch(() => undefined).then(async () => {
+    await mkdir(dirname(path), { recursive: true });
+    const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(tempPath, serialized, "utf8");
+      await rename(tempPath, path);
+    } catch (error) {
+      await rm(tempPath, { force: true });
+      throw error;
+    }
+  });
+  schedulerWriteQueues.set(path, write);
+  try {
+    await write;
+  } finally {
+    if (schedulerWriteQueues.get(path) === write) {
+      schedulerWriteQueues.delete(path);
+    }
+  }
 }
 
 export function ensureBusinessValueSchedulerState(

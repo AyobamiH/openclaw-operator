@@ -9,8 +9,10 @@ import {
   ensureBusinessValueSchedulerState,
   evaluateBusinessValueTrigger,
   markBusinessValueCycleEnqueued,
+  loadBusinessValueSchedulerState,
   reconcileBusinessValueOperations,
   recordBusinessValueCycleOutcome,
+  saveBusinessValueSchedulerState,
   setBusinessValueSchedulerMode,
 } from "../src/business/operations.js";
 import type { BusinessValueCycle } from "../src/business/types.js";
@@ -162,6 +164,26 @@ describe("business-value operations", () => {
       expect(result.staleLockCleared).toBe(true);
       expect(recovered.businessValue?.scheduler.activeTaskId).toBeNull();
       expect(recovered.businessValue?.activeCycleId).toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("serializes concurrent scheduler-state writes without losing the latest update", async () => {
+    const root = await mkdtemp(join(tmpdir(), "business-scheduler-writes-"));
+    const schedulerPath = join(root, "business-value-operations.json");
+    try {
+      const first = ensureBusinessValueSchedulerState(createDefaultState());
+      first.mode = "enabled";
+      const second = ensureBusinessValueSchedulerState(createDefaultState());
+      second.mode = "disabled";
+
+      await Promise.all([
+        saveBusinessValueSchedulerState(schedulerPath, first),
+        saveBusinessValueSchedulerState(schedulerPath, second),
+      ]);
+
+      expect((await loadBusinessValueSchedulerState(schedulerPath))?.mode).toBe("disabled");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
