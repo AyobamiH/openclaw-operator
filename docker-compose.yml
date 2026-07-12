@@ -17,6 +17,9 @@ services:
       NODE_ENV: production
       LOG_LEVEL: info
       PORT: 3000
+      # Bind inside the container so Docker port forwarding can reach the app;
+      # the published host port below remains localhost-only.
+      ORCHESTRATOR_HOST: 0.0.0.0
       ORCHESTRATOR_CONFIG: /workspace/orchestrator/orchestrator_config.json
       ORCHESTRATOR_FAST_START: "true"
       GITHUB_ACTIONS_MONITOR_ENABLED: "false"
