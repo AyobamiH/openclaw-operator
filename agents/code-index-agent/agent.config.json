@@ -31,7 +31,19 @@
         "allowed": true,
         "maxCalls": 20,
         "reason": "Read bounded knowledge-pack artifacts for retrieval freshness and contradiction posture."
-      }
+      },
+      "coding_audit": { "allowed": true },
+      "coding_repo_map": { "allowed": true },
+      "coding_route_trace": { "allowed": true },
+      "coding_env_audit": { "allowed": true },
+      "coding_secret_audit": { "allowed": true },
+      "coding_api_contract_audit": { "allowed": true },
+      "coding_migration_review": { "allowed": true },
+      "coding_github_handoff": { "allowed": true },
+      "coding_deployment_preflight": { "allowed": true },
+      "coding_validate_project": { "allowed": true },
+      "coding_validate_adapters": { "allowed": true },
+      "coding_validate_pack": { "allowed": true }
     },
     "fileSystem": {
       "readPaths": [

@@ -48,6 +48,8 @@ import {
 import { runBusinessValueCycle } from "./business/valueLoop.js";
 import { recordBusinessValueCycleOutcome } from "./business/operations.js";
 import type { BusinessValueTriggerSource } from "./business/types.js";
+import { runAutonomousController } from "./autonomy/controller.js";
+import type { ControllerCheckpoint, ToolResult } from "./autonomy/types.js";
 
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
@@ -79,6 +81,7 @@ export const ALLOWED_TASK_TYPES = [
   "send-digest",
   "heartbeat",
   "business-value-cycle",
+  "autonomous-work-cycle",
   "agent-deploy",
 ] as const;
 
@@ -4146,6 +4149,62 @@ const businessValueCycleHandler: TaskHandler = async (task, context) => {
   return `business-value cycle ${result.cycle.status}: ${result.cycle.nextSafeAction ?? "no next action recorded"}`;
 };
 
+const CODING_TOOL_COMMANDS: Record<string, string> = {
+  coding_audit: "audit", coding_repo_map: "repo-map", coding_route_trace: "route-trace",
+  coding_env_audit: "env-audit", coding_secret_audit: "secret-audit",
+  coding_api_contract_audit: "api-contract-audit", coding_migration_review: "migration-review",
+  coding_github_handoff: "github-handoff", coding_deployment_preflight: "deployment-preflight",
+  coding_validate_project: "validate-project", coding_validate_adapters: "validate-adapters",
+  coding_validate_pack: "validate-pack",
+};
+
+export async function executeGovernedCodingTool(tool: string, args: Record<string, unknown>, evidenceDir: string): Promise<ToolResult> {
+  const command = CODING_TOOL_COMMANDS[tool];
+  if (!command) return { handled: false, status: "unavailable", changedState: false, safety: { readOnly: true }, summary: `Unsupported governed coding tool: ${tool}` };
+  const projectRoot = String(args.projectRoot ?? process.cwd());
+  const cliArgs = command === "validate-pack" ? [command, "--json"] : [command, projectRoot, "--json"];
+  const output = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn("coding-agent-skills", cliArgs, { shell: false, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, env: buildAllowlistedChildEnv({}) });
+    let stdout = "", stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.once("error", reject);
+    child.once("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+  });
+  let parsed: Record<string, unknown> = {};
+  try { parsed = JSON.parse(output.stdout) as Record<string, unknown>; } catch { parsed = { success: false, summary: output.stderr || "Invalid coding-agent-skills JSON" }; }
+  await mkdir(evidenceDir, { recursive: true });
+  const evidencePath = join(evidenceDir, `${Date.now()}-${tool}.json`);
+  await writeFile(evidencePath, JSON.stringify(parsed, null, 2), "utf-8");
+  const next = parsed.recommendedNextAction as Record<string, unknown> | undefined;
+  return {
+    handled: output.code === 0 && parsed.success !== false,
+    status: output.code === 0 && parsed.success !== false ? "success" : "failed",
+    changedState: parsed.changedState === true,
+    safety: { readOnly: (parsed.safety as Record<string, unknown> | undefined)?.readOnly === true },
+    evidenceLocation: evidencePath, exitCode: output.code,
+    recommendedNextAction: next && typeof next.action === "string" ? { action: next.action, intent: typeof next.label === "string" ? next.label : undefined, requiresApproval: next.requiresApproval === true, readOnly: next.requiresApproval !== true } : null,
+    summary: Array.isArray(parsed.summary) ? parsed.summary.map(String).join("; ") : String(parsed.summary ?? ""),
+  };
+}
+
+const autonomousWorkCycleHandler: TaskHandler = async (task, context) => {
+  const requestedOutcome = String(task.payload.requestedOutcome ?? task.payload.instruction ?? "").trim();
+  if (!requestedOutcome) throw new Error("autonomous-work-cycle requires requestedOutcome");
+  const ledgerDir = join(context.config.logsDir, "autonomous-work-controller");
+  const key = String(task.payload.idempotencyKey ?? task.idempotencyKey ?? task.id);
+  const checkpointPath = join(ledgerDir, `${key.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`);
+  const checkpoint = await runAutonomousController({ requestedOutcome, idempotencyKey: key, projectRoot: typeof task.payload.projectRoot === "string" ? task.payload.projectRoot : process.cwd() }, {
+    toolGate: await getToolGate(), agentRegistry: await getAgentRegistry(),
+    executeTool: (tool, args) => executeGovernedCodingTool(tool, args, join(ledgerDir, "evidence")),
+    loadCheckpoint: async () => { try { return JSON.parse(await readFile(checkpointPath, "utf-8")) as ControllerCheckpoint; } catch { return null; } },
+    saveCheckpoint: async (_checkpointKey, value) => { await mkdir(dirname(checkpointPath), { recursive: true }); await writeFile(checkpointPath, JSON.stringify(value, null, 2), "utf-8"); },
+    maxSteps: Number(task.payload.maxSteps ?? 4),
+  });
+  recordTaskExecutionResultSummary(context, task, { success: checkpoint.item.status === "complete", autonomousWorkController: checkpoint });
+  return `autonomous work ${checkpoint.item.status}: ${checkpoint.item.workflowLane} via ${checkpoint.item.selectedTool ?? "existing non-coding routing"}`;
+};
+
 const unknownTaskHandler: TaskHandler = async (task, context) => {
   const allowed = ALLOWED_TASK_TYPES.join(", ");
   throw new Error(`Invalid task type: ${task.type}. Allowed: ${allowed}`);
@@ -4180,6 +4239,7 @@ export const taskHandlers: Record<string, TaskHandler> = {
   "send-digest": sendDigestHandler,
   heartbeat: heartbeatHandler,
   "business-value-cycle": businessValueCycleHandler,
+  "autonomous-work-cycle": autonomousWorkCycleHandler,
   "agent-deploy": agentDeployHandler,
 };
 

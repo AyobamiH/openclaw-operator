@@ -768,6 +768,23 @@ type OperatorTaskProfile = {
 
 const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
   {
+    type: "autonomous-work-cycle",
+    label: "Autonomous Work Cycle",
+    purpose: "Classify an approved operator instruction, route coding audits through governed coding-agent-skills tools, checkpoint evidence, and continue only across allowlisted read-only actions.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "control-plane",
+    baselineConfidence: "medium",
+    dependencyRequirements: ["task queue", "ToolGate", "coding-agent-skills"],
+    exposeInV1: true,
+    caveats: [
+      "Mutation, install, restart, deployment, migration, secret, commit, push, and merge boundaries stop for approval.",
+      "Safe continuation is bounded by an allowlist, step budget, duplicate-action detection, and durable checkpoints.",
+    ],
+  },
+  {
     type: "heartbeat",
     label: "Heartbeat",
     purpose: "Fast control-plane liveness check through the normal queue path.",

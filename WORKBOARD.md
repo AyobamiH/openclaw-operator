@@ -34,6 +34,13 @@ The public repo direction is now explicit.
 
 ## Recently Finished
 
+0. Autonomous Work Controller v1 is implemented as a bounded orchestrator lane.
+   - approved operator work is normalized into structural lane/risk decisions
+   - coding audits route through ToolGate to coding-agent-skills first
+   - safe read-only continuation is checkpointed and loop-bounded
+   - invocation evidence and deduplicated capability gaps are durable
+   - existing queue, approvals, registry, persistence, and scheduling remain authoritative
+
 0. Authenticated specialist-console rendering was repaired.
    - `/operator/business-value` and `/operator/knowledge` no longer render the
      normalization layer's raw diagnostic objects as React children
