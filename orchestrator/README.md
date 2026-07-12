@@ -9,6 +9,7 @@ and serves both the protected operator surface and the public proof surface.
 - `src/index.ts`: runtime bootstrap and HTTP surface
 - `src/taskHandlers.ts`: task allowlist and dispatch logic
 - `src/autonomy/controller.ts`: bounded classification, governed coding-tool routing, checkpointing, continuation, invocation evidence, and capability-gap recording
+- `src/autonomy/runtime-hardening.ts`: approved-source intake, provider pause/resume bridging, context compatibility, small-model tool policy, and opaque current-session aliases
 - `src/openapi.ts`: machine-readable route contract for public and protected APIs
 - `orchestrator_config.json`: local runtime configuration
 - `docker-compose.yml`: advanced local stack for orchestrator + dependencies

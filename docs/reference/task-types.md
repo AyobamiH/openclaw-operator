@@ -5,6 +5,13 @@ summary: "Current allowlisted task types in the orchestrator runtime."
 
 # Task Types Reference
 
+## `autonomous-intake-cycle`
+
+Public bounded intake task for explicitly approved operator, queue, paused,
+standing-order, workboard, scheduled-audit, and capability-gap records. It
+applies priority, staleness, batch, provenance, and idempotency controls before
+enqueueing `autonomous-work-cycle`. Unknown and unapproved sources are not run.
+
 ## `autonomous-work-cycle`
 
 Publicly triggerable bounded controller task. Payload requires a concise

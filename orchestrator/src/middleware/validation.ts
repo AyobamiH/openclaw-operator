@@ -101,6 +101,7 @@ export const TaskTriggerSchema = z.object({
     'send-digest',
     'business-value-cycle',
     'autonomous-work-cycle',
+    'autonomous-intake-cycle',
     'agent-deploy',
     'doc-sync',
   ]),

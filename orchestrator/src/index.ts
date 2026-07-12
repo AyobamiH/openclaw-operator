@@ -768,6 +768,23 @@ type OperatorTaskProfile = {
 
 const OPERATOR_TASK_PROFILES: OperatorTaskProfile[] = [
   {
+    type: "autonomous-intake-cycle",
+    label: "Autonomous Approved Work Intake",
+    purpose: "Normalize bounded approved operator, queue, paused-task, standing-order, workboard, scheduled-audit, and capability-gap records into deduplicated controller tasks.",
+    internalOnly: false,
+    publicTriggerable: true,
+    approvalGated: false,
+    operationalStatus: "confirmed-working",
+    dependencyClass: "control-plane",
+    baselineConfidence: "medium",
+    dependencyRequirements: ["task queue", "approval provenance", "autonomous work controller"],
+    exposeInV1: true,
+    caveats: [
+      "Only explicitly approved documented sources are accepted; arbitrary filesystem discovery is not supported.",
+      "Batch size, staleness, source priority, and idempotency suppress duplicate or runaway intake.",
+    ],
+  },
+  {
     type: "autonomous-work-cycle",
     label: "Autonomous Work Cycle",
     purpose: "Classify an approved operator instruction, route coding audits through governed coding-agent-skills tools, checkpoint evidence, and continue only across allowlisted read-only actions.",

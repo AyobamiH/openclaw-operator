@@ -49,7 +49,9 @@ import { runBusinessValueCycle } from "./business/valueLoop.js";
 import { recordBusinessValueCycleOutcome } from "./business/operations.js";
 import type { BusinessValueTriggerSource } from "./business/types.js";
 import { runAutonomousController } from "./autonomy/controller.js";
-import type { ControllerCheckpoint, ToolResult } from "./autonomy/types.js";
+import { normalizeApprovedIntake } from "./autonomy/runtime-hardening.js";
+import { readProviderRateLimitBridge } from "./autonomy/runtime-hardening.js";
+import type { ApprovedIntakeRecord, AutonomousWorkItem, ContextSnapshot, ControllerCheckpoint, ProviderRateLimitEvent, ToolResult } from "./autonomy/types.js";
 
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
@@ -82,6 +84,7 @@ export const ALLOWED_TASK_TYPES = [
   "heartbeat",
   "business-value-cycle",
   "autonomous-work-cycle",
+  "autonomous-intake-cycle",
   "agent-deploy",
 ] as const;
 
@@ -4194,15 +4197,69 @@ const autonomousWorkCycleHandler: TaskHandler = async (task, context) => {
   const ledgerDir = join(context.config.logsDir, "autonomous-work-controller");
   const key = String(task.payload.idempotencyKey ?? task.idempotencyKey ?? task.id);
   const checkpointPath = join(ledgerDir, `${key.replace(/[^a-zA-Z0-9._-]/g, "_")}.json`);
-  const checkpoint = await runAutonomousController({ requestedOutcome, idempotencyKey: key, projectRoot: typeof task.payload.projectRoot === "string" ? task.payload.projectRoot : process.cwd() }, {
+  const intakeSource = typeof task.payload.intakeSource === "string"
+    ? task.payload.intakeSource as AutonomousWorkItem["source"]
+    : "operator";
+  const checkpoint = await runAutonomousController({ requestedOutcome, source: intakeSource, idempotencyKey: key, projectRoot: typeof task.payload.projectRoot === "string" ? task.payload.projectRoot : process.cwd() }, {
     toolGate: await getToolGate(), agentRegistry: await getAgentRegistry(),
     executeTool: (tool, args) => executeGovernedCodingTool(tool, args, join(ledgerDir, "evidence")),
     loadCheckpoint: async () => { try { return JSON.parse(await readFile(checkpointPath, "utf-8")) as ControllerCheckpoint; } catch { return null; } },
     saveCheckpoint: async (_checkpointKey, value) => { await mkdir(dirname(checkpointPath), { recursive: true }); await writeFile(checkpointPath, JSON.stringify(value, null, 2), "utf-8"); },
+    providerRateLimitEvent: () => task.payload.providerRateLimitEvent as ProviderRateLimitEvent | undefined ?? null,
+    providerRateLimitBridge: () => readProviderRateLimitBridge(
+      join(process.env.HOME ?? process.cwd(), ".openclaw", "state", "provider-rate-limit-guard", "controller-event.json"),
+    ),
+    providerRateLimitCleared: () => task.payload.providerRateLimitCleared === true,
+    contextSnapshot: () => task.payload.contextSnapshot as ContextSnapshot | undefined,
+    requestCompaction: async () => task.payload.compactionSucceeded === true,
+    modelRuntime: () => typeof task.payload.model === "string" ? {
+      model: task.payload.model,
+      local: task.payload.localModel === true,
+      parameterCountBillions: typeof task.payload.parameterCountBillions === "number" ? task.payload.parameterCountBillions : undefined,
+      strongerModelAvailable: task.payload.strongerModelAvailable === true,
+    } : { model: "controller", local: false },
+    sessionAlias: () => typeof task.payload.sessionAlias === "string" ? {
+      alias: task.payload.sessionAlias,
+      inboundSessionBound: task.payload.inboundSessionBound === true,
+      channel: typeof task.payload.channel === "string" ? task.payload.channel : undefined,
+    } : {},
     maxSteps: Number(task.payload.maxSteps ?? 4),
   });
   recordTaskExecutionResultSummary(context, task, { success: checkpoint.item.status === "complete", autonomousWorkController: checkpoint });
   return `autonomous work ${checkpoint.item.status}: ${checkpoint.item.workflowLane} via ${checkpoint.item.selectedTool ?? "existing non-coding routing"}`;
+};
+
+const autonomousIntakeCycleHandler: TaskHandler = async (task, context) => {
+  const rawRecords = Array.isArray(task.payload.records) ? task.payload.records : [];
+  const records = rawRecords.filter(
+    (record): record is ApprovedIntakeRecord => Boolean(
+      record && typeof record === "object" &&
+      typeof (record as ApprovedIntakeRecord).source === "string" &&
+      typeof (record as ApprovedIntakeRecord).sourceId === "string" &&
+      typeof (record as ApprovedIntakeRecord).requestedOutcome === "string" &&
+      typeof (record as ApprovedIntakeRecord).updatedAt === "string",
+    ),
+  );
+  const intake = normalizeApprovedIntake(records, {
+    maxBatch: Number(task.payload.maxBatch ?? 20),
+    staleAfterMs: Number(task.payload.staleAfterMs ?? 7 * 24 * 60 * 60 * 1000),
+  });
+  for (const record of intake.accepted) {
+    context.enqueueTask("autonomous-work-cycle", {
+      requestedOutcome: record.requestedOutcome,
+      idempotencyKey: record.idempotencyKey,
+      intakeSource: record.source,
+      intakeProvenance: record.provenance ?? record.sourceId,
+    });
+  }
+  recordTaskExecutionResultSummary(context, task, {
+    success: true,
+    autonomousIntake: {
+      accepted: intake.accepted.map((record) => ({ source: record.source, idempotencyKey: record.idempotencyKey })),
+      ignored: intake.ignored,
+    },
+  });
+  return `autonomous intake accepted ${intake.accepted.length} item(s), ignored ${intake.ignored.length}`;
 };
 
 const unknownTaskHandler: TaskHandler = async (task, context) => {
@@ -4240,6 +4297,7 @@ export const taskHandlers: Record<string, TaskHandler> = {
   heartbeat: heartbeatHandler,
   "business-value-cycle": businessValueCycleHandler,
   "autonomous-work-cycle": autonomousWorkCycleHandler,
+  "autonomous-intake-cycle": autonomousIntakeCycleHandler,
   "agent-deploy": agentDeployHandler,
 };
 

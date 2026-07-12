@@ -34,6 +34,13 @@ The public repo direction is now explicit.
 
 ## Recently Finished
 
+0. Autonomous Work Controller v1.1 runtime hardening is implemented.
+   - approved queue, paused-task, standing-order, workboard, schedule, operator, and capability-gap intake is prioritized and deduplicated
+   - the existing provider guard bridges sanitized pause/resume state into durable controller checkpoints
+   - incompatible restored model context is blocked before continuation and reserve-threshold compaction checkpoints first
+   - small/local models lose unsafe web and runtime tools while ToolGate-governed structured read-only tools remain eligible
+   - Telegram targeting uses only an opaque current inbound-session alias
+
 0. Autonomous Work Controller v1 is implemented as a bounded orchestrator lane.
    - approved operator work is normalized into structural lane/risk decisions
    - coding audits route through ToolGate to coding-agent-skills first
