@@ -202,6 +202,7 @@ export function evaluateBusinessValueTrigger(args: {
 }): BusinessValueTriggerDecision {
   const { state, source, force = false } = args;
   const now = args.now ?? new Date();
+  reconcileBusinessValueOperations(state, now);
   const scheduler = ensureBusinessValueSchedulerState(state);
   const fingerprint = computeBusinessValueChangeFingerprint(state);
   const isAutomatic = source === "scheduler" || source === "startup-recovery";

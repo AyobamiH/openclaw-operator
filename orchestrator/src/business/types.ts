@@ -8,6 +8,7 @@ export type BusinessOutcome =
   | "faster-delivery"
   | "customer-satisfaction"
   | "search-visibility"
+  | "community-value"
   | "commercial-readiness"
   | "product-quality"
   | "risk-reduction"
@@ -155,7 +156,7 @@ export interface CandidateWorkItem {
   risk: string;
   effort: "low" | "medium" | "high";
   opportunity?: {
-    type: "lead" | "content" | "marketing" | "operations" | "product";
+    type: "lead" | "content" | "marketing" | "community" | "operations" | "product";
     description: string;
   };
   score?: PriorityScore;

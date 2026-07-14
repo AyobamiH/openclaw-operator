@@ -76,6 +76,55 @@ describe("business-value operations", () => {
     expect(decision).toMatchObject({ allowed: false, code: "active" });
   });
 
+  it("clears stale orphaned locks before trigger evaluation blocks on active state", () => {
+    const state = createDefaultState();
+    const scheduler = setBusinessValueSchedulerMode(
+      state,
+      "enabled",
+      new Date("2026-07-11T01:00:00.000Z"),
+    );
+    scheduler.nextRunAt = "2026-07-11T07:00:00.000Z";
+    scheduler.activeTaskId = "orphaned-task";
+    scheduler.activeTaskEnqueuedAt = "2026-07-11T07:00:00.000Z";
+    state.businessValue!.activeCycleId = "orphaned-cycle";
+    scheduler.lastChangeFingerprint = "previous-fingerprint";
+
+    const decision = evaluateBusinessValueTrigger({
+      state,
+      source: "scheduler",
+      now: new Date("2026-07-11T08:00:00.000Z"),
+    });
+
+    expect(decision).toMatchObject({ allowed: true, code: "ready" });
+    expect(scheduler.activeTaskId).toBeNull();
+    expect(scheduler.activeTaskEnqueuedAt).toBeNull();
+    expect(state.businessValue?.activeCycleId).toBeNull();
+    expect(scheduler.lastSkipReason).toBe("Cleared stale business-cycle lock after proving no cycle execution remained active.");
+  });
+
+  it("keeps fresh orphaned locks active until the stale-lock window expires", () => {
+    const state = createDefaultState();
+    const scheduler = setBusinessValueSchedulerMode(
+      state,
+      "enabled",
+      new Date("2026-07-11T01:00:00.000Z"),
+    );
+    scheduler.nextRunAt = "2026-07-11T07:00:00.000Z";
+    scheduler.activeTaskId = "fresh-orphan";
+    scheduler.activeTaskEnqueuedAt = "2026-07-11T07:59:00.000Z";
+    state.businessValue!.activeCycleId = "fresh-orphan-cycle";
+
+    const decision = evaluateBusinessValueTrigger({
+      state,
+      source: "scheduler",
+      now: new Date("2026-07-11T08:00:00.000Z"),
+    });
+
+    expect(decision).toMatchObject({ allowed: false, code: "active" });
+    expect(scheduler.activeTaskId).toBe("fresh-orphan");
+    expect(state.businessValue?.activeCycleId).toBe("fresh-orphan-cycle");
+  });
+
   it("skips automatic cycles when relevant state has not changed", () => {
     const state = createDefaultState();
     const scheduler = setBusinessValueSchedulerMode(

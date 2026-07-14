@@ -62,6 +62,33 @@ async function writeRegistry() {
   );
 }
 
+async function writeFounderRescueArtifacts() {
+  const operatorArtifactRoot = join(fixtureRoot, "artifacts", "system", "operator");
+  await mkdir(operatorArtifactRoot, { recursive: true });
+  await Promise.all([
+    writeFile(
+      join(operatorArtifactRoot, "vibe-coded-mvp-rescue-audit-offer-2026-07-13.md"),
+      "# Offer\n\nInternal offer packet.",
+      "utf8",
+    ),
+    writeFile(
+      join(operatorArtifactRoot, "vibe-coded-mvp-rescue-first-three-verification-2026-07-13.md"),
+      "# Verification\n\nRead-only prospect verification.",
+      "utf8",
+    ),
+    writeFile(
+      join(operatorArtifactRoot, "vibe-coded-mvp-rescue-contact-route-verification-2026-07-13.md"),
+      "# Contact Routes\n\nPublic contact routes verified.",
+      "utf8",
+    ),
+    writeFile(
+      join(operatorArtifactRoot, "vibe-coded-mvp-rescue-internal-outreach-drafts-2026-07-13.md"),
+      "# Drafts\n\nInternal unsent drafts.",
+      "utf8",
+    ),
+  ]);
+}
+
 function makeConfig(): OrchestratorConfig {
   return {
     docsPath: join(fixtureRoot, "docs"),
@@ -186,5 +213,98 @@ describe("business-value cycle", () => {
       expect.objectContaining({ candidateId: "approval:approval-task-1" }),
     ]);
     expect(enqueued).toHaveLength(1);
+  });
+
+  it("promotes founder-rescue outreach readiness when internal revenue-loop artifacts exist", async () => {
+    await writeFounderRescueArtifacts();
+    const state = createDefaultState();
+    const enqueued: Task[] = [];
+
+    const result = await runBusinessValueCycle({
+      config: makeConfig(),
+      state,
+      isTaskTypeAllowed: (type) => type === "qa-verification",
+      enqueueTask: (type, payload) => {
+        const task = {
+          id: `task-${enqueued.length + 1}`,
+          type,
+          payload,
+          createdAt: Date.now(),
+          idempotencyKey: String(payload.idempotencyKey ?? type),
+        } satisfies Task;
+        enqueued.push(task);
+        return task;
+      },
+      logger: { log() {}, warn() {}, error() {} },
+    });
+
+    expect(result.cycle.selectedTask).toMatchObject({
+      candidateId: "revenue-loop:founder-vibe-coded-rescue-readiness",
+      taskType: "qa-verification",
+      title: "Verify founder/vibe-coded rescue outreach readiness",
+    });
+    expect(enqueued[0].payload).toMatchObject({
+      target: "artifacts/system/operator/vibe-coded-mvp-rescue-internal-outreach-drafts-2026-07-13.md",
+      dryRun: true,
+      __businessCandidateId: "revenue-loop:founder-vibe-coded-rescue-readiness",
+    });
+  });
+
+  it("keeps community discovery aligned to John's active social platforms", async () => {
+    const state = createDefaultState();
+
+    const result = await runBusinessValueCycle({
+      config: makeConfig(),
+      state,
+      isTaskTypeAllowed: (type) => type === "market-research",
+      enqueueTask: (type, payload) => ({
+        id: "community-task-1",
+        type,
+        payload,
+        createdAt: Date.now(),
+        idempotencyKey: String(payload.idempotencyKey ?? type),
+      }) satisfies Task,
+      logger: { log() {}, warn() {}, error() {} },
+    });
+
+    expect(result.cycle.selectedTask).toMatchObject({
+      candidateId: expect.stringMatching(/^community-presence:daily-scan:/),
+      taskType: "market-research",
+      title: "Discover community participation opportunities",
+    });
+    expect(result.cycle.selectedTask?.evidence).toContain("skills/business-value-operating-loop/SKILL.md");
+    const selectedCandidate = result.cycle.candidates.find(
+      (candidate) => candidate.id === result.cycle.selectedTask?.candidateId,
+    );
+    expect(selectedCandidate?.taskPayload.sources).toEqual([
+      "X",
+      "LinkedIn",
+      "Threads",
+      "Reddit",
+      "Facebook",
+      "Instagram",
+      "GitHub Discussions",
+      "engineering blogs",
+      "AI communities",
+      "SaaS communities",
+    ]);
+    expect(selectedCandidate?.taskPayload.activeOwnedPlatforms).toEqual([
+      "X",
+      "LinkedIn",
+      "Threads",
+      "Reddit",
+      "Facebook",
+      "Instagram",
+    ]);
+    expect(selectedCandidate?.taskPayload.constraints).toMatchObject({
+      dryRun: true,
+      publicReadOnly: true,
+      noPosting: true,
+      noReplies: true,
+      noDirectMessages: true,
+      noFollows: true,
+      noReactions: true,
+      approvalRequiredForPublicAction: true,
+    });
   });
 });

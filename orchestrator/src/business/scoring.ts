@@ -40,6 +40,7 @@ function outcomeImpact(candidate: CandidateWorkItem): number {
     case "commercial-readiness":
     case "qualified-leads":
     case "faster-delivery":
+    case "community-value":
       return 4.5;
     case "product-quality":
     case "customer-satisfaction":
@@ -77,11 +78,17 @@ function approvalFriction(candidate: CandidateWorkItem): number {
   }
 }
 
+function urgencyFactor(candidate: CandidateWorkItem): number {
+  if (candidate.kind === "lead") return 5;
+  if (candidate.kind === "risk") return 4;
+  return 3;
+}
+
 export function scoreCandidate(candidate: CandidateWorkItem): CandidateWorkItem {
   const components: BusinessValueScoreComponents = {
     expectedBusinessImpact: outcomeImpact(candidate),
     confidence: candidate.evidence.length > 0 ? 4 : 2,
-    urgency: candidate.kind === "risk" ? 4 : 3,
+    urgency: urgencyFactor(candidate),
     effort: effortToFactor(candidate.effort),
     operationalRisk: riskToFactor(candidate),
     dependencyLoad: clampFactor(candidate.dependencies.length + 1),

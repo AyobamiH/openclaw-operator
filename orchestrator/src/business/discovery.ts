@@ -1,7 +1,7 @@
 import { access, readdir, readFile, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import type { OrchestratorConfig, OrchestratorState } from "../types.js";
 import { loadBusinessMission } from "./mission.js";
 import type {
@@ -17,6 +17,23 @@ const DEFAULT_REGISTRY_URL = new URL(
   "../../../business/registry.json",
   import.meta.url,
 );
+
+const ACTIVE_COMMUNITY_PLATFORMS = [
+  "X",
+  "LinkedIn",
+  "Threads",
+  "Reddit",
+  "Facebook",
+  "Instagram",
+] as const;
+
+const COMMUNITY_DISCOVERY_SOURCES = [
+  ...ACTIVE_COMMUNITY_PLATFORMS,
+  "GitHub Discussions",
+  "engineering blogs",
+  "AI communities",
+  "SaaS communities",
+] as const;
 
 function asString(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0
@@ -227,11 +244,154 @@ function projectReadinessCandidate(
   };
 }
 
+function communityPresenceCandidate(registry: BusinessRegistry): CandidateWorkItem {
+  const day = new Date().toISOString().slice(0, 10);
+  return {
+    id: `community-presence:daily-scan:${day}`,
+    kind: "marketing",
+    title: "Discover community participation opportunities",
+    businessId: registry.businessId,
+    businessFunction: "community-presence",
+    objective:
+      "Find relevant technical/community discussions where Tail Wagging expertise or completed work can help without posting publicly.",
+    expectedOutcome: "community-value",
+    kpiId: "community-value",
+    evidence: [
+      registry.sourcePath,
+      "skills/business-value-operating-loop/SKILL.md",
+      "artifacts/system/operator/business-value-candidate-pool-broadened-2026-07-14.md",
+    ],
+    taskType: "market-research",
+    taskPayload: {
+      target: "approved public communities",
+      scope: "community-presence-opportunity-discovery",
+      dryRun: true,
+      sources: [...COMMUNITY_DISCOVERY_SOURCES],
+      activeOwnedPlatforms: [...ACTIVE_COMMUNITY_PLATFORMS],
+      constraints: {
+        dryRun: true,
+        publicReadOnly: true,
+        draftOnly: true,
+        noPosting: true,
+        noReplies: true,
+        noDirectMessages: true,
+        noFollows: true,
+        noReactions: true,
+        approvalRequiredForPublicAction: true,
+      },
+    },
+    approval: "safe-autonomous",
+    verification: {
+      method: "worker",
+      description:
+        "Market research identifies high-quality public discussions and prepares evidence-backed draft opportunities without public interaction.",
+      expectedEvidence: [
+        "source URLs or discussion identifiers",
+        "relevance and business-value score",
+        "draft-only participation recommendations",
+        "approval boundary confirmation",
+      ],
+    },
+    dependencies: [],
+    acceptanceCriteria: [
+      "Discovered discussions are relevant to current business goals or active projects.",
+      "Active owned platforms are considered first: X, LinkedIn, Threads, Reddit, Facebook, and Instagram.",
+      "Draft recommendations are useful and evidence-backed rather than promotional.",
+      "All public interactions remain approval-gated.",
+      "Outcomes can be measured through visibility, authority, engagement, or commercial signal.",
+    ],
+    risk: "low: public read-only research and internal drafting only",
+    effort: "low",
+    opportunity: {
+      type: "community",
+      description:
+        "Build visibility, authority, and commercial reach through genuine helpful participation in relevant communities.",
+    },
+  };
+}
+
+async function discoverFounderRescueReadinessCandidate(
+  registry: BusinessRegistry,
+): Promise<CandidateWorkItem | null> {
+  const workspaceRoot = resolve(dirname(registry.sourcePath), "..");
+  const artifactPaths = [
+    "artifacts/system/operator/vibe-coded-mvp-rescue-audit-offer-2026-07-13.md",
+    "artifacts/system/operator/vibe-coded-mvp-rescue-first-three-verification-2026-07-13.md",
+    "artifacts/system/operator/vibe-coded-mvp-rescue-contact-route-verification-2026-07-13.md",
+    "artifacts/system/operator/vibe-coded-mvp-rescue-internal-outreach-drafts-2026-07-13.md",
+  ];
+  const existingArtifacts: string[] = [];
+
+  for (const artifactPath of artifactPaths) {
+    if (await pathExists(join(workspaceRoot, artifactPath))) {
+      existingArtifacts.push(artifactPath);
+    }
+  }
+
+  if (existingArtifacts.length < 2) {
+    return null;
+  }
+
+  return {
+    id: "revenue-loop:founder-vibe-coded-rescue-readiness",
+    kind: "lead",
+    title: "Verify founder/vibe-coded rescue outreach readiness",
+    businessId: registry.businessId,
+    businessFunction: "sales",
+    objective:
+      "Move the founder/vibe-coded project rescue lane toward approved, claim-safe outreach without sending or creating Gmail drafts.",
+    expectedOutcome: "commercial-readiness",
+    kpiId: "qualified-leads",
+    evidence: [registry.sourcePath, ...existingArtifacts],
+    taskType: "qa-verification",
+    taskPayload: {
+      target: "artifacts/system/operator/vibe-coded-mvp-rescue-internal-outreach-drafts-2026-07-13.md",
+      suite: "business-readiness",
+      mode: "dry-run",
+      dryRun: true,
+      constraints: {
+        dryRun: true,
+        businessReadiness: true,
+        revenueLoop: true,
+        approvalGatedExternalActions: true,
+        lane: "founder-vibe-coded-project-rescue",
+      },
+    },
+    approval: "safe-autonomous",
+    verification: {
+      method: "worker",
+      description:
+        "QA verifier reviews the internal founder-rescue outreach assets for claim safety and approval readiness without contacting leads.",
+      expectedEvidence: ["qa-verification run", "claim-safety review", "approval boundary confirmation"],
+    },
+    dependencies: [],
+    acceptanceCriteria: [
+      "Founder-rescue offer and lead evidence remain claim-safe.",
+      "Contact-route evidence is separated from permission to contact.",
+      "Gmail draft creation and sending remain approval-gated.",
+    ],
+    risk: "low: local read-only artifact review; no external action",
+    effort: "low",
+    opportunity: {
+      type: "lead",
+      description:
+        "Founder and vibe-coded project rescue opportunities broaden revenue work beyond Wagging Web Wins.",
+    },
+  };
+}
+
 export async function discoverBusinessCandidates(
   registry: BusinessRegistry,
   state: OrchestratorState,
 ): Promise<CandidateWorkItem[]> {
   const candidates: CandidateWorkItem[] = [];
+
+  candidates.push(communityPresenceCandidate(registry));
+
+  const founderRescueCandidate = await discoverFounderRescueReadinessCandidate(registry);
+  if (founderRescueCandidate) {
+    candidates.push(founderRescueCandidate);
+  }
 
   for (const project of registry.projects) {
     const missingCriteria = project.acceptanceCriteria.filter(
