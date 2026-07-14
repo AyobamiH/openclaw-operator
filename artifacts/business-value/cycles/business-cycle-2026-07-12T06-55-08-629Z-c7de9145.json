@@ -1,0 +1,590 @@
+{
+  "cycleId": "business-cycle-2026-07-12T06-55-08-629Z-c7de9145",
+  "triggerSource": "startup-recovery",
+  "triggerReason": "scheduled cycle became due while the orchestrator was offline",
+  "status": "completed",
+  "startedAt": "2026-07-12T06:55:08.629Z",
+  "completedAt": "2026-07-12T06:55:17.628Z",
+  "missionLoaded": true,
+  "registrySource": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json",
+  "candidates": [
+    {
+      "id": "commercial-readiness:wagging-web-wins",
+      "kind": "project",
+      "title": "Verify commercial readiness gaps for Wagging Web Wins",
+      "businessId": "tail-wagging-website-design-factory",
+      "projectId": "wagging-web-wins",
+      "objective": "Move Wagging Web Wins toward demonstrable commercial readiness.",
+      "expectedOutcome": "commercial-readiness",
+      "kpiId": "projects-nearing-commercial-readiness",
+      "evidence": [
+        "projects/wagging-web-wins",
+        "docs/operations/tool-invocation-ledger.md",
+        "projects/wagging-web-wins/README.md",
+        "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json"
+      ],
+      "taskType": "qa-verification",
+      "taskPayload": {
+        "target": "projects/wagging-web-wins",
+        "suite": "business-readiness",
+        "mode": "dry-run",
+        "dryRun": true,
+        "constraints": {
+          "dryRun": true,
+          "businessReadiness": true,
+          "projectId": "wagging-web-wins"
+        }
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "QA verifier dry-run confirms the readiness review target and records follow-up evidence without production side effects.",
+        "expectedEvidence": [
+          "qa-verification run",
+          "task execution record"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Current local validation evidence is recorded",
+        "A demonstrable customer-facing outcome is identified"
+      ],
+      "risk": "low: read-only readiness verification",
+      "effort": "low",
+      "opportunity": {
+        "type": "product",
+        "description": "Customer-facing web/design offer and proof asset for Tail Wagging Website Design Factory."
+      },
+      "score": {
+        "value": 1467.3913,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 4.5,
+          "confidence": 4,
+          "urgency": 3,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 5,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 5
+        },
+        "rationale": [
+          "outcome:commercial-readiness",
+          "approval:safe-autonomous",
+          "evidence:4",
+          "effort:low"
+        ]
+      }
+    },
+    {
+      "id": "commercial-readiness:tax-lien-platform",
+      "kind": "project",
+      "title": "Verify commercial readiness gaps for Tax Lien Platform",
+      "businessId": "tail-wagging-website-design-factory",
+      "projectId": "tax-lien-platform",
+      "objective": "Move Tax Lien Platform toward demonstrable commercial readiness.",
+      "expectedOutcome": "commercial-readiness",
+      "kpiId": "projects-nearing-commercial-readiness",
+      "evidence": [
+        "projects/tax-lien-platform",
+        "projects/tax-lien-platform/ACCEPTANCE.md",
+        "projects/tax-lien-platform/WORK_LEDGER.md",
+        "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json"
+      ],
+      "taskType": "qa-verification",
+      "taskPayload": {
+        "target": "projects/tax-lien-platform",
+        "suite": "business-readiness",
+        "mode": "dry-run",
+        "dryRun": true,
+        "constraints": {
+          "dryRun": true,
+          "businessReadiness": true,
+          "projectId": "tax-lien-platform"
+        }
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "QA verifier dry-run confirms the readiness review target and records follow-up evidence without production side effects.",
+        "expectedEvidence": [
+          "qa-verification run",
+          "task execution record"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Acceptance and work ledger status are current"
+      ],
+      "risk": "low: read-only readiness verification",
+      "effort": "low",
+      "opportunity": {
+        "type": "product",
+        "description": "Reusable product/platform asset that can become a case study, automation offer, or client-delivery accelerator."
+      },
+      "score": {
+        "value": 1467.3913,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 4.5,
+          "confidence": 4,
+          "urgency": 3,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 5,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 5
+        },
+        "rationale": [
+          "outcome:commercial-readiness",
+          "approval:safe-autonomous",
+          "evidence:4",
+          "effort:low"
+        ]
+      }
+    },
+    {
+      "id": "commercial-readiness:openclaw-operator",
+      "kind": "project",
+      "title": "Verify commercial readiness gaps for OpenClaw Operator",
+      "businessId": "tail-wagging-website-design-factory",
+      "projectId": "openclaw-operator",
+      "objective": "Move OpenClaw Operator toward demonstrable commercial readiness.",
+      "expectedOutcome": "commercial-readiness",
+      "kpiId": "operational-efficiency",
+      "evidence": [
+        "orchestrator/src",
+        "operator-s-console/src",
+        "docs/operations/tool-invocation-ledger.md",
+        "artifacts/system/health/2026-07-10_business-value-doctrine-architecture-review.md",
+        "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json"
+      ],
+      "taskType": "qa-verification",
+      "taskPayload": {
+        "target": "projects/openclaw-operator",
+        "suite": "business-readiness",
+        "mode": "dry-run",
+        "dryRun": true,
+        "constraints": {
+          "dryRun": true,
+          "businessReadiness": true,
+          "projectId": "openclaw-operator"
+        }
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "QA verifier dry-run confirms the readiness review target and records follow-up evidence without production side effects.",
+        "expectedEvidence": [
+          "qa-verification run",
+          "task execution record"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Operator runtime proof and capability boundaries remain documented"
+      ],
+      "risk": "low: read-only readiness verification",
+      "effort": "low",
+      "opportunity": {
+        "type": "product",
+        "description": "Internal operating-system capability that improves delivery speed, reliability and reusable automation."
+      },
+      "score": {
+        "value": 1467.3913,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 4.5,
+          "confidence": 4,
+          "urgency": 3,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 5,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 5
+        },
+        "rationale": [
+          "outcome:commercial-readiness",
+          "approval:safe-autonomous",
+          "evidence:5",
+          "effort:low"
+        ]
+      }
+    },
+    {
+      "id": "commercial-readiness:founders-oneclickwebsitedesignfactory",
+      "kind": "project",
+      "title": "Verify commercial readiness gaps for Founders One Click Website Design Factory",
+      "businessId": "tail-wagging-website-design-factory",
+      "projectId": "founders-oneclickwebsitedesignfactory",
+      "objective": "Move Founders One Click Website Design Factory toward demonstrable commercial readiness.",
+      "expectedOutcome": "commercial-readiness",
+      "kpiId": "projects-nearing-commercial-readiness",
+      "evidence": [
+        "projects/founders-oneclickwebsitedesignfactory",
+        "projects/founders-oneclickwebsitedesignfactory/README.md",
+        "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json"
+      ],
+      "taskType": "qa-verification",
+      "taskPayload": {
+        "target": "projects/founders-oneclickwebsitedesignfactory",
+        "suite": "business-readiness",
+        "mode": "dry-run",
+        "dryRun": true,
+        "constraints": {
+          "dryRun": true,
+          "businessReadiness": true,
+          "projectId": "founders-oneclickwebsitedesignfactory"
+        }
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "QA verifier dry-run confirms the readiness review target and records follow-up evidence without production side effects.",
+        "expectedEvidence": [
+          "qa-verification run",
+          "task execution record"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Initial product purpose and readiness are inventoried"
+      ],
+      "risk": "low: read-only readiness verification",
+      "effort": "low",
+      "opportunity": {
+        "type": "product",
+        "description": "Potential business website/product asset recently cloned for local work."
+      },
+      "score": {
+        "value": 1173.913,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 4.5,
+          "confidence": 4,
+          "urgency": 3,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 5,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 4
+        },
+        "rationale": [
+          "outcome:commercial-readiness",
+          "approval:safe-autonomous",
+          "evidence:3",
+          "effort:low"
+        ]
+      }
+    },
+    {
+      "id": "risk-review:wagging-web-wins",
+      "kind": "risk",
+      "title": "Review unresolved risk for Wagging Web Wins",
+      "businessId": "tail-wagging-website-design-factory",
+      "projectId": "wagging-web-wins",
+      "objective": "Reduce operational or customer-facing risk before Wagging Web Wins is promoted.",
+      "expectedOutcome": "risk-reduction",
+      "kpiId": "customer-facing-risks",
+      "evidence": [
+        "Commercial readiness has not been verified in the business registry.",
+        "projects/wagging-web-wins",
+        "docs/operations/tool-invocation-ledger.md",
+        "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json"
+      ],
+      "taskType": "system-monitor",
+      "taskPayload": {
+        "target": "projects/wagging-web-wins",
+        "scope": "business-risk",
+        "dryRun": true
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "System monitor worker records risk posture and recommended safe follow-up.",
+        "expectedEvidence": [
+          "system-monitor run",
+          "risk findings"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Risk is classified with evidence and next safe action."
+      ],
+      "risk": "low: local risk review",
+      "effort": "low",
+      "opportunity": {
+        "type": "operations",
+        "description": "Commercial readiness has not been verified in the business registry."
+      },
+      "score": {
+        "value": 913.0435,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 3.5,
+          "confidence": 4,
+          "urgency": 4,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 3,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 5
+        },
+        "rationale": [
+          "outcome:risk-reduction",
+          "approval:safe-autonomous",
+          "evidence:4",
+          "effort:low"
+        ]
+      }
+    },
+    {
+      "id": "risk-review:openclaw-operator",
+      "kind": "risk",
+      "title": "Review unresolved risk for OpenClaw Operator",
+      "businessId": "tail-wagging-website-design-factory",
+      "projectId": "openclaw-operator",
+      "objective": "Reduce operational or customer-facing risk before OpenClaw Operator is promoted.",
+      "expectedOutcome": "risk-reduction",
+      "kpiId": "customer-facing-risks",
+      "evidence": [
+        "Operator capability can drift if mission ownership is split across skills and runtime.",
+        "orchestrator/src",
+        "operator-s-console/src",
+        "docs/operations/tool-invocation-ledger.md",
+        "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json"
+      ],
+      "taskType": "system-monitor",
+      "taskPayload": {
+        "target": "projects/openclaw-operator",
+        "scope": "business-risk",
+        "dryRun": true
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "System monitor worker records risk posture and recommended safe follow-up.",
+        "expectedEvidence": [
+          "system-monitor run",
+          "risk findings"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Risk is classified with evidence and next safe action."
+      ],
+      "risk": "low: local risk review",
+      "effort": "low",
+      "opportunity": {
+        "type": "operations",
+        "description": "Operator capability can drift if mission ownership is split across skills and runtime."
+      },
+      "score": {
+        "value": 913.0435,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 3.5,
+          "confidence": 4,
+          "urgency": 4,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 3,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 5
+        },
+        "rationale": [
+          "outcome:risk-reduction",
+          "approval:safe-autonomous",
+          "evidence:5",
+          "effort:low"
+        ]
+      }
+    },
+    {
+      "id": "runtime:recent-task-failures",
+      "kind": "risk",
+      "title": "Verify recent failed or retrying task executions",
+      "businessId": "tail-wagging-website-design-factory",
+      "businessFunction": "operations",
+      "objective": "Reduce delivery and automation risk caused by failed runtime work.",
+      "expectedOutcome": "risk-reduction",
+      "kpiId": "verification-failures",
+      "evidence": [
+        "heartbeat:0a93fa95-bf4e-46fb-9b58-e599063ab278",
+        "heartbeat:89b663a5-408c-4623-bf92-8f876d97bcde",
+        "heartbeat:a27cf78d-92eb-4db5-97ee-fb42f88171be",
+        "heartbeat:f91ccaf2-8ec7-47af-b11d-7cf05dc60f5f",
+        "heartbeat:0b9e5a62-e4c1-4a9b-8162-712acf4a098e"
+      ],
+      "taskType": "qa-verification",
+      "taskPayload": {
+        "target": "orchestrator-runtime",
+        "suite": "recent-failure-review",
+        "mode": "dry-run",
+        "dryRun": true,
+        "runIds": [
+          "0a93fa95-bf4e-46fb-9b58-e599063ab278",
+          "89b663a5-408c-4623-bf92-8f876d97bcde",
+          "a27cf78d-92eb-4db5-97ee-fb42f88171be",
+          "f91ccaf2-8ec7-47af-b11d-7cf05dc60f5f",
+          "0b9e5a62-e4c1-4a9b-8162-712acf4a098e"
+        ]
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "QA verifier reviews failed runtime tasks without mutating production state.",
+        "expectedEvidence": [
+          "qa-verification run",
+          "failure review"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Recent failure pattern is classified with next safe action."
+      ],
+      "risk": "low: read-only failure review",
+      "effort": "low",
+      "opportunity": {
+        "type": "operations",
+        "description": "Improve runtime reliability."
+      },
+      "score": {
+        "value": 913.0435,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 3.5,
+          "confidence": 4,
+          "urgency": 4,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 3,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 5
+        },
+        "rationale": [
+          "outcome:risk-reduction",
+          "approval:safe-autonomous",
+          "evidence:5",
+          "effort:low"
+        ]
+      }
+    },
+    {
+      "id": "risk-review:founders-oneclickwebsitedesignfactory",
+      "kind": "risk",
+      "title": "Review unresolved risk for Founders One Click Website Design Factory",
+      "businessId": "tail-wagging-website-design-factory",
+      "projectId": "founders-oneclickwebsitedesignfactory",
+      "objective": "Reduce operational or customer-facing risk before Founders One Click Website Design Factory is promoted.",
+      "expectedOutcome": "risk-reduction",
+      "kpiId": "customer-facing-risks",
+      "evidence": [
+        "Project purpose and commercial-readiness state are not yet verified.",
+        "projects/founders-oneclickwebsitedesignfactory",
+        "/home/oneclickwebsitedesignfactory/.openclaw/workspace/business/registry.json"
+      ],
+      "taskType": "system-monitor",
+      "taskPayload": {
+        "target": "projects/founders-oneclickwebsitedesignfactory",
+        "scope": "business-risk",
+        "dryRun": true
+      },
+      "approval": "safe-autonomous",
+      "verification": {
+        "method": "worker",
+        "description": "System monitor worker records risk posture and recommended safe follow-up.",
+        "expectedEvidence": [
+          "system-monitor run",
+          "risk findings"
+        ]
+      },
+      "dependencies": [],
+      "acceptanceCriteria": [
+        "Risk is classified with evidence and next safe action."
+      ],
+      "risk": "low: local risk review",
+      "effort": "low",
+      "opportunity": {
+        "type": "operations",
+        "description": "Project purpose and commercial-readiness state are not yet verified."
+      },
+      "score": {
+        "value": 730.4348,
+        "formula": "expectedBusinessImpact * confidence * urgency * commercialReadinessImpact * evidenceQuality * reversibility / (effort + operationalRisk + dependencyLoad + approvalFriction)",
+        "components": {
+          "expectedBusinessImpact": 3.5,
+          "confidence": 4,
+          "urgency": 4,
+          "effort": 1.2,
+          "operationalRisk": 1.4,
+          "dependencyLoad": 1,
+          "commercialReadinessImpact": 3,
+          "reversibility": 5,
+          "approvalFriction": 1,
+          "evidenceQuality": 4
+        },
+        "rationale": [
+          "outcome:risk-reduction",
+          "approval:safe-autonomous",
+          "evidence:3",
+          "effort:low"
+        ]
+      }
+    }
+  ],
+  "selectedTask": {
+    "candidateId": "runtime:recent-task-failures",
+    "taskType": "qa-verification",
+    "taskId": "613871f1-f2e7-4216-953f-7e0cf21903fe",
+    "idempotencyKey": "business-value:runtime:recent-task-failures",
+    "title": "Verify recent failed or retrying task executions",
+    "score": 913.0435,
+    "evidence": [
+      "heartbeat:0a93fa95-bf4e-46fb-9b58-e599063ab278",
+      "heartbeat:89b663a5-408c-4623-bf92-8f876d97bcde",
+      "heartbeat:a27cf78d-92eb-4db5-97ee-fb42f88171be",
+      "heartbeat:f91ccaf2-8ec7-47af-b11d-7cf05dc60f5f",
+      "heartbeat:0b9e5a62-e4c1-4a9b-8162-712acf4a098e"
+    ],
+    "worker": "qa-verification-agent",
+    "model": null,
+    "executionStatus": "success",
+    "verificationStatus": "passed"
+  },
+  "approvalGatedCandidates": [],
+  "unsupportedCandidates": [],
+  "verificationStatus": "passed",
+  "evidence": [
+    {
+      "path": "/home/oneclickwebsitedesignfactory/.openclaw/workspace/projects/openclaw-operator/artifacts/business-value/cycles/business-cycle-2026-07-12T06-55-08-629Z-c7de9145.json",
+      "summary": "Selected Verify recent failed or retrying task executions.",
+      "createdAt": "2026-07-12T06:55:18.649Z"
+    },
+    {
+      "path": "task:613871f1-f2e7-4216-953f-7e0cf21903fe",
+      "summary": "qa verification dry-run complete (dry-run accepted for build-verify)",
+      "createdAt": "2026-07-12T06:55:27.646Z"
+    },
+    {
+      "path": "business-value:runtime:recent-task-failures",
+      "summary": "qa verification dry-run complete (dry-run accepted for build-verify)",
+      "createdAt": "2026-07-12T06:55:27.646Z"
+    }
+  ],
+  "nextSafeAction": "Review verified evidence and allow the next change-aware cycle to select new work."
+}

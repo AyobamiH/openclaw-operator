@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-07-12`
+Last updated: `2026-07-14`
 
 ## Current Headline
 
@@ -33,6 +33,11 @@ The public repo direction is now explicit.
   direction
 
 ## Recently Finished
+
+0. The governed business-value loop now covers a broader daily opportunity set.
+   - discovery includes founder and vibe-coded product rescue readiness plus community-value and social-growth opportunities
+   - safe market-research candidates can enter the daily cycle while public, social, and Gmail actions remain approval-gated
+   - completed cycle snapshots are retained as reviewable business-value evidence
 
 0. Autonomous Work Controller v1.1 runtime hardening is implemented.
    - approved queue, paused-task, standing-order, workboard, schedule, operator, and capability-gap intake is prioritized and deduplicated

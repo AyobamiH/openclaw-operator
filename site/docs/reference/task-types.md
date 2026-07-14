@@ -5,6 +5,23 @@ summary: "Current allowlisted task types in the orchestrator runtime."
 
 # Task Types Reference
 
+## `autonomous-intake-cycle`
+
+Public bounded intake task for explicitly approved operator, queue, paused,
+standing-order, workboard, scheduled-audit, and capability-gap records. It
+applies priority, staleness, batch, provenance, and idempotency controls before
+enqueueing `autonomous-work-cycle`. Unknown and unapproved sources are not run.
+
+## `autonomous-work-cycle`
+
+Publicly triggerable bounded controller task. Payload requires a concise
+`requestedOutcome` and may include `projectRoot`, `idempotencyKey`, and
+`maxSteps`. Coding inspection routes through ToolGate to the narrowest approved
+coding-agent-skills tool, defaulting to `coding_audit`. Non-coding work remains
+on existing routes. Mutation, secret, install, restart, deployment, migration,
+commit, push, and merge boundaries stop for approval. Durable checkpoints and
+sanitized invocation evidence are written beneath the configured logs directory.
+
 Related scope policy:
 
 - see [../architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md](../architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md)

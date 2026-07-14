@@ -204,10 +204,18 @@ Specialist operator-console contract truth:
   conservative six-hour cadence (`17 */6 * * *` by default). The scheduler
   skips active, unchanged, not-due, paused, disabled, and backoff states. It
   stores trigger reason, next run, last progress, failure backoff, and active
-  task lock so restart recovery does not create duplicate work.
+  task lock so restart recovery does not create duplicate work. Trigger
+  evaluation also reconciles stale orphaned active locks before treating the
+  scheduler as active, so a persisted marker without live execution evidence
+  cannot block future cycles indefinitely.
 - `/system-health`: not a backend route; it is a frontend-only page path.
 
 ### Operator Console Rendering Guardrails
+
+Frontend normalization may retain a non-enumerable `__raw` payload for local
+diagnostics. It must never add diagnostic metadata as enumerable API fields:
+record renderers use `Object.entries()` for deliberate score, evidence, and
+graph maps, and enumerable diagnostic objects violate that contract.
 
 Do not render these nested objects directly:
 
