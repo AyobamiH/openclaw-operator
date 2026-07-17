@@ -13,6 +13,8 @@ From workspace root:
 
 ```bash
 STATE_FILE=$(jq -r '.stateFile' orchestrator_config.json)
+STATE_TARGET="$STATE_FILE"
+STATE_FILE="${STATE_TARGET#sqlite:}"
 LOGS_DIR=$(jq -r '.logsDir' orchestrator_config.json)
 KP_DIR=$(jq -r '.knowledgePackDir' orchestrator_config.json)
 CONFIG_FILE=orchestrator_config.json
@@ -22,7 +24,8 @@ CONFIG_FILE=orchestrator_config.json
 
 | Item | Path Source | Importance | Notes |
 |---|---|---|---|
-| State file | `$STATE_FILE` | Critical | Primary task/runtime history |
+| State target | `$STATE_TARGET` | Critical | Local JSON, `mongo:<key>`, or `sqlite:<path>` |
+| SQLite database | `${STATE_TARGET#sqlite:}` | Critical when selected | Back up with a SQLite-consistent snapshot, not a plain live copy |
 | Config file | `$CONFIG_FILE` | Critical | Needed to restore correct paths/behavior |
 | Knowledge packs | `$KP_DIR` | High | Preserves generated summaries |
 | Logs directory | `$LOGS_DIR` | Medium | Useful for forensic diagnosis |
@@ -42,11 +45,23 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 cd "$ROOT"
 
 STATE_FILE=$(jq -r '.stateFile' orchestrator_config.json)
+STATE_TARGET="$STATE_FILE"
+STATE_FILE="${STATE_TARGET#sqlite:}"
 LOGS_DIR=$(jq -r '.logsDir' orchestrator_config.json)
 KP_DIR=$(jq -r '.knowledgePackDir' orchestrator_config.json)
 
 mkdir -p "$BACKUP_DIR/$STAMP"
-cp "$STATE_FILE" "$BACKUP_DIR/$STAMP/" 2>/dev/null || true
+case "$STATE_TARGET" in
+  sqlite:*)
+    sqlite3 "$STATE_FILE" "PRAGMA wal_checkpoint(PASSIVE); VACUUM INTO '$BACKUP_DIR/$STAMP/operator.sqlite';"
+    ;;
+  mongo:*)
+    echo "Use an authenticated mongodump for the configured Mongo database; do not expose credentials in logs."
+    ;;
+  *)
+    cp "$STATE_FILE" "$BACKUP_DIR/$STAMP/"
+    ;;
+esac
 cp orchestrator_config.json "$BACKUP_DIR/$STAMP/"
 cp -r "$KP_DIR" "$BACKUP_DIR/$STAMP/" 2>/dev/null || true
 cp -r "$LOGS_DIR" "$BACKUP_DIR/$STAMP/" 2>/dev/null || true
@@ -63,7 +78,11 @@ STAMP="$(date +%Y%m%d_%H%M%S)"
 DEST="$HOME/backups/orchestrator-$STAMP"
 mkdir -p "$DEST"
 
-cp "$STATE_FILE" "$DEST/" 2>/dev/null || true
+case "$STATE_TARGET" in
+  sqlite:*) sqlite3 "$STATE_FILE" "VACUUM INTO '$DEST/operator.sqlite';" ;;
+  mongo:*) echo "Create an authenticated mongodump in $DEST" ;;
+  *) cp "$STATE_FILE" "$DEST/" ;;
+esac
 cp orchestrator_config.json "$DEST/"
 cp -r "$KP_DIR" "$DEST/" 2>/dev/null || true
 tar -czf "$HOME/backups/orchestrator-$STAMP.tar.gz" -C "$HOME/backups" "orchestrator-$STAMP"
@@ -82,7 +101,24 @@ tar -czf "$HOME/backups/orchestrator-$STAMP.tar.gz" -C "$HOME/backups" "orchestr
    ```
 5. Restart runtime and verify `/health`.
 
-### 2) Disk Pressure
+### 2) SQLite Corruption Or Rollback
+
+1. Stop the named runtime service so no writer remains.
+2. Preserve the failed database, `-wal`, and `-shm` files for diagnosis.
+3. Validate the selected backup with `PRAGMA integrity_check` and
+   `PRAGMA foreign_key_check`.
+4. Restore the known-good database and keep `stateFile` on the same
+   `sqlite:<path>` target, or restore the retained `mongo:<key>` target when a
+   cutover rollback is explicitly approved.
+5. Start the service once and require `/health` plus
+   `/api/persistence/health` to report healthy, with `store: sqlite` after a
+   SQLite recovery.
+
+For the 2026-07-16 host cutover, retain Mongo unchanged for at least 24 hours
+and until explicit retirement approval. Do not delete either backend during
+the rollback window.
+
+### 3) Disk Pressure
 
 1. Inspect configured logs path:
    ```bash
@@ -92,7 +128,7 @@ tar -czf "$HOME/backups/orchestrator-$STAMP.tar.gz" -C "$HOME/backups" "orchestr
 3. Keep recent knowledge packs and remove old ones by retention policy.
 4. Re-check free space: `df -h`.
 
-### 3) Full Host Restore
+### 4) Full Host Restore
 
 1. Restore backup archive.
 2. Restore `orchestrator_config.json`.
@@ -122,5 +158,8 @@ tar -tzf /backup/orchestrator/<latest>.tar.gz | grep -E 'orchestrator_config.jso
 
 ## Notes
 
-- Do not assume a fixed `logs/*` state filename; runtime state path comes from `stateFile` in config.
+- Do not assume a fixed `logs/*` state filename; runtime state target comes from `stateFile` in config.
+- A live SQLite database must be captured with a transactionally consistent
+  SQLite backup (`VACUUM INTO`, `.backup`, or a verified filesystem snapshot).
+  Copying only the main database while WAL is active is not sufficient.
 - Recovery instructions must be updated if config keys change.

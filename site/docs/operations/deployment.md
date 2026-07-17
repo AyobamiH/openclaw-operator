@@ -13,6 +13,21 @@ This runbook is configuration-driven. Do not hardcode state/log locations in ope
 - npm
 - `orchestrator_config.json` present and valid JSON
 
+## GitHub Publication Boundary
+
+The production-artifact and docs-site workflows are manual-only:
+
+- `.github/workflows/deploy.yml` uses `workflow_dispatch`, runs
+  `npm run verify:main`, and binds the job to the `production` environment.
+- `.github/workflows/docs-pages.yml` uses `workflow_dispatch`, runs
+  `npm run verify:main`, and binds the deployment job to the `github-pages`
+  environment.
+
+Configure required reviewers for both environments in GitHub repository
+settings. The workflow files declare the environments and prevent automatic
+push-to-deploy chaining, but the repository's environment protection rules
+enforce independent reviewer approval.
+
 ## Resolve Runtime Paths First
 
 Run from the repo root:
@@ -114,11 +129,15 @@ compatible with the stored data or reset those volumes intentionally.
 - [ ] Effective persistence target is understood:
   ```bash
   echo "$STATE_FILE"
-  if [[ "$STATE_FILE" == *:* ]]; then
-    echo "runtime target is non-file-backed"
-  else
-    test -f "$STATE_FILE" && echo "state file present"
-  fi
+  case "$STATE_FILE" in
+    sqlite:*) test -f "${STATE_FILE#sqlite:}" && echo "SQLite target present" ;;
+    mongo:*) echo "Mongo target selected" ;;
+    *) test -f "$STATE_FILE" && echo "JSON target present" ;;
+  esac
+  ```
+- [ ] Persistence health agrees with config:
+  ```bash
+  curl -fsS http://127.0.0.1:4300/api/persistence/health | jq '{status,store,collections,coordination}'
   ```
 - [ ] Recent task state is readable:
   ```bash
@@ -146,8 +165,10 @@ passes.
 - [x] Agent `serviceRunning` is host-proven where claimed (`2026-03-09`; current host truth is `serviceInstalledCount=0`, `serviceRunningCount=0`)
   `serviceAvailable` is not the same thing as a running service process.
 - [x] Canonical non-fast-start launch is proven on port `3312`
-  Proven on `2026-03-09`: non-fast-start boot now reaches Mongo-backed
-  persistence, KnowledgeIntegration, and `HTTP server listening on port 3312`.
+  Proven on `2026-03-09`: non-fast-start boot reached Mongo-backed persistence,
+  KnowledgeIntegration, and `HTTP server listening on port 3312`. The retained
+  host runtime was migrated to normalized SQLite v2 and recovered successfully
+  on port `3312` on `2026-07-16`; Redis coordination remained healthy.
   The synthetic orchestrator-local memory scheduler was removed on `2026-03-21`;
   crash-safe continuity now lives in the workspace root memory files instead of
   a local snapshot/consolidation side path.
@@ -192,11 +213,11 @@ If deployment fails:
    ```
 3. Restore state from backup to configured state path:
    ```bash
-   if [[ "$STATE_FILE" == *:* ]]; then
-     echo "restore the backing runtime store for $STATE_FILE using its native backup/import path"
-   else
-     cp /backup/orchestrator-state-latest.json "$STATE_FILE"
-   fi
+   case "$STATE_FILE" in
+     sqlite:*) echo "restore a verified SQLite backup to ${STATE_FILE#sqlite:}" ;;
+     mongo:*) echo "restore the backing Mongo state key using its native backup/import path" ;;
+     *) cp /backup/orchestrator-state-latest.json "$STATE_FILE" ;;
+   esac
    ```
 4. Rebuild and start selected mode again.
 5. Re-run post-deploy verification checks.

@@ -99,8 +99,12 @@ Treat protected-branch shipping as a repo-managed contract, not a memory task.
   - sets `core.hooksPath` to `.githooks`
   - runs during `npm install`
 
-GitHub Actions should use the same protected-branch verification contract
-before publish-style workflows run.
+GitHub Actions publish-style workflows must be started explicitly with
+`workflow_dispatch`, bind their mutating job to the named `production` or
+`github-pages` environment, and run the same protected-branch verification
+contract before producing or publishing an artifact. Required reviewers for
+those environments are configured in GitHub repository settings; the workflow
+files declare the boundary but cannot create that platform-side policy.
 
 ## Real Test Rule
 

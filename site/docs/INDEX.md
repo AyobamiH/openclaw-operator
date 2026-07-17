@@ -64,6 +64,8 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md) | Orchestrator-first Sprint To Completion subordinate execution tracker for the root anchor |
 | [operations/deployment.md](./operations/deployment.md) | production operations checklist |
 | [operations/backup-recovery.md](./operations/backup-recovery.md) | recovery guidance |
+| [operations/operator-sqlite-cutover-2026-07-16.md](./operations/operator-sqlite-cutover-2026-07-16.md) | normalized SQLite host cutover evidence and rollback window |
+| [operations/startup-reconciliation-audit-2026-07-16.md](./operations/startup-reconciliation-audit-2026-07-16.md) | read-only integrity audit and no-replay decision for the 732 startup-reconciled executions |
 
 ## Guides
 

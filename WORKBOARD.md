@@ -117,8 +117,12 @@ The public repo direction is now explicit.
    - pushes to `main` / `master` now run a repo-managed pre-push `verify:main`
      gate locally
    - GitHub validation now runs the same protected-branch contract
-   - deploy and docs workflows now wait for validation success instead of
-     racing it
+   - production-artifact and docs-site workflows no longer chain automatically
+     from successful validation; both require explicit manual dispatch
+   - both publish-style workflows run `verify:main` themselves and bind their
+     mutating job to the named `production` or `github-pages` environment
+   - required reviewers remain a GitHub repository-settings control; the
+     workflow declarations do not silently claim that platform policy exists
 
 6. An uncommitted governance spike was intentionally dropped.
    - retained ideas only: dynamic task validation, auth-grace config, route

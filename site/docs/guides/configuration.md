@@ -39,10 +39,18 @@ These fields define the minimum runtime surface:
 }
 ```
 
-`stateFile` is a runtime target, not only a filesystem path. The repo-native
-default now points at a local JSON state file so first-run local dev can boot
-without Mongo. Docker or alternate host configs can still override it with a
-Mongo-backed target when needed.
+`stateFile` is a runtime target, not only a filesystem path. Supported forms
+are a local JSON path, `mongo:<state-key>`, and `sqlite:<database-path>`. The
+repo-native default points at local JSON so first-run local dev can boot without
+Mongo. Docker or alternate host configs can override it.
+
+Selecting `sqlite:<database-path>` activates normalized SQLite v2 for both core
+state and the nine historical persistence collections. It is a hard cutover:
+Mongo is not connected for persistence and no dual writes occur, even when
+`DATABASE_URL` remains configured. Redis coordination remains independent and
+continues to use `REDIS_URL`. Do not point SQLite at a legacy single-row
+prototype database; migrate into a fresh target and verify the migration ledger
+before activation.
 
 ## Common Operational Fields
 

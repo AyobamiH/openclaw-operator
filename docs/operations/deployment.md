@@ -13,6 +13,21 @@ This runbook is configuration-driven. Do not hardcode state/log locations in ope
 - npm
 - `orchestrator_config.json` present and valid JSON
 
+## GitHub Publication Boundary
+
+The production-artifact and docs-site workflows are manual-only:
+
+- `.github/workflows/deploy.yml` uses `workflow_dispatch`, runs
+  `npm run verify:main`, and binds the job to the `production` environment.
+- `.github/workflows/docs-pages.yml` uses `workflow_dispatch`, runs
+  `npm run verify:main`, and binds the deployment job to the `github-pages`
+  environment.
+
+Configure required reviewers for both environments in GitHub repository
+settings. The workflow files declare the environments and prevent automatic
+push-to-deploy chaining, but the repository's environment protection rules
+enforce independent reviewer approval.
+
 ## Resolve Runtime Paths First
 
 Run from the repo root:

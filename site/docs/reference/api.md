@@ -147,6 +147,15 @@ Mission Control implementation note:
 
 Specialist operator-console contract truth:
 
+- Runtime state targets support local files, `mongo:<key>`, and
+  `sqlite:<path>`. The normalized SQLite v2 backend uses WAL, typed tables for
+  the nine historical collections, lossless source-document migration evidence,
+  top-level state sections, and item-normalized state arrays. Selecting SQLite
+  is a hard persistence switch for both core and historical state; it does not
+  dual-write to Mongo. Migration and activation remain operator-approved
+  operations. The retained host runtime was cut over to SQLite on 2026-07-16;
+  the public repo default remains the local JSON target.
+
 - `GET /api/health/extended`: authoritative protected operator-health surface.
 - `GET /api/dashboard/overview`: protected operator aggregation only. Useful
   for queue, approvals, governance, and recent-task visibility, but not
@@ -175,7 +184,7 @@ Specialist operator-console contract truth:
   items.
 - `GET /api/auth/me`: protected auth identity surface.
 - `GET /api/persistence/health`: public persistence dependency truth, now
-  including the active persistence store (`file` or `mongo`) plus first-slice
+  including the active persistence store (`file`, `mongo`, or `sqlite`) plus first-slice
   coordination status for Redis-backed claims, locks, and shared helper
   budgets.
 - `GET /api/tasks/catalog`: protected operator capability surface for
@@ -185,7 +194,12 @@ Specialist operator-console contract truth:
   them.
 - `GET /api/business/overview`: protected mission, registry, ranked candidate,
   selected-task, scheduler, blocker, verification, evidence, and next-action
-  view used by the existing operator console.
+  view used by the existing operator console. The canonical
+  `business/registry.json` now uses schema v2.0.1 and retains strategic
+  initiatives, business risks, coverage gaps, approval policy, and the full
+  live pipeline. Strategic initiatives and critical coverage gaps may produce
+  bounded internal `content-generate` planning candidates; the API does not
+  authorize external action or invent missing business values.
 - `GET /api/business/operations`: protected operational state for automatic
   mode, cadence, active lock, last progress, failure backoff, active worker,
   selected model, and approval-gated candidates.
@@ -450,6 +464,20 @@ Run identity contract:
 - `runId` reuses `payload.idempotencyKey` only when the caller supplies one
 - otherwise the task id becomes the run id, so normal trigger calls stay
   visible as distinct entries in `/api/tasks/runs`
+- central admission now runs before queue telemetry or processing
+- a new key returns HTTP `202` with `status: queued` and creates a durable
+  `queueAttempts[]` entry on the run
+- a key already owned by a `pending`, `running`, `success`, or `failed` run
+  returns HTTP `200` with `status: duplicate-suppressed`, the existing `runId`
+  and status, and a machine-readable reason; it does not emit accepted/queued
+  telemetry or create a second execution
+- same-key retry admission is reserved for a `retrying` execution whose
+  persisted retry-recovery record matches type, attempt, and retry limit
+- `/api/tasks/runs` and `/api/tasks/runs/:runId` expose bounded
+  `queueAttempts[]` lifecycle evidence (`admitted`, `running`,
+  `awaiting-approval`, `coordination-blocked`, `success`, or `failed`)
+- approval replay receives a distinct `approval-replay:<taskId>` run identity;
+  it is not treated as an accidental duplicate of the approval-held attempt
 
 Interpretation note from the `2026-03-07` repair follow-up:
 

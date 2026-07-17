@@ -1,10 +1,6 @@
 name: Deploy Docs Site
 
 on:
-  workflow_run:
-    workflows: ["Test & Validate"]
-    types: [completed]
-    branches: [main, master]
   workflow_dispatch:
 
 permissions:
@@ -18,14 +14,12 @@ concurrency:
 
 jobs:
   build:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,10 +31,10 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
-      - name: Build VitePress site
-        run: npm run docs:site:build
+      - name: Run canonical protected-branch verification
+        run: npm run verify:main
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
