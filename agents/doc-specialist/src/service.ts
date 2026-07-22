@@ -10,6 +10,7 @@ import {
   type RuntimeAgentServiceState,
   type RuntimeTaskExecution,
 } from "../../shared/runtime-evidence.js";
+import { enforceKnowledgePackRetention } from "./knowledge-pack-retention.js";
 
 interface AgentConfig {
   id: string;
@@ -122,6 +123,9 @@ async function runOnce(config: AgentConfig) {
     JSON.stringify({ id: packId, generatedAt: new Date().toISOString(), docs }, null, 2),
     "utf-8",
   );
+  const retention = await enforceKnowledgePackRetention({
+    directory: config.knowledgePackDir,
+  });
 
   state.pendingDocChanges = [];
   state.driftRepairs = [...(state.driftRepairs ?? []), {
@@ -138,7 +142,11 @@ async function runOnce(config: AgentConfig) {
   state.lastDriftRepairAt = new Date().toISOString();
   await saveState(config.orchestratorStatePath, state);
 
-  await telemetry.info("drift.complete", { packPath, docsProcessed: docs.length });
+  await telemetry.info("drift.complete", {
+    packPath,
+    docsProcessed: docs.length,
+    retention,
+  });
   return state;
 }
 

@@ -12,6 +12,7 @@ import {
   summarizeTaskExecutions,
   type RuntimeStateSubset,
 } from "../../shared/runtime-evidence.js";
+import { enforceKnowledgePackRetention } from "./knowledge-pack-retention.js";
 
 interface DriftRepairPayload {
   id: string;
@@ -1748,6 +1749,9 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
   });
 
   await writeFile(packPath, JSON.stringify(payload, null, 2), "utf-8");
+  const retention = await enforceKnowledgePackRetention({
+    directory: config.knowledgePackDir,
+  });
   const sourceBreakdown = summaries.reduce((acc, doc) => {
     acc[doc.source] = (acc[doc.source] || 0) + 1;
     return acc;
@@ -1759,6 +1763,7 @@ async function generateKnowledgePack(task: DriftRepairPayload, config: AgentConf
     sourceBreakdown,
     configAuditIssues: configAudit.summary.totalIssues,
     configAuditCriticalIssues: configAudit.summary.criticalIssues,
+    retention,
   });
 
   const resultFile = process.env.DOC_SPECIALIST_RESULT_FILE;

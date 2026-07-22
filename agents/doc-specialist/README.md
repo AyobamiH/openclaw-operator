@@ -32,6 +32,11 @@ These paths are part of the protected repository hygiene surface and must be eva
 ### Outputs
 - Structured completion logs pushed back to the Orchestrator (`doc-sync` and `drift-repair` records)
 - Updated knowledge packs written to `knowledgePackDir`
+- A bounded retained set of the 30 newest knowledge packs. Older matching pack
+  files are pruned after a successful write and their names, sizes, and
+  timestamps are appended to
+  `logs/archive/knowledge-pack-retention.jsonl`. Non-pack files are never
+  selected by this retention path.
 - Telemetry events (success/failure, per-file stats)
 - Operator-facing summary fields:
   - `operatorSummary`
