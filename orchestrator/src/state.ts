@@ -16,6 +16,19 @@ import {
   IncidentVerificationState,
   OrchestratorState,
   RepairRecord,
+  ReviewSessionBaselineSummary,
+  ReviewSessionBucket,
+  ReviewSessionBucketTransition,
+  ReviewSessionCapturePlan,
+  ReviewSessionDerivedSummary,
+  ReviewSessionMachineProfile,
+  ReviewSessionNote,
+  ReviewSessionProfile,
+  ReviewSessionRecord,
+  ReviewSessionTelemetrySummary,
+  ReviewSessionSummaryBucketStats,
+  ReviewTelemetrySample,
+  ReviewSessionWorkloadSummary,
   RelationshipObservationRecord,
   TaskExecutionRecord,
   TaskQueueAttemptRecord,
@@ -40,6 +53,8 @@ const REPAIR_RECORD_LIMIT = 500;
 const INCIDENT_LEDGER_LIMIT = 1000;
 const WORKFLOW_EVENT_LIMIT = 20000;
 const RELATIONSHIP_OBSERVATION_LIMIT = 20000;
+const REVIEW_SESSION_LIMIT = 25;
+const REVIEW_TELEMETRY_SAMPLE_LIMIT = 10000;
 const BUSINESS_VALUE_CYCLE_LIMIT = 200;
 const BUSINESS_VALUE_CANDIDATE_LIMIT = 500;
 type StateRetentionOptions = {
@@ -60,6 +75,382 @@ function normalizeStringArray(values: unknown, limit: number = 100) {
   if (!Array.isArray(values)) return [] as string[];
   return [...new Set(values.filter((value): value is string => typeof value === "string" && value.length > 0))].slice(-limit);
 }
+
+function normalizeReviewBucket(value: unknown): ReviewSessionBucket {
+  switch (value) {
+    case "baseline_idle":
+    case "startup_cost":
+    case "steady_state_running_cost":
+    case "burst_workload":
+    case "user_experience_evidence":
+      return value;
+    default:
+      return "startup_cost";
+  }
+}
+
+function normalizeReviewMachineProfile(value: unknown): ReviewSessionMachineProfile | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewSessionMachineProfile>;
+  if (
+    typeof raw.hostname !== "string" ||
+    typeof raw.platform !== "string" ||
+    typeof raw.arch !== "string" ||
+    typeof raw.cpuModel !== "string" ||
+    typeof raw.cpuCores !== "number" ||
+    typeof raw.memoryTotalMb !== "number"
+  ) {
+    return null;
+  }
+  return {
+    hostname: raw.hostname,
+    platform: raw.platform,
+    arch: raw.arch,
+    cpuModel: raw.cpuModel,
+    cpuCores: raw.cpuCores,
+    memoryTotalMb: raw.memoryTotalMb,
+  };
+}
+
+function normalizeReviewBaselineSummary(value: unknown): ReviewSessionBaselineSummary | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewSessionBaselineSummary>;
+  if (
+    typeof raw.cpuPercentAvg !== "number" ||
+    typeof raw.cpuPercentPeak !== "number" ||
+    typeof raw.loadAvg1m !== "number" ||
+    typeof raw.memoryUsedMbAvg !== "number" ||
+    typeof raw.memoryUsedMbPeak !== "number"
+  ) {
+    return null;
+  }
+  return {
+    cpuPercentAvg: raw.cpuPercentAvg,
+    cpuPercentPeak: raw.cpuPercentPeak,
+    loadAvg1m: raw.loadAvg1m,
+    memoryUsedMbAvg: raw.memoryUsedMbAvg,
+    memoryUsedMbPeak: raw.memoryUsedMbPeak,
+  };
+}
+
+function normalizeReviewNote(value: unknown): ReviewSessionNote | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewSessionNote>;
+  if (typeof raw.capturedAt !== "string" || typeof raw.text !== "string") {
+    return null;
+  }
+  return {
+    capturedAt: raw.capturedAt,
+    bucket: normalizeReviewBucket(raw.bucket),
+    text: raw.text,
+  };
+}
+
+function normalizeReviewBucketStats(value: unknown): ReviewSessionSummaryBucketStats | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewSessionSummaryBucketStats>;
+  if (typeof raw.durationSeconds !== "number" || typeof raw.sampleCount !== "number") {
+    return null;
+  }
+  return {
+    durationSeconds: raw.durationSeconds,
+    sampleCount: raw.sampleCount,
+    cpuPercentAvg: typeof raw.cpuPercentAvg === "number" ? raw.cpuPercentAvg : null,
+    cpuPercentPeak: typeof raw.cpuPercentPeak === "number" ? raw.cpuPercentPeak : null,
+    memoryUsedMbAvg: typeof raw.memoryUsedMbAvg === "number" ? raw.memoryUsedMbAvg : null,
+    memoryUsedMbPeak: typeof raw.memoryUsedMbPeak === "number" ? raw.memoryUsedMbPeak : null,
+  };
+}
+
+function normalizeReviewSessionProfile(value: unknown): ReviewSessionProfile {
+  return value === "soak-24h" ? "soak-24h" : "standard";
+}
+
+function normalizeReviewCapturePlan(value: unknown): ReviewSessionCapturePlan {
+  if (!value || typeof value !== "object") {
+    return {
+      profile: "standard",
+      sampleIntervalMs: 5000,
+      maxSamples: REVIEW_SESSION_LIMIT * 60,
+      intendedDurationHours: null,
+      targetTaskCount: null,
+    };
+  }
+
+  const raw = value as Partial<ReviewSessionCapturePlan>;
+  const sampleIntervalMs =
+    typeof raw.sampleIntervalMs === "number" && Number.isFinite(raw.sampleIntervalMs)
+      ? Math.max(1000, Math.floor(raw.sampleIntervalMs))
+      : 5000;
+  const maxSamples =
+    typeof raw.maxSamples === "number" && Number.isFinite(raw.maxSamples)
+      ? Math.max(60, Math.floor(raw.maxSamples))
+      : REVIEW_SESSION_LIMIT * 60;
+
+  return {
+    profile: normalizeReviewSessionProfile(raw.profile),
+    sampleIntervalMs,
+    maxSamples,
+    intendedDurationHours:
+      typeof raw.intendedDurationHours === "number" && Number.isFinite(raw.intendedDurationHours)
+        ? raw.intendedDurationHours
+        : null,
+    targetTaskCount:
+      typeof raw.targetTaskCount === "number" && Number.isFinite(raw.targetTaskCount)
+        ? raw.targetTaskCount
+        : null,
+  };
+}
+
+function normalizeReviewTelemetrySummary(value: unknown): ReviewSessionTelemetrySummary {
+  if (!value || typeof value !== "object") {
+    return {
+      totalSampleCount: 0,
+      cpuPercentAvg: null,
+      cpuPercentPeak: null,
+      memoryUsedMbAvg: null,
+      memoryUsedMbPeak: null,
+      processRssMbAvg: null,
+      processRssMbPeak: null,
+      queueDepthAvg: null,
+      queueDepthPeak: null,
+      activeRunsAvg: null,
+      activeRunsPeak: null,
+      openIncidentsAvg: null,
+      openIncidentsPeak: null,
+    };
+  }
+
+  const raw = value as Partial<ReviewSessionTelemetrySummary>;
+  return {
+    totalSampleCount:
+      typeof raw.totalSampleCount === "number" && Number.isFinite(raw.totalSampleCount)
+        ? raw.totalSampleCount
+        : 0,
+    cpuPercentAvg: typeof raw.cpuPercentAvg === "number" ? raw.cpuPercentAvg : null,
+    cpuPercentPeak: typeof raw.cpuPercentPeak === "number" ? raw.cpuPercentPeak : null,
+    memoryUsedMbAvg: typeof raw.memoryUsedMbAvg === "number" ? raw.memoryUsedMbAvg : null,
+    memoryUsedMbPeak: typeof raw.memoryUsedMbPeak === "number" ? raw.memoryUsedMbPeak : null,
+    processRssMbAvg: typeof raw.processRssMbAvg === "number" ? raw.processRssMbAvg : null,
+    processRssMbPeak: typeof raw.processRssMbPeak === "number" ? raw.processRssMbPeak : null,
+    queueDepthAvg: typeof raw.queueDepthAvg === "number" ? raw.queueDepthAvg : null,
+    queueDepthPeak: typeof raw.queueDepthPeak === "number" ? raw.queueDepthPeak : null,
+    activeRunsAvg: typeof raw.activeRunsAvg === "number" ? raw.activeRunsAvg : null,
+    activeRunsPeak: typeof raw.activeRunsPeak === "number" ? raw.activeRunsPeak : null,
+    openIncidentsAvg: typeof raw.openIncidentsAvg === "number" ? raw.openIncidentsAvg : null,
+    openIncidentsPeak: typeof raw.openIncidentsPeak === "number" ? raw.openIncidentsPeak : null,
+  };
+}
+
+function normalizeReviewWorkloadSummary(value: unknown, startedAt: string): ReviewSessionWorkloadSummary {
+  if (!value || typeof value !== "object") {
+    return {
+      windowStartedAt: startedAt,
+      windowEndedAt: startedAt,
+      consideredRuns: 0,
+      completedRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+      retryingRuns: 0,
+      pendingRuns: 0,
+      averageLatencyMs: null,
+      p95LatencyMs: null,
+      totalCostUsd: 0,
+      topTaskTypes: [],
+    };
+  }
+
+  const raw = value as Partial<ReviewSessionWorkloadSummary>;
+  return {
+    windowStartedAt:
+      typeof raw.windowStartedAt === "string" && raw.windowStartedAt.length > 0
+        ? raw.windowStartedAt
+        : startedAt,
+    windowEndedAt:
+      typeof raw.windowEndedAt === "string" && raw.windowEndedAt.length > 0
+        ? raw.windowEndedAt
+        : startedAt,
+    consideredRuns: typeof raw.consideredRuns === "number" ? raw.consideredRuns : 0,
+    completedRuns: typeof raw.completedRuns === "number" ? raw.completedRuns : 0,
+    successfulRuns: typeof raw.successfulRuns === "number" ? raw.successfulRuns : 0,
+    failedRuns: typeof raw.failedRuns === "number" ? raw.failedRuns : 0,
+    retryingRuns: typeof raw.retryingRuns === "number" ? raw.retryingRuns : 0,
+    pendingRuns: typeof raw.pendingRuns === "number" ? raw.pendingRuns : 0,
+    averageLatencyMs: typeof raw.averageLatencyMs === "number" ? raw.averageLatencyMs : null,
+    p95LatencyMs: typeof raw.p95LatencyMs === "number" ? raw.p95LatencyMs : null,
+    totalCostUsd: typeof raw.totalCostUsd === "number" ? raw.totalCostUsd : 0,
+    topTaskTypes: Array.isArray(raw.topTaskTypes)
+      ? raw.topTaskTypes
+          .map((item) => {
+            if (!item || typeof item !== "object") return null;
+            const typed = item as { type?: unknown; count?: unknown };
+            if (typeof typed.type !== "string" || typeof typed.count !== "number") return null;
+            return {
+              type: typed.type,
+              count: typed.count,
+            };
+          })
+          .filter((item): item is { type: string; count: number } => item !== null)
+      : [],
+  };
+}
+
+function normalizeReviewDerivedSummary(value: unknown): ReviewSessionDerivedSummary | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewSessionDerivedSummary>;
+  if (
+    typeof raw.generatedAt !== "string" ||
+    typeof raw.durationSeconds !== "number" ||
+    typeof raw.linkedRunCount !== "number" ||
+    typeof raw.linkedRunCostUsd !== "number" ||
+    typeof raw.observedIncidentCount !== "number"
+  ) {
+    return null;
+  }
+  const bucketStats: Partial<Record<ReviewSessionBucket, ReviewSessionSummaryBucketStats>> = {};
+  if (raw.bucketStats && typeof raw.bucketStats === "object") {
+    for (const [key, item] of Object.entries(raw.bucketStats)) {
+      const normalized = normalizeReviewBucketStats(item);
+      if (normalized) {
+        bucketStats[normalizeReviewBucket(key)] = normalized;
+      }
+    }
+  }
+  return {
+    generatedAt: raw.generatedAt,
+    durationSeconds: raw.durationSeconds,
+    startupHandoffSeconds:
+      typeof raw.startupHandoffSeconds === "number" ? raw.startupHandoffSeconds : null,
+    bucketStats,
+    linkedRunCount: raw.linkedRunCount,
+    linkedRunCostUsd: raw.linkedRunCostUsd,
+    linkedRunAverageLatencyMs:
+      typeof raw.linkedRunAverageLatencyMs === "number"
+        ? raw.linkedRunAverageLatencyMs
+        : null,
+    observedIncidentCount: raw.observedIncidentCount,
+    telemetry: normalizeReviewTelemetrySummary(raw.telemetry),
+    workload: normalizeReviewWorkloadSummary(raw.workload, raw.generatedAt),
+  };
+}
+
+function normalizeReviewBucketTransition(value: unknown): ReviewSessionBucketTransition | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewSessionBucketTransition>;
+  if (typeof raw.capturedAt !== "string") {
+    return null;
+  }
+  return {
+    bucket: normalizeReviewBucket(raw.bucket),
+    capturedAt: raw.capturedAt,
+    note: typeof raw.note === "string" ? raw.note : null,
+  };
+}
+
+function normalizeReviewSessionRecord(value: unknown): ReviewSessionRecord | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewSessionRecord>;
+  const machine = normalizeReviewMachineProfile(raw.machine);
+  if (
+    typeof raw.id !== "string" ||
+    typeof raw.state !== "string" ||
+    typeof raw.title !== "string" ||
+    typeof raw.createdAt !== "string" ||
+    typeof raw.startedAt !== "string" ||
+    typeof raw.baselineStartedAt !== "string" ||
+    typeof raw.baselineEndedAt !== "string" ||
+    typeof raw.startupStartedAt !== "string" ||
+    !machine
+  ) {
+    return null;
+  }
+  return {
+    id: raw.id,
+    source: "bootstrap_handoff",
+    state:
+      raw.state === "pending_handoff" ||
+      raw.state === "active" ||
+      raw.state === "completed" ||
+      raw.state === "handoff_failed"
+        ? raw.state
+        : "handoff_failed",
+    title: raw.title,
+    createdAt: raw.createdAt,
+    startedAt: raw.startedAt,
+    endedAt: typeof raw.endedAt === "string" ? raw.endedAt : null,
+    baselineStartedAt: raw.baselineStartedAt,
+    baselineEndedAt: raw.baselineEndedAt,
+    startupStartedAt: raw.startupStartedAt,
+    handoffReceivedAt:
+      typeof raw.handoffReceivedAt === "string" ? raw.handoffReceivedAt : null,
+    activeBucket: normalizeReviewBucket(raw.activeBucket),
+    capturePlan: normalizeReviewCapturePlan(raw.capturePlan),
+    machine,
+    baselineSummary: normalizeReviewBaselineSummary(raw.baselineSummary),
+    bucketTimeline: Array.isArray(raw.bucketTimeline)
+      ? raw.bucketTimeline
+          .map(normalizeReviewBucketTransition)
+          .filter((item): item is ReviewSessionBucketTransition => item !== null)
+      : [],
+    scenarioNotes: Array.isArray(raw.scenarioNotes)
+      ? raw.scenarioNotes
+          .map(normalizeReviewNote)
+          .filter((item): item is ReviewSessionNote => item !== null)
+      : [],
+    linkedRunIds: normalizeStringArray(raw.linkedRunIds, 100),
+    summary: normalizeReviewDerivedSummary(raw.summary),
+    failureReason: typeof raw.failureReason === "string" ? raw.failureReason : null,
+  };
+}
+
+function normalizeReviewTelemetrySample(value: unknown): ReviewTelemetrySample | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Partial<ReviewTelemetrySample>;
+  const host = raw.host as ReviewTelemetrySample["host"] | undefined;
+  const processInfo = raw.process as ReviewTelemetrySample["process"] | undefined;
+  const activity = raw.activity as ReviewTelemetrySample["activity"] | undefined;
+  if (
+    typeof raw.reviewSessionId !== "string" ||
+    typeof raw.capturedAt !== "string" ||
+    !host ||
+    typeof host.cpuPercent !== "number" ||
+    typeof host.load1 !== "number" ||
+    typeof host.load5 !== "number" ||
+    typeof host.load15 !== "number" ||
+    typeof host.memoryUsedBytes !== "number" ||
+    typeof host.memoryTotalBytes !== "number" ||
+    !processInfo ||
+    !activity ||
+    typeof activity.openIncidents !== "number" ||
+    typeof activity.queueDepth !== "number" ||
+    typeof activity.activeRuns !== "number"
+  ) {
+    return null;
+  }
+  return {
+    reviewSessionId: raw.reviewSessionId,
+    capturedAt: raw.capturedAt,
+    bucket: normalizeReviewBucket(raw.bucket),
+    source: raw.source === "bootstrap" ? "bootstrap" : "orchestrator",
+    host,
+    process: {
+      rssBytes: typeof processInfo.rssBytes === "number" ? processInfo.rssBytes : null,
+      heapUsedBytes:
+        typeof processInfo.heapUsedBytes === "number" ? processInfo.heapUsedBytes : null,
+      heapTotalBytes:
+        typeof processInfo.heapTotalBytes === "number" ? processInfo.heapTotalBytes : null,
+      uptimeSec: typeof processInfo.uptimeSec === "number" ? processInfo.uptimeSec : null,
+    },
+    activity: {
+      openIncidents: activity.openIncidents,
+      queueDepth: activity.queueDepth,
+      activeRuns: activity.activeRuns,
+      recentRunIds: normalizeStringArray(activity.recentRunIds, 10),
+    },
+    tags: normalizeStringArray(raw.tags, 20),
+  };
+}
+
 
 function normalizeTaskQueueAttempts(value: unknown): TaskQueueAttemptRecord[] {
   if (!Array.isArray(value)) return [];
@@ -531,17 +922,9 @@ export async function loadState(
   const store = createStateStore<OrchestratorState>(path);
 
   const normalizeParsedState = (parsed: OrchestratorState) => {
-    const {
-      reviewSessions: _legacyReviewSessions,
-      reviewTelemetrySamples: _legacyReviewTelemetrySamples,
-      ...rest
-    } = parsed as OrchestratorState & {
-      reviewSessions?: unknown;
-      reviewTelemetrySamples?: unknown;
-    };
     return {
       ...createDefaultState(),
-      ...rest,
+      ...parsed,
       taskHistory: parsed.taskHistory?.slice(-historyLimit) ?? [],
       taskExecutions:
         parsed.taskExecutions?.slice(-TASK_EXECUTION_LIMIT).map((execution) => ({
@@ -572,6 +955,16 @@ export async function loadState(
           .map(normalizeRelationshipObservation)
           .filter((item): item is RelationshipObservationRecord => item !== null) ??
         [],
+      reviewSessions:
+        parsed.reviewSessions
+          ?.slice(-REVIEW_SESSION_LIMIT)
+          .map(normalizeReviewSessionRecord)
+          .filter((item): item is ReviewSessionRecord => item !== null) ?? [],
+      reviewTelemetrySamples:
+        parsed.reviewTelemetrySamples
+          ?.slice(-REVIEW_TELEMETRY_SAMPLE_LIMIT)
+          .map(normalizeReviewTelemetrySample)
+          .filter((item): item is ReviewTelemetrySample => item !== null) ?? [],
       businessValue: {
         ...createDefaultBusinessValueState(),
         ...(parsed.businessValue ?? {}),
@@ -642,6 +1035,10 @@ export async function saveStateWithOptions(
     relationshipObservations: state.relationshipObservations.slice(
       -RELATIONSHIP_OBSERVATION_LIMIT,
     ),
+    reviewSessions: state.reviewSessions.slice(-REVIEW_SESSION_LIMIT),
+    reviewTelemetrySamples: state.reviewTelemetrySamples.slice(
+      -REVIEW_TELEMETRY_SAMPLE_LIMIT,
+    ),
     businessValue: state.businessValue
       ? {
           ...state.businessValue,
@@ -677,6 +1074,8 @@ export function createDefaultState(): OrchestratorState {
     incidentLedger: [],
     workflowEvents: [],
     relationshipObservations: [],
+    reviewSessions: [],
+    reviewTelemetrySamples: [],
     businessValue: createDefaultBusinessValueState(),
     lastDriftRepairAt: null,
     lastRedditResponseAt: null,
