@@ -4,9 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { expect, test } from "vitest";
-import { canonicalDocumentDigest, createApprovalRequest, executeApprovedTransaction, prepareRepositoryPatch, signingProviderFromPrivateKeyPem, verifyReceipt, type ExecutionRequestDocument, type RepositoryPatchRequestDocument } from "@openclaw/agentproof";
+import { canonicalDocumentDigest, createApprovalRequest, executeApprovedTransaction, prepareRepositoryPatch, signingProviderFromPrivateKeyPem, verifyReceipt, type ExecutionRequestDocument, type RepositoryPatchRequestDocument } from "@oneclicksystems/agentproof";
 // @ts-expect-error legacy Operator TypeScript resolution does not model package export subpaths
-import { createDevelopmentApprovalDecision, createDevelopmentKeyPair } from "@openclaw/agentproof/development-authority";
+import { createDevelopmentApprovalDecision, createDevelopmentKeyPair } from "@oneclicksystems/agentproof/development-authority";
 import { adaptApprovedReplayToAgentProofDevelopmentDecision } from "../src/agentproofAdapter.js";
 import { decideAndEnqueueApprovalReplay } from "../src/approvalReplay.js";
 import { TaskQueue } from "../src/taskQueue.js";

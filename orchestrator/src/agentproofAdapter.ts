@@ -1,4 +1,4 @@
-import { canonicalDocumentDigest, type PortableApprovalDecisionDocument, type PortableApprovalRequestDocument } from "@openclaw/agentproof";
+import { canonicalDocumentDigest, type PortableApprovalDecisionDocument, type PortableApprovalRequestDocument } from "@oneclicksystems/agentproof";
 import { operatorApprovalDecisionDigest } from "./approvalReplay.js";
 import type { ApprovalRecord, Task } from "./types.js";
 
