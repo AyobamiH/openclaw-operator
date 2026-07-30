@@ -586,10 +586,10 @@ function createHeartbeatPayload(seed: number, runId: string): Record<string, unk
 function buildRepresentativeSafeSpecs(runId: string): WorkloadSpec[] {
   return [
     {
-      name: 'heartbeat',
-      type: 'heartbeat',
+      name: 'normalize-data-primary',
+      type: 'normalize-data',
       weight: 55,
-      payload: createHeartbeatPayload(0, runId),
+      payload: createNormalizePayload(0),
     },
     {
       name: 'qa-verification-dry-run',
@@ -1198,7 +1198,7 @@ async function main() {
   );
   const fastStart = process.env.ORCHESTRATOR_FAST_START ?? 'true';
   const forwardedIpPool = Number(process.env.LIVE_RATE_IP_POOL ?? '300');
-  const workloadProfile = (process.env.LIVE_RATE_WORKLOAD_PROFILE ?? 'heartbeat').trim().toLowerCase();
+  const workloadProfile = (process.env.LIVE_RATE_WORKLOAD_PROFILE ?? 'representative-safe').trim().toLowerCase();
   const manifestPath = process.env.LIVE_RATE_MANIFEST_PATH?.trim() ?? null;
   const requireReviewSession = attachMode && parseBoolean(process.env.LIVE_RATE_REQUIRE_REVIEW_SESSION, true);
   const postReviewBucket = process.env.LIVE_RATE_POST_REVIEW_BUCKET?.trim();

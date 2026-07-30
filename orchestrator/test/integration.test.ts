@@ -1389,8 +1389,13 @@ describe('Runtime Integration: Live Middleware Chain', () => {
             'X-Forwarded-For': `10.40.0.${(index % 250) + 1}`,
           },
           body: JSON.stringify({
-            type: 'heartbeat',
-            payload: { reason: `rate-limit-burst-${index}` },
+            type: 'normalize-data',
+            payload: {
+              type: 'normalize',
+              input: [{ id: index, label: `rate-limit-burst-${index}` }],
+              schema: { id: 'number', label: 'string' },
+              options: { dedupe: false, trim: true },
+            },
           }),
         }),
       ),
