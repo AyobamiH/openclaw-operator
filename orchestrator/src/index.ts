@@ -119,6 +119,12 @@ import {
   IncidentOwnerSchema,
   IncidentRemediationSchema,
   PersistenceHistoricalSchema,
+  ReviewSessionBootstrapHandoffSchema,
+  ReviewSessionBucketUpdateSchema,
+  ReviewSessionExportQuerySchema,
+  ReviewSessionIdParamsSchema,
+  ReviewSessionLinkRunSchema,
+  ReviewSessionNoteSchema,
   SkillsAuditQuerySchema,
   TaskRunsQuerySchema,
   TaskTriggerSchema,
@@ -144,6 +150,11 @@ import {
   claimTaskExecutionLease,
   releaseTaskExecutionLease,
 } from "./coordination/runtime-coordination.js";
+import { createReviewSessionService } from "./reviewSessions.js";
+import { DeterministicPublishingEngine } from "./publishing/engine.js";
+import { loadRegistryBundle } from "./publishing/registry.js";
+import { PublishingStore } from "./publishing/store.js";
+import { registerPublishingRoutes } from "./publishing/routes.js";
 
 /**
  * Security Posture Verification
@@ -10460,6 +10471,22 @@ async function bootstrap() {
   if (getStateStoreKind(config.stateFile) === "file") {
     await mkdir(dirname(config.stateFile), { recursive: true });
   }
+  let publishingEngine: DeterministicPublishingEngine | null = null;
+  if (config.publishingRegistryPath || config.publishingDatabasePath) {
+    if (!config.publishingRegistryPath || !config.publishingDatabasePath) {
+      throw new Error(
+        "publishingRegistryPath and publishingDatabasePath must be configured together",
+      );
+    }
+    await mkdir(dirname(config.publishingDatabasePath), { recursive: true });
+    const publishingRegistry = await loadRegistryBundle(config.publishingRegistryPath);
+    const publishingStore = new PublishingStore(config.publishingDatabasePath);
+    publishingEngine = new DeterministicPublishingEngine(
+      publishingRegistry,
+      publishingStore,
+    );
+    publishingEngine.initialize();
+  }
 
   console.log("[orchestrator] config loaded", config);
   if (fastStartMode) {
@@ -10716,7 +10743,17 @@ async function bootstrap() {
     taskRuns: 20,
     taskRunDetail: 30,
     healthExtended: 15,
+    reviewSessions: 15,
   } as const;
+
+  const reviewSessionService = createReviewSessionService({
+    state,
+    flushState,
+    getQueueSnapshot: () => ({
+      queued: queue.getQueuedCount(),
+      processing: queue.getPendingCount(),
+    }),
+  });
 
   const refreshGitHubWorkflowMonitor = async () => {
     const nextState = await collectGitHubWorkflowMonitorState({
@@ -13034,6 +13071,8 @@ async function bootstrap() {
   // Protected Endpoints (Authentication Required)
   // ============================================================
 
+  registerPublishingRoutes(app, publishingEngine);
+
   app.get(
     "/api/auth/me",
     authLimiter,
@@ -13054,6 +13093,193 @@ async function bootstrap() {
       });
     },
   );
+
+  app.post(
+    "/api/review-sessions/bootstrap-handoff",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("review-sessions.bootstrap-handoff.create"),
+    createValidationMiddleware(ReviewSessionBootstrapHandoffSchema, "body"),
+    async (req, res) => {
+      try {
+        const session = await reviewSessionService.bootstrapHandoff(req.body);
+        res.status(201).json({
+          generatedAt: new Date().toISOString(),
+          session,
+        });
+      } catch (error: any) {
+        const message = error instanceof Error ? error.message : "review session bootstrap handoff failed";
+        const status = /already active|already completed|previously failed/i.test(message)
+          ? 409
+          : 400;
+        res.status(status).json({ error: message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/review-sessions",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("review-sessions.read"),
+    async (req, res) => {
+      try {
+        await respondWithCachedJson(req, res, {
+          namespace: "review-sessions.list",
+          ttlSeconds: readCacheTtls.reviewSessions,
+          tags: ["runtime-state"],
+          scope: "protected",
+          compute: () => reviewSessionService.overview(),
+        });
+      } catch (error: any) {
+        res.status(500).json({ error: error.message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/review-sessions/:id",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("review-sessions.detail.read"),
+    async (req, res) => {
+      try {
+        const { id } = ReviewSessionIdParamsSchema.parse(req.params);
+        await respondWithCachedJson(req, res, {
+          namespace: "review-sessions.detail",
+          ttlSeconds: readCacheTtls.reviewSessions,
+          tags: ["runtime-state"],
+          scope: "protected",
+          keyData: { id },
+          compute: () => {
+            const detail = reviewSessionService.detail(id);
+            if (!detail) {
+              throw new Error(`Review session not found: ${id}`);
+            }
+            return detail;
+          },
+        });
+      } catch (error: any) {
+        const message = error instanceof Error ? error.message : "review session detail failed";
+        res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/review-sessions/:id/bucket",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("review-sessions.bucket.write"),
+    createValidationMiddleware(ReviewSessionBucketUpdateSchema, "body"),
+    async (req, res) => {
+      try {
+        const { id } = ReviewSessionIdParamsSchema.parse(req.params);
+        const session = await reviewSessionService.switchBucket(
+          id,
+          req.body.bucket,
+          typeof req.body.note === "string" ? req.body.note : undefined,
+        );
+        res.json({ status: "ok", session });
+      } catch (error: any) {
+        const message = error instanceof Error ? error.message : "review session bucket update failed";
+        res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/review-sessions/:id/note",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("review-sessions.note.write"),
+    createValidationMiddleware(ReviewSessionNoteSchema, "body"),
+    async (req, res) => {
+      try {
+        const { id } = ReviewSessionIdParamsSchema.parse(req.params);
+        const session = await reviewSessionService.addNote(id, req.body.bucket, req.body.text);
+        res.json({ status: "ok", session });
+      } catch (error: any) {
+        const message = error instanceof Error ? error.message : "review session note failed";
+        res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/review-sessions/:id/link-run",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("review-sessions.link-run.write"),
+    createValidationMiddleware(ReviewSessionLinkRunSchema, "body"),
+    async (req, res) => {
+      try {
+        const { id } = ReviewSessionIdParamsSchema.parse(req.params);
+        const session = await reviewSessionService.linkRun(id, req.body.runId);
+        res.json({ status: "ok", session });
+      } catch (error: any) {
+        const message = error instanceof Error ? error.message : "review session run link failed";
+        res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+      }
+    },
+  );
+
+  app.post(
+    "/api/review-sessions/:id/stop",
+    authLimiter,
+    requireBearerToken,
+    operatorWriteLimiter,
+    requireRole("operator"),
+    auditProtectedAction("review-sessions.stop.write"),
+    async (req, res) => {
+      try {
+        const { id } = ReviewSessionIdParamsSchema.parse(req.params);
+        const session = await reviewSessionService.stop(id);
+        res.json({ status: "ok", session });
+      } catch (error: any) {
+        const message = error instanceof Error ? error.message : "review session stop failed";
+        res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+      }
+    },
+  );
+
+  app.get(
+    "/api/review-sessions/:id/export",
+    authLimiter,
+    requireBearerToken,
+    viewerReadLimiter,
+    requireRole("viewer"),
+    auditProtectedAction("review-sessions.export.read"),
+    createValidationMiddleware(ReviewSessionExportQuerySchema, "query"),
+    async (req, res) => {
+      try {
+        const { id } = ReviewSessionIdParamsSchema.parse(req.params);
+        const format = req.query.format === "markdown" ? "markdown" : "json";
+        const exported = reviewSessionService.exportSession(id, format);
+        if (format === "markdown") {
+          res.setHeader("Content-Type", "text/markdown; charset=utf-8");
+          return res.send(exported);
+        }
+        return res.json(exported);
+      } catch (error: any) {
+        const message = error instanceof Error ? error.message : "review session export failed";
+        return res.status(/not found/i.test(message) ? 404 : 400).json({ error: message });
+      }
+    },
+  );
+
 
   app.get(
     "/api/tasks/catalog",
@@ -14871,6 +15097,7 @@ async function bootstrap() {
     server.close(async () => {
       console.log("[orchestrator] HTTP server closed");
       try {
+        publishingEngine?.store.close();
         await PersistenceIntegration.close();
         console.log("[orchestrator] Database connections closed");
       } catch (err) {

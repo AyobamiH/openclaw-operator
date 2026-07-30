@@ -23,6 +23,7 @@ const SystemHealthPage = lazy(() => import("./pages/SystemHealthPage"));
 const DiagnosticsPage = lazy(() => import("./pages/DiagnosticsPage"));
 const TaskRunsPage = lazy(() => import("./pages/TaskRunsPage"));
 const TaskRunDetailPage = lazy(() => import("./pages/TaskRunDetailPage"));
+const ReviewSessionsPage = lazy(() => import("./pages/ReviewSessionsPage"));
 const KnowledgePage = lazy(() => import("./pages/KnowledgePage"));
 const BusinessValuePage = lazy(() => import("./pages/BusinessValuePage"));
 const PublicProofPage = lazy(() => import("./pages/PublicProofPage"));
@@ -84,6 +85,7 @@ function AuthenticatedApp() {
           <Route path="/diagnostics" element={<LazyPage><DiagnosticsPage /></LazyPage>} />
           <Route path="/task-runs" element={<LazyPage><TaskRunsPage /></LazyPage>} />
           <Route path="/task-runs/:runId" element={<LazyPage><TaskRunDetailPage /></LazyPage>} />
+          <Route path="/review-sessions" element={<LazyPage><ReviewSessionsPage /></LazyPage>} />
           <Route path="/knowledge" element={<LazyPage><KnowledgePage /></LazyPage>} />
           <Route path="/business-value" element={<LazyPage><BusinessValuePage /></LazyPage>} />
           <Route path="*" element={<LazyPage><NotFound /></LazyPage>} />

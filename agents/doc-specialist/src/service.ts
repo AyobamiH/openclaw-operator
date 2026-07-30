@@ -5,6 +5,7 @@ import { Telemetry } from "../../shared/telemetry.js";
 import {
   buildTaskPathProof,
   loadRuntimeStateTarget,
+  resolveOperatorStatePath,
   resolveRuntimeStateTarget,
   saveRuntimeStateTarget,
   type RuntimeAgentServiceState,
@@ -46,9 +47,17 @@ async function loadConfig(): Promise<AgentConfig> {
     id: parsed.id,
     orchestratorTask: parsed.orchestratorTask,
     docsPath: resolve(dirname(configPath), parsed.docsPath),
-    knowledgePackDir: resolve(dirname(configPath), parsed.knowledgePackDir),
+    knowledgePackDir: resolveOperatorStatePath(
+      configPath,
+      parsed.knowledgePackDir,
+      "logs/knowledge-packs",
+    ),
     orchestratorStatePath: resolveRuntimeStateTarget(configPath, parsed.orchestratorStatePath)!,
-    serviceStatePath: resolve(dirname(configPath), parsed.serviceStatePath),
+    serviceStatePath: resolveOperatorStatePath(
+      configPath,
+      parsed.serviceStatePath,
+      "logs/doc-specialist-service.json",
+    ),
   };
 }
 

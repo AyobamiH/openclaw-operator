@@ -68,6 +68,9 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/startup-reconciliation-audit-2026-07-16.md](./operations/startup-reconciliation-audit-2026-07-16.md) | read-only integrity audit and no-replay decision for the 732 startup-reconciled executions |
 | [operations/machine-migration-manifest.md](./operations/machine-migration-manifest.md) | pinned source, services, plugins, skills, configuration references, and current migration blockers |
 | [operations/protected-runtime-export-plan.md](./operations/protected-runtime-export-plan.md) | protected non-source state export/restore contract and secret separation boundary |
+| [operations/deterministic-self-identification-publishing-engine-recon-2026-07-29.md](./operations/deterministic-self-identification-publishing-engine-recon-2026-07-29.md) | evidence-first product/runtime reconciliation and activation gaps |
+| [operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md](./operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md) | local implementation, diagnostic and acceptance evidence |
+| [operations/openclaw-release-candidate-recovery-and-production-integration-2026-07-30.md](./operations/openclaw-release-candidate-recovery-and-production-integration-2026-07-30.md) | dirty-tree forensics, preserved-work receipts, production integration proof, rollback and activation gates |
 
 ## Guides
 
@@ -88,6 +91,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [architecture/AGENT_ADAPTATION_PLAN.md](./architecture/AGENT_ADAPTATION_PLAN.md) | implementation-ready adaptation plan for strengthening the current agent portfolio using proven role patterns without changing the current runtime architecture |
 | [architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md](./architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md) | current runtime/operator exposure matrix for routes, tasks, and agents |
 | [architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md](./architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md) | published docs-site structure and downstream publishing model |
+| [architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md](./architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md) | canonical commercial selection, publication state, evidence, platform-expansion and drift-guard architecture |
 | [reference/api.md](./reference/api.md) | API and code-facing reference |
 | [reference/task-types.md](./reference/task-types.md) | task allowlist reference |
 | [reference/state-schema.md](./reference/state-schema.md) | runtime state summary |

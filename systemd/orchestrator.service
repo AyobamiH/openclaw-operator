@@ -5,15 +5,18 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/openclaw-operator/orchestrator
+WorkingDirectory=%h/.openclaw/workspace/projects/openclaw-operator/orchestrator
+EnvironmentFile=%h/.openclaw/state/openclaw-operator/credentials/orchestrator.env
 Environment=NODE_ENV=production
 Environment=PORT=3312
 Environment=PROMETHEUS_PORT=9100
-Environment=ORCHESTRATOR_CONFIG=%h/openclaw-operator/orchestrator_config.json
-Environment=OPERATOR_UI_DIST_DIR=%h/openclaw-operator/operator-s-console/dist
-ExecStart=%h/openclaw-operator/orchestrator/node_modules/.bin/tsx src/index.ts
+Environment=ORCHESTRATOR_CONFIG=%h/.openclaw/workspace/orchestrator_config.json
+Environment=OPERATOR_UI_DIST_DIR=%h/.openclaw/workspace/projects/openclaw-operator/operator-s-console/dist
+Environment=OPENCLAW_OPERATOR_STATE_DIR=%h/.openclaw/state/openclaw-operator
+ExecStart=/usr/bin/env bash -lc 'exec node --import tsx src/index.ts'
 Restart=on-failure
 RestartSec=5
+UMask=0077
 StandardOutput=journal
 StandardError=journal
 

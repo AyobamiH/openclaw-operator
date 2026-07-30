@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildIncidentPriorityQueue,
@@ -197,7 +197,7 @@ async function loadServiceState(
   if (!descriptor.serviceStatePath) return null;
   const { state } = await readServiceStateWithSkill<RuntimeAgentServiceState>(
     loadConfig().id,
-    descriptor.serviceStatePath,
+    resolveServiceStateReaderPath(descriptor.serviceStatePath),
   );
   return state;
 }
@@ -209,10 +209,22 @@ async function isServiceStateMissingOrStale(
   if (!descriptor.serviceStatePath) return true;
   const { exists, metadata } = await readServiceStateWithSkill<RuntimeAgentServiceState>(
     loadConfig().id,
-    descriptor.serviceStatePath,
+    resolveServiceStateReaderPath(descriptor.serviceStatePath),
   );
   const modifiedAt = Date.parse(metadata.modifiedAt ?? "");
   return !exists || !Number.isFinite(modifiedAt) || Date.now() - modifiedAt > maxAgeMs;
+}
+
+function resolveServiceStateReaderPath(configuredPath: string): string {
+  const stateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
+  if (!stateRoot) {
+    return configuredPath;
+  }
+
+  return relative(
+    process.cwd(),
+    resolve(stateRoot, "logs", basename(configuredPath)),
+  );
 }
 
 function resolveProofFreshness(

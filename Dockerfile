@@ -29,12 +29,13 @@ COPY --from=builder /workspace/orchestrator /workspace/orchestrator
 COPY --from=operator-console-builder /workspace/operator-s-console/dist /workspace/operator-s-console/dist
 COPY agents /workspace/agents
 COPY skills /workspace/skills
+COPY config /workspace/config
 COPY openclaw-docs /workspace/openclaw-docs
 COPY openai-cookbook /workspace/openai-cookbook
 COPY RUNTIME_ENGAGEMENT_OS.md /workspace/RUNTIME_ENGAGEMENT_OS.md
 COPY rss_filter_config.json /workspace/rss_filter_config.json
 
-RUN mkdir -p /workspace/logs /workspace/orchestrator/data /workspace/agents-deployed
+RUN mkdir -p /workspace/logs /workspace/state /workspace/orchestrator/data /workspace/agents-deployed
 
 ENV NODE_ENV=production
 ENV ORCHESTRATOR_CONFIG=/workspace/orchestrator/orchestrator_config.json

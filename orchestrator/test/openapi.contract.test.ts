@@ -24,6 +24,11 @@ describe("OpenAPI contract", () => {
     expect(spec.paths["/api/companion/incidents"]?.get).toBeTruthy();
     expect(spec.paths["/api/companion/runs"]?.get).toBeTruthy();
     expect(spec.paths["/api/companion/approvals"]?.get).toBeTruthy();
+    expect(spec.paths["/api/publishing/overview"]?.get).toBeTruthy();
+    expect(spec.paths["/api/publishing/slots"]?.get).toBeTruthy();
+    expect(spec.paths["/api/publishing/publications"]?.get).toBeTruthy();
+    expect(spec.paths["/api/publishing/audit"]?.get).toBeTruthy();
+    expect(spec.paths["/api/publishing/slots/plan"]?.post).toBeTruthy();
   });
 
   it("captures role and limiter metadata for protected routes", () => {
@@ -59,6 +64,16 @@ describe("OpenAPI contract", () => {
       rateLimitBucket: "viewer-read",
       action: "companion.overview.read",
       companionView: "status",
+    });
+
+    expect(
+      spec.paths["/api/publishing/slots/plan"].post["x-openclaw-access"],
+    ).toMatchObject({
+      requiredRole: "operator",
+      rateLimitBucket: "operator-write",
+      action: "publishing.slots.plan",
+      externalWrites: false,
+      providerWriteAvailable: false,
     });
   });
 

@@ -1,15 +1,18 @@
 [Unit]
 Description=OpenClaw Doc Specialist Service
-ConditionPathExists=%h/openclaw-operator/agents/doc-specialist/src/service.ts
+ConditionPathExists=%h/.openclaw/workspace/projects/openclaw-operator/agents/doc-specialist/src/service.ts
 After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/openclaw-operator/agents/doc-specialist
+WorkingDirectory=%h/.openclaw/workspace/projects/openclaw-operator/agents/doc-specialist
 Environment=ALLOW_DIRECT_SERVICE=true
-ExecStart=/usr/bin/env bash -lc 'exec node ../../node_modules/tsx/dist/cli.mjs src/service.ts'
+Environment=OPENCLAW_OPERATOR_STATE_DIR=%h/.openclaw/state/openclaw-operator
+Environment=ORCHESTRATOR_CONFIG=%h/.openclaw/workspace/orchestrator_config.json
+ExecStart=/usr/bin/env bash -lc 'exec node --import tsx src/service.ts'
 Restart=always
 RestartSec=5
+UMask=0077
 
 [Install]
 WantedBy=multi-user.target

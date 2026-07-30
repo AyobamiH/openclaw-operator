@@ -324,6 +324,41 @@ function isMongoStateTarget(targetPath: string) {
   return targetPath.startsWith("mongo:");
 }
 
+function isSqliteStateTarget(targetPath: string) {
+  return targetPath.startsWith("sqlite:");
+}
+
+async function createRuntimeStateStore<T>(targetPath: string): Promise<{
+  load(): Promise<T | null>;
+  save(value: T): Promise<void>;
+}> {
+  const candidates = [
+    "../../orchestrator/dist/state-store.js",
+    "../../orchestrator/src/state-store.ts",
+  ];
+  let lastError: unknown = null;
+
+  for (const candidate of candidates) {
+    try {
+      const stateStoreModule = (await import(candidate)) as {
+        createStateStore?: <Value>(target: string) => {
+          load(): Promise<Value | null>;
+          save(value: Value): Promise<void>;
+        };
+      };
+      if (typeof stateStoreModule.createStateStore === "function") {
+        return stateStoreModule.createStateStore<T>(targetPath);
+      }
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("OpenClaw state-store module is unavailable");
+}
+
 function resolveMongoStateKey(targetPath: string) {
   const key = targetPath.slice("mongo:".length).trim();
   if (!key) {
@@ -447,6 +482,19 @@ function resolveRuntimeTargetFromBase(
   return resolve(baseDir, trimmed);
 }
 
+export function resolveOperatorStatePath(
+  agentConfigPath: string,
+  configuredPath: string,
+  stateRelativePath: string,
+) {
+  const configuredStateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
+  if (configuredStateRoot) {
+    return resolve(configuredStateRoot, stateRelativePath);
+  }
+
+  return resolve(dirname(agentConfigPath), configuredPath);
+}
+
 function resolveOrchestratorConfigPath(agentConfigPath: string) {
   const repoRoot = resolve(dirname(agentConfigPath), "../../");
   const configuredPath = process.env.ORCHESTRATOR_CONFIG;
@@ -514,6 +562,11 @@ export async function loadRuntimeStateTarget<T>(
     return readMongoSystemState<T>(targetPath, fallback);
   }
 
+  if (isSqliteStateTarget(targetPath)) {
+    const persisted = await (await createRuntimeStateStore<T>(targetPath)).load();
+    return persisted ?? fallback;
+  }
+
   return readJsonFile<T>(targetPath, fallback);
 }
 
@@ -527,6 +580,11 @@ export async function saveRuntimeStateTarget<T>(
 
   if (isMongoStateTarget(targetPath)) {
     await writeMongoSystemState(targetPath, value);
+    return;
+  }
+
+  if (isSqliteStateTarget(targetPath)) {
+    await (await createRuntimeStateStore<T>(targetPath)).save(value);
     return;
   }
 

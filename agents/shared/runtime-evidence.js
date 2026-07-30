@@ -15,6 +15,30 @@ export async function readJsonFile(targetPath, fallback) {
 function isMongoStateTarget(targetPath) {
     return targetPath.startsWith("mongo:");
 }
+function isSqliteStateTarget(targetPath) {
+    return targetPath.startsWith("sqlite:");
+}
+async function createRuntimeStateStore(targetPath) {
+    const candidates = [
+        "../../orchestrator/dist/state-store.js",
+        "../../orchestrator/src/state-store.ts",
+    ];
+    let lastError = null;
+    for (const candidate of candidates) {
+        try {
+            const stateStoreModule = (await import(candidate));
+            if (typeof stateStoreModule.createStateStore === "function") {
+                return stateStoreModule.createStateStore(targetPath);
+            }
+        }
+        catch (error) {
+            lastError = error;
+        }
+    }
+    throw lastError instanceof Error
+        ? lastError
+        : new Error("OpenClaw state-store module is unavailable");
+}
 function resolveMongoStateKey(targetPath) {
     const key = targetPath.slice("mongo:".length).trim();
     if (!key) {
@@ -115,6 +139,13 @@ function resolveRuntimeTargetFromBase(baseDir, target) {
     }
     return resolve(baseDir, trimmed);
 }
+export function resolveOperatorStatePath(agentConfigPath, configuredPath, stateRelativePath) {
+    const configuredStateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
+    if (configuredStateRoot) {
+        return resolve(configuredStateRoot, stateRelativePath);
+    }
+    return resolve(dirname(agentConfigPath), configuredPath);
+}
 function resolveOrchestratorConfigPath(agentConfigPath) {
     const repoRoot = resolve(dirname(agentConfigPath), "../../");
     const configuredPath = process.env.ORCHESTRATOR_CONFIG;
@@ -156,6 +187,10 @@ export async function loadRuntimeStateTarget(targetPath, fallback) {
     if (isMongoStateTarget(targetPath)) {
         return readMongoSystemState(targetPath, fallback);
     }
+    if (isSqliteStateTarget(targetPath)) {
+        const persisted = await (await createRuntimeStateStore(targetPath)).load();
+        return persisted ?? fallback;
+    }
     return readJsonFile(targetPath, fallback);
 }
 export async function saveRuntimeStateTarget(targetPath, value) {
@@ -164,6 +199,10 @@ export async function saveRuntimeStateTarget(targetPath, value) {
     }
     if (isMongoStateTarget(targetPath)) {
         await writeMongoSystemState(targetPath, value);
+        return;
+    }
+    if (isSqliteStateTarget(targetPath)) {
+        await (await createRuntimeStateStore(targetPath)).save(value);
         return;
     }
     await mkdir(dirname(targetPath), { recursive: true });

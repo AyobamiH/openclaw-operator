@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-07-22`
+Last updated: `2026-07-30`
 
 ## Current Headline
 
@@ -33,6 +33,12 @@ The public repo direction is now explicit.
   direction
 
 ## Recently Finished
+
+0. The deterministic self-identification publishing engine is specification-conformant locally.
+   - the versioned registry, primary self-identification rule, campaign/strategy compatibility, immutable `strategyId`, Tax Lien coverage, deterministic five-slot diagnostic, and seven-day sequential portfolio replay are implemented
+   - the product remains a separate governed campaign state machine rather than a replacement for existing Threads or Instagram campaign owners
+   - operator routes expose evidence and local reservation only; there is no provider-write API route
+   - production activation remains blocked until a separate runner, shared account admission, explicit opportunity allocation, exact-path shadow proof, and rollback rehearsal are implemented and verified
 
 0. A retained-host portability and migration source-of-truth is now tracked.
    - the manifest records live services, ports, source repositories, plugin and

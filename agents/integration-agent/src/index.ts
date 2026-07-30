@@ -778,6 +778,17 @@ function buildAgentOperationalPosture(args: {
   };
 }
 
+function hasActiveIncidentPressure(
+  incidents: RuntimeIncidentLedgerRecord[],
+  agentId: string,
+) {
+  return incidents.some(
+    (incident) =>
+      incident.status !== "resolved" &&
+      incidentTargetsAgent(incident, agentId),
+  );
+}
+
 function buildCandidateSelectionReason(
   prefix: string,
   candidate: AgentCandidateScore,
@@ -937,7 +948,20 @@ function findBestAgentCandidate(args: {
       }),
     )
     .filter((candidate) => candidate.skillReady)
-    .sort((left, right) => right.score - left.score);
+    .sort((left, right) => {
+      const postureRank: Record<AgentOperationalPosture["status"], number> = {
+        strong: 2,
+        watching: 1,
+        degraded: 0,
+      };
+      const postureDelta =
+        postureRank[right.operationalPosture.status] -
+        postureRank[left.operationalPosture.status];
+      if (postureDelta !== 0 && Math.abs(right.score - left.score) <= 50) {
+        return postureDelta;
+      }
+      return right.score - left.score;
+    });
 
   const selected = candidates[0] ?? null;
   if (!selected) {
@@ -978,7 +1002,7 @@ async function handleTask(task: Task): Promise<Result> {
   const config = loadConfig();
   const state = await loadRuntimeState<RuntimeState>(
     configPath,
-    config.orchestratorStatePath,
+    process.env.INTEGRATION_AGENT_STATE_FILE ?? config.orchestratorStatePath,
   );
   const agentConfigs = await listAgentConfigs();
   const serviceStates = new Map(
@@ -1009,7 +1033,7 @@ async function handleTask(task: Task): Promise<Result> {
     let selectedOperationalPosture: AgentOperationalPosture | null = null;
 
     if (!agentId) {
-      const selectedCandidate = findBestAgentCandidate({
+      let selectedCandidate = findBestAgentCandidate({
         step,
         agentConfigs,
         serviceStates,
@@ -1017,6 +1041,35 @@ async function handleTask(task: Task): Promise<Result> {
         relationshipObservations: state.relationshipObservations ?? [],
         runtimeWorkflowWatch,
       });
+      if (
+        selectedCandidate &&
+        hasActiveIncidentPressure(
+          state.incidentLedger ?? [],
+          selectedCandidate.agentId,
+        )
+      ) {
+        const alternate = findBestAgentCandidate({
+          step,
+          agentConfigs,
+          serviceStates,
+          incidents: state.incidentLedger ?? [],
+          relationshipObservations: state.relationshipObservations ?? [],
+          runtimeWorkflowWatch,
+          excludeAgentId: selectedCandidate.agentId,
+        });
+        if (
+          alternate &&
+          alternate.operationalPosture.status === "strong" &&
+          selectedCandidate.operationalPosture.status !== "strong"
+        ) {
+          alternate.displacedCandidate = {
+            agentId: selectedCandidate.agentId,
+            score: selectedCandidate.score,
+            operationalPosture: selectedCandidate.operationalPosture,
+          };
+          selectedCandidate = alternate;
+        }
+      }
       if (selectedCandidate) {
         agentId = selectedCandidate.agentId;
         configRecord = selectedCandidate.configRecord;
@@ -1757,6 +1810,18 @@ async function main(): Promise<void> {
   try {
     const payloadRaw = await readFile(payloadPath, "utf-8");
     const taskInput = JSON.parse(payloadRaw) as Task;
+    if (!process.env.INTEGRATION_AGENT_STATE_FILE) {
+      const siblingStatePath = resolve(
+        dirname(payloadPath),
+        "orchestrator_state.json",
+      );
+      try {
+        await readFile(siblingStatePath, "utf-8");
+        process.env.INTEGRATION_AGENT_STATE_FILE = siblingStatePath;
+      } catch {
+        // Optional CLI fixture state; normal runtime uses agent config.
+      }
+    }
     const result = await handleTask(taskInput);
 
     const resultFile = process.env.INTEGRATION_AGENT_RESULT_FILE;

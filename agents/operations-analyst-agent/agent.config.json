@@ -36,7 +36,8 @@
       "readPaths": [
         "../../orchestrator/data/orchestrator-state.json",
         "../../agents",
-        "../../logs"
+        "../../logs",
+        "../../../../../state/openclaw-operator/logs"
       ]
     },
     "network": {

@@ -5,13 +5,15 @@ Wants=docker.service network-online.target
 
 [Service]
 Type=simple
-EnvironmentFile=%h/openclaw-operator/orchestrator/.env
+EnvironmentFile=%h/.openclaw/state/openclaw-operator/credentials/orchestrator.env
+Environment=REDIS_STATE_DIR=%h/.openclaw/state/openclaw-operator/coordination/redis
 ExecStartPre=-/usr/bin/docker rm -f openclaw-host-redis
-ExecStart=/bin/bash -lc 'exec /usr/bin/docker run --rm --name openclaw-host-redis -p 127.0.0.1:6379:6379 -v %h/openclaw-operator/orchestrator/data/redis:/data redis:7-alpine redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"'
+ExecStart=%h/.openclaw/workspace/scripts/run-openclaw-redis-container.sh
 ExecStop=/usr/bin/docker stop openclaw-host-redis
 Restart=always
 RestartSec=5
 TimeoutStartSec=0
+UMask=0077
 
 [Install]
 WantedBy=default.target

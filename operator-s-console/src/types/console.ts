@@ -1594,6 +1594,176 @@ export interface MilestoneDeadLetterResponse {
   items: MilestoneEvent[];
 }
 
+export type ReviewSessionState =
+  | "pending_handoff"
+  | "active"
+  | "completed"
+  | "handoff_failed";
+
+export type ReviewSessionBucket =
+  | "baseline_idle"
+  | "startup_cost"
+  | "steady_state_running_cost"
+  | "burst_workload"
+  | "user_experience_evidence";
+
+export interface ReviewSessionMachineProfile {
+  hostname: string;
+  platform: string;
+  arch: string;
+  cpuModel: string;
+  cpuCores: number;
+  memoryTotalMb: number;
+}
+
+export interface ReviewSessionBaselineSummary {
+  cpuPercentAvg: number;
+  cpuPercentPeak: number;
+  loadAvg1m: number;
+  memoryUsedMbAvg: number;
+  memoryUsedMbPeak: number;
+}
+
+export interface ReviewSessionNote {
+  capturedAt: string;
+  bucket: ReviewSessionBucket;
+  text: string;
+}
+
+export interface ReviewSessionBucketTransition {
+  bucket: ReviewSessionBucket;
+  capturedAt: string;
+  note?: string | null;
+}
+
+export type ReviewSessionProfile = "standard" | "soak-24h";
+
+export interface ReviewSessionCapturePlan {
+  profile: ReviewSessionProfile;
+  sampleIntervalMs: number;
+  maxSamples: number;
+  intendedDurationHours: number | null;
+  targetTaskCount: number | null;
+}
+
+export interface ReviewSessionTelemetrySummary {
+  totalSampleCount: number;
+  cpuPercentAvg: number | null;
+  cpuPercentPeak: number | null;
+  memoryUsedMbAvg: number | null;
+  memoryUsedMbPeak: number | null;
+  processRssMbAvg: number | null;
+  processRssMbPeak: number | null;
+  queueDepthAvg: number | null;
+  queueDepthPeak: number | null;
+  activeRunsAvg: number | null;
+  activeRunsPeak: number | null;
+  openIncidentsAvg: number | null;
+  openIncidentsPeak: number | null;
+}
+
+export interface ReviewSessionWorkloadSummary {
+  windowStartedAt: string;
+  windowEndedAt: string;
+  consideredRuns: number;
+  completedRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  retryingRuns: number;
+  pendingRuns: number;
+  averageLatencyMs: number | null;
+  p95LatencyMs: number | null;
+  totalCostUsd: number;
+  topTaskTypes: Array<{
+    type: string;
+    count: number;
+  }>;
+}
+
+export interface ReviewSessionDerivedSummary {
+  generatedAt: string;
+  durationSeconds: number;
+  startupHandoffSeconds: number | null;
+  bucketStats: Partial<Record<ReviewSessionBucket, {
+    durationSeconds: number;
+    sampleCount: number;
+    cpuPercentAvg: number | null;
+    cpuPercentPeak: number | null;
+    memoryUsedMbAvg: number | null;
+    memoryUsedMbPeak: number | null;
+  }>>;
+  linkedRunCount: number;
+  linkedRunCostUsd: number;
+  linkedRunAverageLatencyMs: number | null;
+  observedIncidentCount: number;
+  telemetry: ReviewSessionTelemetrySummary;
+  workload: ReviewSessionWorkloadSummary;
+}
+
+export interface ReviewSessionRecord {
+  id: string;
+  source: "bootstrap_handoff";
+  state: ReviewSessionState;
+  title: string;
+  createdAt: string;
+  startedAt: string;
+  endedAt: string | null;
+  baselineStartedAt: string;
+  baselineEndedAt: string;
+  startupStartedAt: string;
+  handoffReceivedAt: string | null;
+  activeBucket: ReviewSessionBucket;
+  capturePlan: ReviewSessionCapturePlan;
+  machine: ReviewSessionMachineProfile;
+  baselineSummary: ReviewSessionBaselineSummary | null;
+  bucketTimeline: ReviewSessionBucketTransition[];
+  scenarioNotes: ReviewSessionNote[];
+  linkedRunIds: string[];
+  summary: ReviewSessionDerivedSummary | null;
+  failureReason?: string | null;
+}
+
+export interface ReviewTelemetrySample {
+  reviewSessionId: string;
+  capturedAt: string;
+  bucket: ReviewSessionBucket;
+  source: "bootstrap" | "orchestrator";
+  host: {
+    cpuPercent: number;
+    load1: number;
+    load5: number;
+    load15: number;
+    memoryUsedBytes: number;
+    memoryTotalBytes: number;
+  };
+  process: {
+    rssBytes: number | null;
+    heapUsedBytes: number | null;
+    heapTotalBytes: number | null;
+    uptimeSec: number | null;
+  };
+  activity: {
+    openIncidents: number;
+    queueDepth: number;
+    activeRuns: number;
+    recentRunIds: string[];
+  };
+  tags: string[];
+}
+
+export interface ReviewSessionsOverviewResponse {
+  generatedAt: string;
+  activeSession: ReviewSessionRecord | null;
+  sessions: ReviewSessionRecord[];
+}
+
+export interface ReviewSessionDetailResponse {
+  generatedAt: string;
+  session: ReviewSessionRecord;
+  samples: ReviewTelemetrySample[];
+}
+
+
 // Legacy compat aliases
 export type HealthStatus = "healthy" | "degraded" | "down";
 export type ApprovalDecision = "approved" | "rejected";
