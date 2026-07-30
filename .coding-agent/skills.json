@@ -1,0 +1,23 @@
+{
+  "declarationVersion": "1.0.0",
+  "projectId": "openclaw-operator",
+  "adapterRoot": ".coding-agent/adapters",
+  "adapterSchemaVersion": "1.0.0",
+  "core": {
+    "id": "coding-agent-skills",
+    "expectedVersion": "0.2.3",
+    "versionPin": "0.2.3"
+  },
+  "compatibleSkillIds": ["repo-map"],
+  "adapters": [
+    {
+      "id": "openclaw-operator",
+      "version": "1.0.0",
+      "skillIds": ["repo-map"]
+    }
+  ],
+  "validationCommand": "node <shared-core>/scripts/validate-project-adapters.mjs <project-root>",
+  "evidenceOutput": "validation-output/project-adapters.json",
+  "approvalPolicyReference": "docs/README.md",
+  "noSecrets": true
+}

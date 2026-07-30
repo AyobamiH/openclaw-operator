@@ -1,0 +1,101 @@
+{
+  "adapterId": "openclaw-operator",
+  "adapterVersion": "1.0.0",
+  "project": {
+    "id": "openclaw-operator",
+    "detection": {
+      "rootMarkers": [
+        {
+          "kind": "file",
+          "path": "package.json"
+        },
+        {
+          "kind": "file",
+          "path": "README.md"
+        },
+        {
+          "kind": "directory",
+          "path": "orchestrator"
+        }
+      ],
+      "maximumDepth": 2,
+      "scope": "declared-project-root",
+      "requireApprovalOutsideScope": true
+    }
+  },
+  "supportedSkills": [
+    {
+      "id": "repo-map",
+      "compatibleVersions": ["0.2.3"],
+      "declaredMode": "audit-only"
+    }
+  ],
+  "extensions": {
+    "safeReadPaths": [
+      "README.md",
+      "docs/README.md",
+      "docs/INDEX.md",
+      "package.json",
+      "orchestrator/package.json",
+      "operator-s-console/package.json",
+      "agents",
+      "docs",
+      "operator-s-console/src",
+      "orchestrator/src"
+    ],
+    "ignoredPaths": [
+      ".git",
+      "node_modules",
+      "dist",
+      "build",
+      "coverage",
+      "artifacts",
+      "validation-output"
+    ],
+    "documentationPrecedence": [
+      "README.md",
+      "docs/INDEX.md",
+      "docs/README.md",
+      "docs/architecture/AGENT_CAPABILITY_MODEL.md",
+      "docs/architecture/AGENT_CAPABILITY_IMPLEMENTATION_MATRIX.md",
+      "docs/architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md",
+      "docs/reference/api.md",
+      "docs/reference/task-types.md"
+    ],
+    "commandAliases": [],
+    "safeStatusCommands": [],
+    "requiredEvidence": [
+      "repository root",
+      "branch state warning",
+      "root README",
+      "package map",
+      "documentation map",
+      "orchestrator and operator-console boundaries"
+    ],
+    "expectedRuntimeManagers": ["systemd-user"],
+    "expectedPackageManagers": ["npm"]
+  },
+  "approvalRequirements": [],
+  "inheritance": {
+    "sharedRestrictions": "required",
+    "deniedOperationCategories": [
+      "file-write",
+      "package-install",
+      "deployment",
+      "git-mutation",
+      "unrestricted-scan",
+      "secret-read",
+      "process-mutation",
+      "service-mutation",
+      "migration-apply",
+      "privileged-api"
+    ],
+    "allowRestrictionRemoval": false,
+    "allowModeOverride": false,
+    "allowFailureSuppression": false,
+    "allowCompletionOverride": false,
+    "allowSecretExposure": false,
+    "allowRequiredEvidenceRemoval": false,
+    "allowScopeExpansionWithoutApproval": false
+  }
+}
