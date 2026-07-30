@@ -3,6 +3,8 @@ import { DeterministicPublishingEngine } from "./engine.js";
 import { deterministicRenderedCandidate } from "./engine.js";
 import { registryBundleHash, loadRegistryBundle } from "./registry.js";
 import { PublishingStore } from "./store.js";
+import { runProductionOpportunity } from "./production-runner.js";
+import { isolatedConnectorShadowInvoker } from "./official-worker.js";
 import { PROHIBITED_PLATFORM_IDS } from "./types.js";
 import type {
   ContentSpec,
@@ -369,6 +371,8 @@ async function main(): Promise<void> {
         overview: "--registry <path> --db <path>",
         diagnose: "--registry <path> [--date YYYY-MM-DD]",
         "portfolio-replay": "--registry <path> [--date YYYY-MM-DD] [--days 1-31]",
+        "production-shadow":
+          "--registry <path> --integration <path> --db <path> [--opportunity <id|auto>] [--at <ISO>]",
       },
       guardrail:
         "This harness has no provider-write command. External publication remains worker-owned.",
@@ -398,6 +402,38 @@ async function main(): Promise<void> {
     const result = await portfolioReplay(options);
     print(result);
     if (!result.passed) process.exitCode = 1;
+    return;
+  }
+  if (command === "production-shadow") {
+    const isolatedInvoker =
+      typeof options["connector-entry"] === "string"
+        ? await isolatedConnectorShadowInvoker({
+          connectorEntry: options["connector-entry"],
+          activityLedgerPath: option(options, "activity-ledger"),
+          admissionDatabasePath: option(options, "admission-db"),
+        })
+        : undefined;
+    const result = await runProductionOpportunity({
+      registryPath: option(options, "registry", projectDefaultRegistry()),
+      integrationPath: option(options, "integration"),
+      databasePath: option(options, "db"),
+      opportunityId:
+        typeof options.opportunity === "string" ? options.opportunity : "auto",
+      scheduledFor:
+        typeof options.at === "string" ? date(options.at) : new Date(),
+      mode: "shadow",
+      toolInvoker: isolatedInvoker,
+      openclawBin:
+        typeof options["openclaw-bin"] === "string"
+          ? options["openclaw-bin"]
+          : undefined,
+      workspace:
+        typeof options.workspace === "string"
+          ? options.workspace
+          : process.cwd(),
+    });
+    print(result);
+    if (result.result !== "shadow_verified") process.exitCode = 1;
     return;
   }
   const { engine, store } = await engineFor(options);

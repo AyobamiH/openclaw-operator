@@ -26,6 +26,7 @@ export const PUBLICATION_STATES = [
   "generated",
   "validated",
   "reserved",
+  "shadow_verified",
   "publishing",
   "published_unverified",
   "verified",
@@ -37,6 +38,7 @@ export const PUBLICATION_STATES = [
 export type PublicationState = (typeof PUBLICATION_STATES)[number];
 
 export const SLOT_RESULTS = [
+  "shadow_verified",
   "verified",
   "confirmed_absent",
   "skipped_no_eligible_candidate",

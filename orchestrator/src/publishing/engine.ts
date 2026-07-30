@@ -403,6 +403,81 @@ export class DeterministicPublishingEngine {
     return { state: "verified", providerId: result.providerId, permalink: readback.permalink ?? null };
   }
 
+  completeShadow(input: {
+    publicationId: string;
+    connectorId: string;
+    renderedCandidate: {
+      text: string;
+      mediaUrl?: string | null;
+      mediaHash?: string | null;
+    };
+    receipt: Record<string, unknown>;
+    now?: Date;
+  }): { state: "shadow_verified"; externalWritePerformed: false } {
+    const now = input.now ?? new Date();
+    const publication = this.store.publication(input.publicationId);
+    if (!publication) throw new Error(`Unknown publication: ${input.publicationId}`);
+    if (publication.state !== "reserved") {
+      throw new Error(
+        `Publication ${input.publicationId} is not reserved; current state=${publication.state}`,
+      );
+    }
+    const spec = this.store.contentSpec(publication.contentSpecId);
+    if (!spec) throw new Error(`Content spec missing: ${publication.contentSpecId}`);
+    const policy = this.registry.platformPolicies.find(
+      (item) =>
+        item.status === "active" &&
+        item.platformId === spec.platformId &&
+        item.accountId === spec.accountId,
+    );
+    if (!policy || policy.connectorId !== input.connectorId) {
+      throw new Error(
+        `Connector is not the active approved adapter for ${spec.platformId}/${spec.accountId}`,
+      );
+    }
+    if (
+      input.receipt.outcome !== "validated" ||
+      input.receipt.dryRun !== true ||
+      input.receipt.externalWritePerformed !== false
+    ) {
+      throw new Error("Shadow receipt did not prove a zero-write connector execution");
+    }
+    const admission = input.receipt.accountAdmission;
+    if (
+      !admission ||
+      typeof admission !== "object" ||
+      (admission as Record<string, unknown>).shadow !== true ||
+      (admission as Record<string, unknown>).admitted !== true
+    ) {
+      throw new Error("Shadow receipt did not prove shared account admission");
+    }
+    this.store.saveRenderedCandidate(
+      spec.id,
+      input.connectorId,
+      "connector-contract-v1-shadow",
+      input.renderedCandidate,
+      now,
+    );
+    this.store.transitionPublication(publication.id, "shadow_verified", {
+      providerReceipt: input.receipt,
+      failureCode: "shadow-mode-provider-mutation-disabled",
+    }, now);
+    this.store.completeSlot(
+      `slot_${sha256(spec.slotKey).slice(0, 24)}`,
+      "shadow_verified",
+      [
+        "exact-production-runner-path",
+        "shared-account-admission-passed",
+        "provider-mutation-disabled",
+        "external-write-proven-false",
+      ],
+      null,
+      spec.id,
+      now,
+    );
+    return { state: "shadow_verified", externalWritePerformed: false };
+  }
+
   async reconcile(input: {
     publicationId: string;
     connector: PublishingConnector;

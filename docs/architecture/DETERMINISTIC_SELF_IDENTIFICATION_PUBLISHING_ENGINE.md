@@ -177,6 +177,32 @@ The product API deliberately does not expose a provider-write route. Host
 workers retain raw connector access. This prevents an operator or conversational
 surface from bypassing the deterministic state machine.
 
+The production integration is a separate campaign lane declared in
+`config/publishing/production-integration.v1.json`. It owns only the five
+product opportunities, its product SQLite state, reservations, outcomes and
+audit chain. It does not own any existing Threads or Instagram campaign.
+
+`OpenClawOfficialApiWorkerClient` binds the registry connector IDs to the
+existing `social-publication-worker` and invokes the official connector tool;
+it does not add an HTTP provider-write route. Every live provider mutation,
+legacy or product, must pass through the connector's SQLite-backed shared
+account admission. That connector owns account quota, spacing, collision,
+cross-lane duplicate and unresolved-write admission. Provider adapters remain
+the transport owner, and official provider readback remains publication truth.
+The product adapter owns metric collection for its own publications. Threads
+metrics come from the connector's official `post_insights` surface: provider
+`views` maps to the impressions definition and engagement rate is calculated
+from the complete provider engagement counters. Instagram has no equivalent
+surface in the current connector, so both provider metrics are recorded as
+null `unavailable`, never as zero.
+
+Shadow mode exercises the runner, allocation, product state, connector execute
+contract, historical publication view and shared admission while forcing
+`dryRun=true`, `explicitWriteApproval=false` and a terminal
+`shadow_verified` product outcome. Canary and live modes fail closed unless the
+approved integration manifest is changed separately and provider-write
+authority is explicit.
+
 ## Platform Expansion
 
 Platform IDs are data-driven slugs, not a closed TypeScript enum. Adding a

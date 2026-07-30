@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "laneId": "self-identification-engine",
+  "timezone": "Europe/London",
+  "mode": "shadow",
+  "runtimeOwner": "deterministic-self-identification-runner",
+  "workerAgentId": "social-publication-worker",
+  "opportunities": [
+    {
+      "id": "self-id-0500",
+      "localTime": "05:00",
+      "platformId": "threads",
+      "accountId": "tailwaggingwebdesigns",
+      "connectorAccountKey": "threads:owner",
+      "enabled": true,
+      "canaryEligible": false
+    },
+    {
+      "id": "self-id-0700",
+      "localTime": "07:00",
+      "platformId": "instagram",
+      "accountId": "tailwaggingwebdesigns",
+      "connectorAccountKey": "instagram:owner",
+      "enabled": true,
+      "canaryEligible": false
+    },
+    {
+      "id": "self-id-1100",
+      "localTime": "11:00",
+      "platformId": "instagram",
+      "accountId": "tailwaggingwebdesigns",
+      "connectorAccountKey": "instagram:owner",
+      "enabled": true,
+      "canaryEligible": false
+    },
+    {
+      "id": "self-id-1500",
+      "localTime": "15:00",
+      "platformId": "threads",
+      "accountId": "tailwaggingwebdesigns",
+      "connectorAccountKey": "threads:owner",
+      "enabled": true,
+      "canaryEligible": true
+    },
+    {
+      "id": "self-id-1700",
+      "localTime": "17:00",
+      "platformId": "instagram",
+      "accountId": "tailwaggingwebdesigns",
+      "connectorAccountKey": "instagram:owner",
+      "enabled": true,
+      "canaryEligible": false
+    }
+  ],
+  "protectedLegacyJobs": [
+    {
+      "id": "68b10c5c-f604-4567-9213-d0d1eab08106",
+      "owner": "threads-outbox-runner:text",
+      "mutationPolicy": "untouched"
+    },
+    {
+      "id": "083e3560-40fd-4487-9d78-674f64866ef7",
+      "owner": "threads-outbox-runner:image",
+      "mutationPolicy": "untouched"
+    },
+    {
+      "id": "24afbb84-457c-41bb-92c9-24a19725e984",
+      "owner": "instagram-publisher-outbox-runner:image",
+      "mutationPolicy": "untouched"
+    },
+    {
+      "id": "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+      "owner": "instagram-publisher-outbox-runner:reel",
+      "mutationPolicy": "untouched"
+    }
+  ],
+  "historicalReconciliations": [
+    {
+      "idempotencyKey": "2e0fa2a12c5477e2a7c6de2e2bcba1afac822dfe054b9802c71ce3f5358a1677",
+      "classification": "confirmed_absent",
+      "evidenceRef": "memory/2026-07-20.md:MCP-owned-feed-reconciliation"
+    },
+    {
+      "idempotencyKey": "e7ed8a595fa6d406fa5b708d6848a1f879b890cbdee8b5ac4b95ff7fe9ddaea1",
+      "classification": "confirmed_absent",
+      "evidenceRef": "artifacts/business-value/marketing/2026-07-23/threads-proof-video-live-retry-ambiguous-0508.json"
+    }
+  ],
+  "rollback": {
+    "previousRuntimeOwner": "legacy-existing",
+    "productJobRemovalSafe": true,
+    "productStatePreserved": true,
+    "admissionStatePreserved": true
+  }
+}

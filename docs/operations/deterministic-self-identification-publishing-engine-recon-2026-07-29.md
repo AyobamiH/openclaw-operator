@@ -121,22 +121,28 @@ separate migration.
 
 - Product implementation: complete locally
 - Guard/harness: complete locally
-- Threads/Instagram live adapter cutover: not performed
-- Five-slot production schedule cutover: not performed
+- Production runner and official-worker adapter: complete locally
+- Shared account admission in canonical connector 0.9.0: complete locally
+- Exact five product opportunities: allocated locally as a separate lane
+- Installed connector remains 0.8.1: runtime promotion not performed
+- Product cron declaration: not created
 - Provider writes during implementation: zero
 - LLM calls during implementation: zero
 - Browser/Relay calls during implementation: zero
 
 ## Required Activation Work
 
-1. Write host adapters that bind the current two worker entrypoints to the
-   product connector contract without creating alternate writes.
-2. Produce a live-state migration mapping for existing outbox and provider IDs.
-3. Reconcile the existing multiple platform schedules with five global
-   opportunities.
-4. Rehearse migration and rollback against copies of protected state.
-5. Run three non-writing diagnostics per worker path.
-6. Obtain explicit approval for migration, configuration/schedule changes and
-   service restart.
+1. Review and approve the connector 0.9.0 and operator release-candidate
+   commits. No push, release or install has occurred.
+2. Back up the installed connector and value-free connector configuration.
+3. Configure external account-admission state, preserving the legacy envelope
+   and importing activity-ledger history read-only.
+4. Promote connector 0.9.0 during a gap between existing jobs and perform the
+   separately approved Gateway reload.
+5. Prove dry-run compatibility for all four untouched legacy publication jobs.
+6. Declare one new product-only scheduler in shadow mode. The five configured
+   times are product opportunities, not global estate slots.
+7. Observe five natural shadow opportunities. Then request separate approval
+   for only the 15:00 Threads canary.
 
 No item above is authorized merely by the local product implementation.
