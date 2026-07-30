@@ -277,6 +277,29 @@ Important local note:
   Mongo or Redis just to boot. Change those values only if you intentionally
   move the runtime roots.
 
+## Private Review Soak Lanes
+
+The repository includes two local, non-production review lanes for factual
+endurance evidence:
+
+```bash
+# Fixed representative workload: 5,000 tasks paced over 24 hours
+npm run review-session:run:24h
+
+# Queue-pressure-controlled capacity discovery over 24 hours
+npm run review-session:run:24h:max
+```
+
+Both commands build the Operator UI, start the review runtime on `3312`,
+capture a pre-stack baseline, and attach the workload to the active review
+session. Open `http://127.0.0.1:3312/operator/review-sessions` to observe and
+export the evidence. These are review workloads, not production activation
+commands.
+
+For host-managed operation, set `OPENCLAW_OPERATOR_STATE_DIR` so runtime logs,
+orchestrator state, Mongo fallback snapshots and the deterministic publishing
+database remain outside the Git checkout.
+
 ## Docker Quick Start
 
 Use this path when you want the official public demo stack: one compose file at

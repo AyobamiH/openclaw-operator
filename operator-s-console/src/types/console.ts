@@ -1662,6 +1662,40 @@ export interface ReviewSessionTelemetrySummary {
   openIncidentsPeak: number | null;
 }
 
+export interface ReviewSessionCumulativeWorkload {
+  acceptedRuns: number;
+  completedRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  retriedRuns: number;
+  pendingRuns: number;
+  totalCostUsd: number;
+  latencySampleCount: number;
+  latencySumMs: number;
+  peakLatencyMs: number | null;
+  taskTypeCounts: Record<string, number>;
+  lastAcceptedAt: string | null;
+  lastCompletedAt: string | null;
+}
+
+export interface ReviewSessionCumulativeWorkloadSummary {
+  acceptedRuns: number;
+  completedRuns: number;
+  successfulRuns: number;
+  failedRuns: number;
+  retriedRuns: number;
+  pendingRuns: number;
+  totalCostUsd: number;
+  averageLatencyMs: number | null;
+  peakLatencyMs: number | null;
+  lastAcceptedAt: string | null;
+  lastCompletedAt: string | null;
+  topTaskTypes: Array<{
+    type: string;
+    count: number;
+  }>;
+}
+
 export interface ReviewSessionWorkloadSummary {
   windowStartedAt: string;
   windowEndedAt: string;
@@ -1678,6 +1712,7 @@ export interface ReviewSessionWorkloadSummary {
     type: string;
     count: number;
   }>;
+  cumulative?: ReviewSessionCumulativeWorkloadSummary | null;
 }
 
 export interface ReviewSessionDerivedSummary {
@@ -1719,6 +1754,7 @@ export interface ReviewSessionRecord {
   bucketTimeline: ReviewSessionBucketTransition[];
   scenarioNotes: ReviewSessionNote[];
   linkedRunIds: string[];
+  cumulativeWorkload: ReviewSessionCumulativeWorkload;
   summary: ReviewSessionDerivedSummary | null;
   failureReason?: string | null;
 }

@@ -46,6 +46,26 @@ Then open `http://127.0.0.1:3312/operator`. The tracked service assumes the
 repo lives at `~/openclaw-operator`; if you clone elsewhere, update the unit
 paths before enabling it.
 
+### Private 24-hour review
+
+Use one of these local review lanes only after port `3312` is free:
+
+```bash
+# Representative 5,000-task endurance run
+npm run review-session:run:24h
+
+# Open-ended queue-pressure capacity run
+npm run review-session:run:24h:max
+```
+
+Each command builds the Operator UI, captures a pre-stack baseline, starts the
+review runtime, and attaches its workload to the active session. Observe it at
+`http://127.0.0.1:3312/operator/review-sessions`. These commands do not install
+or activate the production publishing lane.
+
+Set `OPENCLAW_OPERATOR_STATE_DIR` for host-managed runs so mutable runtime
+state and databases remain outside the repository.
+
 ---
 
 ### Path B: Official Docker Demo Stack

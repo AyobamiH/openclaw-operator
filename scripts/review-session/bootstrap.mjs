@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { openSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzipSync, gunzipSync } from "node:zlib";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -74,7 +74,7 @@ async function loadBootstrapEnv() {
   }
 }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const values = {};
   for (let index = 0; index < argv.length; index += 1) {
     const current = argv[index];
@@ -82,7 +82,15 @@ function parseArgs(argv) {
       continue;
     }
 
-    const key = current.slice(2);
+    const withoutPrefix = current.slice(2);
+    const equalsIndex = withoutPrefix.indexOf("=");
+    if (equalsIndex > 0) {
+      const key = withoutPrefix.slice(0, equalsIndex);
+      values[key] = withoutPrefix.slice(equalsIndex + 1);
+      continue;
+    }
+
+    const key = withoutPrefix;
     const next = argv[index + 1];
     if (!next || next.startsWith("--")) {
       values[key] = "true";
@@ -128,6 +136,29 @@ function normalizePositiveInteger(value, fallback, minimum = 1) {
     return fallback;
   }
   return Math.max(minimum, parsed);
+}
+
+export function normalizeTargetTaskCount(value, fallback) {
+  if (value === undefined) {
+    return fallback;
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  if (["max", "capacity-max", "unbounded", "none", "n/a", "null"].includes(normalized)) {
+    return null;
+  }
+
+  return normalizePositiveInteger(value, fallback ?? 1, 1);
+}
+
+function formatTargetTaskCountLabel(value) {
+  if (value === null) {
+    return "capacity discovery";
+  }
+  if (typeof value !== "number" || value <= 0) {
+    return "n/a";
+  }
+  return `${value} tasks`;
 }
 
 async function readCpuSnapshot() {
@@ -376,7 +407,7 @@ function buildCapturePlan(args) {
         : defaults.intendedDurationHours,
     targetTaskCount:
       args["target-task-count"] !== undefined
-        ? normalizePositiveInteger(args["target-task-count"], defaults.targetTaskCount ?? 1, 1)
+        ? normalizeTargetTaskCount(args["target-task-count"], defaults.targetTaskCount)
         : defaults.targetTaskCount,
     postHandoffBucket,
   };
@@ -389,7 +420,10 @@ async function resolveStateFilePath() {
   if (typeof parsed?.stateFile !== "string" || parsed.stateFile.length === 0) {
     throw new Error(`Missing stateFile in ${orchestratorConfigPath}`);
   }
-  return parsed.stateFile;
+  if (isMongoStateTarget(parsed.stateFile)) {
+    return parsed.stateFile;
+  }
+  return resolve(dirname(orchestratorConfigPath), parsed.stateFile);
 }
 
 function isMongoStateTarget(target) {
@@ -407,7 +441,7 @@ function resolveMongoStateKey(target) {
 async function withMongoStateCollection(callback) {
   const { MongoClient } = orchestratorRequire("mongodb");
   const client = new MongoClient(
-    process.env.DATABASE_URL || "mongodb://mongo:27017/orchestrator",
+    process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/orchestrator",
   );
   await client.connect();
   try {
@@ -517,7 +551,103 @@ async function writeStateFile(stateFilePath, state) {
     return;
   }
 
+  await mkdir(dirname(stateFilePath), { recursive: true });
   await writeFile(stateFilePath, JSON.stringify(state, null, 2), "utf-8");
+}
+
+function appendScenarioNote(session, bucket, capturedAt, text) {
+  const scenarioNotes = Array.isArray(session.scenarioNotes) ? session.scenarioNotes : [];
+  scenarioNotes.push({ capturedAt, bucket, text });
+  session.scenarioNotes = scenarioNotes;
+}
+
+function createEmptyCumulativeWorkload() {
+  return {
+    acceptedRuns: 0,
+    completedRuns: 0,
+    successfulRuns: 0,
+    failedRuns: 0,
+    retriedRuns: 0,
+    pendingRuns: 0,
+    totalCostUsd: 0,
+    latencySampleCount: 0,
+    latencySumMs: 0,
+    peakLatencyMs: null,
+    taskTypeCounts: {},
+    lastAcceptedAt: null,
+    lastCompletedAt: null,
+  };
+}
+
+export function reconcileStaleReviewSessionsState(state, options = {}) {
+  const reviewSessions = Array.isArray(state?.reviewSessions) ? state.reviewSessions : null;
+  if (!reviewSessions) {
+    return {
+      updated: false,
+      completedActiveCount: 0,
+      failedPendingCount: 0,
+    };
+  }
+
+  const now = typeof options.now === "string" ? options.now : new Date().toISOString();
+  const baseUrl =
+    typeof options.baseUrl === "string" && options.baseUrl.trim().length > 0
+      ? options.baseUrl.trim()
+      : "the requested base URL";
+  let completedActiveCount = 0;
+  let failedPendingCount = 0;
+
+  for (const session of reviewSessions) {
+    if (!session || typeof session !== "object") {
+      continue;
+    }
+
+    if (session.state === "active") {
+      session.state = "completed";
+      session.endedAt = typeof session.endedAt === "string" ? session.endedAt : now;
+      appendScenarioNote(
+        session,
+        typeof session.activeBucket === "string" ? session.activeBucket : "steady_state_running_cost",
+        now,
+        `Bootstrap preflight reconciled this stale active review session after no runtime responded at ${baseUrl}.`,
+      );
+      completedActiveCount += 1;
+      continue;
+    }
+
+    if (session.state === "pending_handoff") {
+      session.state = "handoff_failed";
+      session.endedAt = typeof session.endedAt === "string" ? session.endedAt : now;
+      session.failureReason =
+        typeof session.failureReason === "string" && session.failureReason.length > 0
+          ? session.failureReason
+          : `Bootstrap preflight reconciled a stale pending handoff after no runtime responded at ${baseUrl}.`;
+      appendScenarioNote(
+        session,
+        typeof session.activeBucket === "string" ? session.activeBucket : "startup_cost",
+        now,
+        `Bootstrap preflight marked this stale pending handoff as failed after no runtime responded at ${baseUrl}.`,
+      );
+      failedPendingCount += 1;
+    }
+  }
+
+  return {
+    updated: completedActiveCount > 0 || failedPendingCount > 0,
+    completedActiveCount,
+    failedPendingCount,
+  };
+}
+
+export async function reconcileStaleReviewSessions(stateFilePath, baseUrl) {
+  const state = await readStateFile(stateFilePath);
+  const summary = reconcileStaleReviewSessionsState(state, { baseUrl });
+  if (!summary.updated) {
+    return summary;
+  }
+
+  await writeStateFile(stateFilePath, state);
+  return summary;
 }
 
 function buildBootstrapSamples(reviewSessionId, baselineSamples, profile) {
@@ -580,6 +710,7 @@ async function persistPendingHandoff(stateFilePath, payload) {
     ],
     scenarioNotes: payload.notes,
     linkedRunIds: [],
+    cumulativeWorkload: createEmptyCumulativeWorkload(),
     summary: null,
     failureReason: null,
   });
@@ -724,6 +855,12 @@ async function main() {
   }
 
   await assertStackOff(baseUrl);
+  const staleReviewSessionSummary = await reconcileStaleReviewSessions(stateFilePath, baseUrl);
+  if (staleReviewSessionSummary.updated) {
+    console.log(
+      `[review-session] reconciled stale review sessions in runtime state (${staleReviewSessionSummary.completedActiveCount} active -> completed, ${staleReviewSessionSummary.failedPendingCount} pending -> handoff_failed)`,
+    );
+  }
 
   const reviewSessionId = randomUUID();
   console.log(`[review-session] capturing baseline for ${reviewSessionId} (${capturePlan.profile})`);
@@ -799,7 +936,7 @@ async function main() {
     console.log(`[review-session] target base URL ${baseUrl}`);
     console.log(`[review-session] runtime log ${runtimeLogPath}`);
     console.log(
-      `[review-session] capture plan ${capturePlan.profile} -> ${capturePlan.sampleIntervalMs}ms interval, ${capturePlan.maxSamples} samples, target ${capturePlan.targetTaskCount ?? "n/a"} tasks`,
+      `[review-session] capture plan ${capturePlan.profile} -> ${capturePlan.sampleIntervalMs}ms interval, ${capturePlan.maxSamples} samples, target ${formatTargetTaskCountLabel(capturePlan.targetTaskCount)}`,
     );
     await waitForHealth(baseUrl, timeoutMs);
     result = await postHandoff(baseUrl, token, payload, retryPath);
@@ -816,7 +953,13 @@ async function main() {
   console.log(JSON.stringify({ reviewSessionId, baseUrl, result }, null, 2));
 }
 
-main().catch((error) => {
-  console.error(`[review-session] ${error instanceof Error ? error.message : String(error)}`);
-  process.exitCode = 1;
-});
+const isEntrypoint =
+  typeof process.argv[1] === "string" &&
+  pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+
+if (isEntrypoint) {
+  main().catch((error) => {
+    console.error(`[review-session] ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  });
+}

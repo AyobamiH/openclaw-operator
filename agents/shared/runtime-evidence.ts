@@ -441,7 +441,8 @@ async function writeMongoSystemState<T>(targetPath: string, value: T): Promise<v
 }
 
 async function createRuntimeStateMongoClient(): Promise<RuntimeStateMongoClient> {
-  const databaseUrl = process.env.DATABASE_URL || "mongodb://mongo:27017/orchestrator";
+  const databaseUrl =
+    process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/orchestrator";
   if (runtimeStateMongoClientFactory) {
     return await runtimeStateMongoClientFactory(databaseUrl);
   }

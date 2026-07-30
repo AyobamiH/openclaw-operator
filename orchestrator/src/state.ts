@@ -20,6 +20,7 @@ import {
   ReviewSessionBucket,
   ReviewSessionBucketTransition,
   ReviewSessionCapturePlan,
+  ReviewSessionCumulativeWorkload,
   ReviewSessionDerivedSummary,
   ReviewSessionMachineProfile,
   ReviewSessionNote,
@@ -242,6 +243,52 @@ function normalizeReviewTelemetrySummary(value: unknown): ReviewSessionTelemetry
   };
 }
 
+function normalizeReviewCumulativeWorkload(value: unknown): ReviewSessionCumulativeWorkload {
+  if (!value || typeof value !== "object") {
+    return {
+      acceptedRuns: 0,
+      completedRuns: 0,
+      successfulRuns: 0,
+      failedRuns: 0,
+      retriedRuns: 0,
+      pendingRuns: 0,
+      totalCostUsd: 0,
+      latencySampleCount: 0,
+      latencySumMs: 0,
+      peakLatencyMs: null,
+      taskTypeCounts: {},
+      lastAcceptedAt: null,
+      lastCompletedAt: null,
+    };
+  }
+
+  const raw = value as Partial<ReviewSessionCumulativeWorkload>;
+  const taskTypeCounts =
+    raw.taskTypeCounts && typeof raw.taskTypeCounts === "object"
+      ? Object.fromEntries(
+          Object.entries(raw.taskTypeCounts)
+            .filter(([key, count]) => typeof key === "string" && typeof count === "number" && Number.isFinite(count))
+            .map(([key, count]) => [key, Math.max(0, Math.floor(count))]),
+        )
+      : {};
+
+  return {
+    acceptedRuns: typeof raw.acceptedRuns === "number" ? raw.acceptedRuns : 0,
+    completedRuns: typeof raw.completedRuns === "number" ? raw.completedRuns : 0,
+    successfulRuns: typeof raw.successfulRuns === "number" ? raw.successfulRuns : 0,
+    failedRuns: typeof raw.failedRuns === "number" ? raw.failedRuns : 0,
+    retriedRuns: typeof raw.retriedRuns === "number" ? raw.retriedRuns : 0,
+    pendingRuns: typeof raw.pendingRuns === "number" ? raw.pendingRuns : 0,
+    totalCostUsd: typeof raw.totalCostUsd === "number" ? raw.totalCostUsd : 0,
+    latencySampleCount: typeof raw.latencySampleCount === "number" ? raw.latencySampleCount : 0,
+    latencySumMs: typeof raw.latencySumMs === "number" ? raw.latencySumMs : 0,
+    peakLatencyMs: typeof raw.peakLatencyMs === "number" ? raw.peakLatencyMs : null,
+    taskTypeCounts,
+    lastAcceptedAt: typeof raw.lastAcceptedAt === "string" ? raw.lastAcceptedAt : null,
+    lastCompletedAt: typeof raw.lastCompletedAt === "string" ? raw.lastCompletedAt : null,
+  };
+}
+
 function normalizeReviewWorkloadSummary(value: unknown, startedAt: string): ReviewSessionWorkloadSummary {
   if (!value || typeof value !== "object") {
     return {
@@ -257,6 +304,20 @@ function normalizeReviewWorkloadSummary(value: unknown, startedAt: string): Revi
       p95LatencyMs: null,
       totalCostUsd: 0,
       topTaskTypes: [],
+      cumulative: {
+        acceptedRuns: 0,
+        completedRuns: 0,
+        successfulRuns: 0,
+        failedRuns: 0,
+        retriedRuns: 0,
+        pendingRuns: 0,
+        totalCostUsd: 0,
+        averageLatencyMs: null,
+        peakLatencyMs: null,
+        lastAcceptedAt: null,
+        lastCompletedAt: null,
+        topTaskTypes: [],
+      },
     };
   }
 
@@ -292,6 +353,59 @@ function normalizeReviewWorkloadSummary(value: unknown, startedAt: string): Revi
           })
           .filter((item): item is { type: string; count: number } => item !== null)
       : [],
+    cumulative:
+      raw.cumulative && typeof raw.cumulative === "object"
+        ? {
+            acceptedRuns:
+              typeof raw.cumulative.acceptedRuns === "number" ? raw.cumulative.acceptedRuns : 0,
+            completedRuns:
+              typeof raw.cumulative.completedRuns === "number" ? raw.cumulative.completedRuns : 0,
+            successfulRuns:
+              typeof raw.cumulative.successfulRuns === "number" ? raw.cumulative.successfulRuns : 0,
+            failedRuns:
+              typeof raw.cumulative.failedRuns === "number" ? raw.cumulative.failedRuns : 0,
+            retriedRuns:
+              typeof raw.cumulative.retriedRuns === "number" ? raw.cumulative.retriedRuns : 0,
+            pendingRuns:
+              typeof raw.cumulative.pendingRuns === "number" ? raw.cumulative.pendingRuns : 0,
+            totalCostUsd:
+              typeof raw.cumulative.totalCostUsd === "number" ? raw.cumulative.totalCostUsd : 0,
+            averageLatencyMs:
+              typeof raw.cumulative.averageLatencyMs === "number" ? raw.cumulative.averageLatencyMs : null,
+            peakLatencyMs:
+              typeof raw.cumulative.peakLatencyMs === "number" ? raw.cumulative.peakLatencyMs : null,
+            lastAcceptedAt:
+              typeof raw.cumulative.lastAcceptedAt === "string" ? raw.cumulative.lastAcceptedAt : null,
+            lastCompletedAt:
+              typeof raw.cumulative.lastCompletedAt === "string" ? raw.cumulative.lastCompletedAt : null,
+            topTaskTypes: Array.isArray(raw.cumulative.topTaskTypes)
+              ? raw.cumulative.topTaskTypes
+                  .map((item) => {
+                    if (!item || typeof item !== "object") return null;
+                    const typed = item as { type?: unknown; count?: unknown };
+                    if (typeof typed.type !== "string" || typeof typed.count !== "number") return null;
+                    return {
+                      type: typed.type,
+                      count: typed.count,
+                    };
+                  })
+                  .filter((item): item is { type: string; count: number } => item !== null)
+              : [],
+          }
+        : {
+            acceptedRuns: 0,
+            completedRuns: 0,
+            successfulRuns: 0,
+            failedRuns: 0,
+            retriedRuns: 0,
+            pendingRuns: 0,
+            totalCostUsd: 0,
+            averageLatencyMs: null,
+            peakLatencyMs: null,
+            lastAcceptedAt: null,
+            lastCompletedAt: null,
+            topTaskTypes: [],
+          },
   };
 }
 
@@ -398,6 +512,7 @@ function normalizeReviewSessionRecord(value: unknown): ReviewSessionRecord | nul
           .filter((item): item is ReviewSessionNote => item !== null)
       : [],
     linkedRunIds: normalizeStringArray(raw.linkedRunIds, 100),
+    cumulativeWorkload: normalizeReviewCumulativeWorkload(raw.cumulativeWorkload),
     summary: normalizeReviewDerivedSummary(raw.summary),
     failureReason: typeof raw.failureReason === "string" ? raw.failureReason : null,
   };

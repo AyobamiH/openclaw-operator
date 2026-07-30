@@ -116,10 +116,10 @@ interface TaskDraftState {
 const DEFAULT_TASK_DRAFT: TaskDraftState = {
   heartbeatReason: "operator-station",
   controlPlaneFocus: "",
-  buildMode: "autonomous",
+  buildMode: "explicit",
   buildType: "refactor",
   buildScope: "orchestrator/src",
-  buildIntent: "Repair the bounded runtime/operator issue inside this scope and preserve rollback evidence.",
+  buildIntent: "Apply the bounded patch set below and preserve rollback evidence.",
   buildMaxFilesChanged: "10",
   buildRunTests: true,
   buildTestCommand: "build-verify",
@@ -638,7 +638,7 @@ function buildNextStepCopy(task: TaskRowVM, draft: TaskDraftState) {
   if (task.type === "build-refactor") {
     return draft.buildMode === "explicit"
       ? "Use explicit mode when you already know the exact diff. Keep the scope tight, keep the file budget honest, and attach a real verification command when code paths are affected."
-      : "Use autonomous mode when you want the worker to derive the patch from repo evidence. Keep the scope specific, describe the operator intent, and expect approval plus post-edit verification before closure.";
+      : "Use autonomous mode only for the worker's supported built-in transform catalog. If you want a custom repair, stay in explicit mode and provide the exact bounded changes[].";
   }
 
   if (task.type === "integration-workflow") {
@@ -716,7 +716,7 @@ function renderTaskFields(
     const buildModeCopy =
       draft.buildMode === "explicit"
         ? "Explicit mode applies the exact changes[] payload you supply. Use it when you already know the precise patch you want reviewed and approved."
-        : "Autonomous mode synthesizes bounded repo patches from real scope evidence. Use it when you want the worker to derive the patch from the files inside the declared scope.";
+        : "Autonomous mode synthesizes bounded repo patches from a limited built-in transform catalog. Use it only when the requested repair matches a known supported repository pattern inside the declared scope.";
 
     return (
       <>

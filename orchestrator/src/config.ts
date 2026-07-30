@@ -130,7 +130,13 @@ export async function loadConfig(
     parsed.businessDayPulseTimeZone = process.env.ORCHESTRATOR_BUSINESS_DAY_PULSE_TIME_ZONE.trim();
   }
   const operatorStateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
-  if (operatorStateRoot && parsed.publishingDatabasePath) {
+  if (operatorStateRoot) {
+    parsed.logsDir = resolve(operatorStateRoot, "logs");
+    parsed.stateFile = resolve(
+      operatorStateRoot,
+      "orchestrator",
+      "orchestrator-state.json",
+    );
     parsed.publishingDatabasePath = resolve(
       operatorStateRoot,
       "database",

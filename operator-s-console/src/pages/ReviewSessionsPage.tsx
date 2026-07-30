@@ -16,7 +16,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
-import type { ReviewSessionBucket, ReviewSessionRecord, ReviewTelemetrySample } from "@/types/console";
+import type {
+  ReviewSessionBucket,
+  ReviewSessionCumulativeWorkloadSummary,
+  ReviewSessionRecord,
+  ReviewSessionWorkloadSummary,
+  ReviewTelemetrySample,
+} from "@/types/console";
 
 const BUCKET_OPTIONS: Array<{ value: ReviewSessionBucket; label: string; description: string }> = [
   {
@@ -90,6 +96,48 @@ function formatSamplingInterval(value: number | null | undefined) {
   return `${Math.round(value / 60000)}m`;
 }
 
+function formatCapturePlanTarget(targetTaskCount: number | null | undefined) {
+  if (targetTaskCount === null) {
+    return "capacity discovery";
+  }
+  if (typeof targetTaskCount !== "number" || targetTaskCount <= 0) {
+    return "n/a";
+  }
+  return `${targetTaskCount.toLocaleString()} tasks`;
+}
+
+type DisplayedCumulativeWorkloadSummary = ReviewSessionCumulativeWorkloadSummary & {
+  isLegacyFallback: boolean;
+};
+
+function resolveDisplayedCumulativeWorkloadSummary(
+  workload: ReviewSessionWorkloadSummary | null | undefined,
+): DisplayedCumulativeWorkloadSummary {
+  const cumulative = workload?.cumulative;
+  if (cumulative) {
+    return {
+      ...cumulative,
+      isLegacyFallback: false,
+    };
+  }
+
+  return {
+    acceptedRuns: workload?.consideredRuns ?? 0,
+    completedRuns: workload?.completedRuns ?? 0,
+    successfulRuns: workload?.successfulRuns ?? 0,
+    failedRuns: workload?.failedRuns ?? 0,
+    retriedRuns: workload?.retryingRuns ?? 0,
+    pendingRuns: workload?.pendingRuns ?? 0,
+    totalCostUsd: workload?.totalCostUsd ?? 0,
+    averageLatencyMs: workload?.averageLatencyMs ?? null,
+    peakLatencyMs: null,
+    lastAcceptedAt: workload?.windowEndedAt ?? null,
+    lastCompletedAt: workload && workload.completedRuns > 0 ? workload.windowEndedAt : null,
+    topTaskTypes: Array.isArray(workload?.topTaskTypes) ? workload.topTaskTypes : [],
+    isLegacyFallback: Boolean(workload),
+  };
+}
+
 function downloadPayload(filename: string, content: string, contentType: string) {
   const blob = new Blob([content], { type: contentType });
   const url = URL.createObjectURL(blob);
@@ -136,14 +184,17 @@ function buildReviewChecks(
 
   const steadyStateSamples = session.summary?.bucketStats?.steady_state_running_cost?.sampleCount ?? 0;
   const consideredRuns = session.summary?.workload.consideredRuns ?? 0;
-  const evidenceRecorded = noteCount > 1 || session.linkedRunIds.length > 0;
+  const evidenceRecorded = noteCount > 0 || session.linkedRunIds.length > 0;
+  const isCapacitySoak = session.capturePlan.profile === "soak-24h" && session.capturePlan.targetTaskCount === null;
 
   return [
     {
       title: "Profile is correct",
       detail:
         session.capturePlan.profile === "soak-24h"
-          ? "This session is running in the 24-hour soak profile."
+          ? isCapacitySoak
+            ? "This session is running in the 24-hour max-capacity soak profile."
+            : "This session is running in the 24-hour representative soak profile."
           : "This session is not using the soak profile, so it will not match the day-long endurance plan.",
       tone: session.capturePlan.profile === "soak-24h" ? "good" : "warn",
     },
@@ -167,7 +218,9 @@ function buildReviewChecks(
       detail:
         consideredRuns > 0
           ? `${consideredRuns} task execution(s) are already inside the session window.`
-          : "The soak run is active, but no task executions have landed in the review window yet. Start the 3k-5k workload.",
+          : isCapacitySoak
+            ? "The max-capacity soak is active, but no task executions have landed in the review window yet. Start the continuous 24h:max feeder."
+            : "The representative soak is active, but no task executions have landed in the review window yet. Start the paced 24h workload.",
       tone: consideredRuns > 0 ? "good" : "todo",
     },
     {
@@ -207,7 +260,11 @@ function getHandoffStatus(session: ReviewSessionRecord) {
 function sessionSubtitle(session: ReviewSessionRecord) {
   const baselineCaptured = session.baselineSummary ? "baseline captured" : "baseline missing";
   const handoff = getHandoffStatus(session);
-  const profile = session.capturePlan?.profile === "soak-24h" ? "24h soak" : "standard";
+  const profile = session.capturePlan?.profile === "soak-24h"
+    ? session.capturePlan.targetTaskCount === null
+      ? "24h max soak"
+      : "24h soak"
+    : "standard";
   return `${profile} · ${baselineCaptured} · ${handoff.subtitle}`;
 }
 
@@ -240,6 +297,12 @@ export default function ReviewSessionsPage() {
   const samples = detailQuery.data?.samples ?? [];
   const sample = latestSample(samples);
   const handoff = session ? getHandoffStatus(session) : null;
+  const activeSessionIsSelected = Boolean(activeSession?.id && selectedSessionId === activeSession.id);
+  const workloadSummary = session?.summary?.workload ?? null;
+  const displayedCumulativeWorkload = useMemo(
+    () => resolveDisplayedCumulativeWorkloadSummary(workloadSummary),
+    [workloadSummary],
+  );
 
   useEffect(() => {
     if (!session) return;
@@ -355,7 +418,7 @@ export default function ReviewSessionsPage() {
       <div className="console-inset p-3">
         <p className="text-[11px] text-muted-foreground font-mono tracking-wide">
           <Activity className="w-3 h-3 inline mr-1.5 text-primary" />
-          Honest review capture is bootstrap-led. Stop any stack already using the target review port, then start with `npm run review-session:start` for a normal session or `npm run review-session:start -- --profile soak-24h --title "mini-pc 24h soak"` for a day-long endurance run.
+          Honest review capture is bootstrap-led. Free port `3312`, then choose the lane that matches your question: `npm run review-session:run:24h` for a realistic representative soak, or `npm run review-session:run:24h:max` for a ceiling-seeking capacity soak. You can leave this page open first: the new active soak session will appear and auto-select after bootstrap handoff completes.
         </p>
       </div>
 
@@ -365,7 +428,7 @@ export default function ReviewSessionsPage() {
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Layer 1 · Session Ledger</p>
               <p className="text-xs text-muted-foreground mt-2">
-                Pick the review session you want to inspect. For your mini-PC proof, this should be the `soak-24h` session you started before the workload begins.
+                Pick the review session you want to inspect. If you opened this page before starting the run, that is fine: the new active `soak-24h` session will appear here and auto-select once bootstrap handoff completes.
               </p>
             </div>
             <div className="console-inset p-3 rounded-sm">
@@ -377,18 +440,18 @@ export default function ReviewSessionsPage() {
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Layer 3 · Manual Evidence</p>
               <p className="text-xs text-muted-foreground mt-2">
-                `Bucket Controls` lets you say what phase the machine is in. `Evidence Actions` lets you add human notes and link exact task runs that prove a claim.
+                `Bucket Controls` and `Evidence Actions` are now mostly for extra human proof. Both automated soak lanes keep the session in the right bucket, link a representative run, and record progress notes for you.
               </p>
             </div>
             <div className="console-inset p-3 rounded-sm">
               <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Recommended Soak Workflow</p>
               <div className="mt-2 space-y-2 text-xs text-muted-foreground">
-                <p>1. Start `--profile soak-24h` before the stack comes up so baseline and startup cost are captured.</p>
-                <p>2. Wait for `State + Profile` to show `active` and `Capture Truth` to show handoff complete.</p>
-                <p>3. Leave the bucket on `Steady State` while the machine is just running normally.</p>
-                <p>4. Switch to `Burst Workload` when you start the real 3k-5k task push or any deliberate stress spike.</p>
-                <p>5. Add notes when the UI feels laggy, noisy, or surprisingly smooth, and link representative runs from the Runs page.</p>
-                <p>6. When the day-long run ends, press `Stop`, then export Markdown and JSON for the post.</p>
+                <p>1. Free port `3312`, then run `npm run review-session:run:24h` for realistic endurance or `npm run review-session:run:24h:max` for capacity discovery.</p>
+                <p>2. If this page was already open, wait for the new `soak-24h` session to appear and auto-select after bootstrap handoff.</p>
+                <p>3. Confirm `State + Profile` shows `active` and `Capture Truth` shows handoff complete.</p>
+                <p>4. The representative lane spreads a fixed 5,000-task plan across the day. The max lane keeps topping up work against queue pressure so you can discover the machine's 24-hour ceiling.</p>
+                <p>5. Add notes only for operator-visible behavior telemetry cannot know by itself, like lag, fan noise, or surprising responsiveness.</p>
+                <p>6. When the review window is over, press `Stop`, then export Markdown and JSON for the post.</p>
               </div>
             </div>
           </div>
@@ -422,6 +485,28 @@ export default function ReviewSessionsPage() {
 
       <div className="grid xl:grid-cols-[0.8fr_1.2fr] gap-3">
         <SummaryCard title="Session Ledger" icon={<NotebookText className="w-4 h-4" />}>
+          <div className="console-inset p-3 rounded-sm mb-3">
+            {activeSession ? (
+              activeSessionIsSelected ? (
+                <p className="text-xs text-muted-foreground">
+                  Active review session detected. This page is already following the current soak run.
+                </p>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-muted-foreground">
+                    A newer active review session is running. Jump to it if you want to watch the current automated soak run.
+                  </p>
+                  <Button size="sm" variant="outline" onClick={() => setSelectedSessionId(activeSession.id)}>
+                    Follow Active
+                  </Button>
+                </div>
+              )
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Nothing is active yet. You can open this page first, then start the one-command review run in your terminal. The new soak session will appear here automatically.
+              </p>
+            )}
+          </div>
           {isLoading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((item) => (
@@ -432,7 +517,7 @@ export default function ReviewSessionsPage() {
             <div className="space-y-3">
               <p className="text-sm text-foreground">No review sessions recorded.</p>
               <p className="text-xs text-muted-foreground font-mono leading-relaxed">
-                Start one with `npm run review-session:start`, or use `--profile soak-24h` when you want minute-grade evidence across a full-day endurance run. Running only `npm run dev` boots the stack but skips the pre-stack baseline capture by design, and the target review port must be free before bootstrap starts.
+                Start one with `npm run review-session:run:24h` for the realistic lane or `npm run review-session:run:24h:max` for the capacity lane. The page will auto-refresh and auto-select the new active soak session after bootstrap. Running only `npm run dev` boots the stack but skips the pre-stack baseline capture by design, and port `3312` must be free before bootstrap starts.
               </p>
             </div>
           ) : (
@@ -515,10 +600,18 @@ export default function ReviewSessionsPage() {
                   </p>
                 </div>
                 <div className="console-inset p-3 rounded-sm">
-                  <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Workload Window</p>
-                  <p className="metric-value text-2xl mt-2">{session.summary?.workload.completedRuns ?? 0}</p>
+                  <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Cumulative Soak</p>
+                  <p className="metric-value text-2xl mt-2">{displayedCumulativeWorkload.completedRuns}</p>
                   <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                    completed of {session.summary?.workload.consideredRuns ?? 0} considered runs
+                    completed of {displayedCumulativeWorkload.acceptedRuns} accepted runs
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                    failed {displayedCumulativeWorkload.failedRuns} · pending {displayedCumulativeWorkload.pendingRuns}
+                  </p>
+                  <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                    {displayedCumulativeWorkload.isLegacyFallback
+                      ? "legacy session fallback: showing retained window totals until cumulative soak metrics are available"
+                      : "cumulative soak totals from the full review session window"}
                   </p>
                 </div>
                 <div className="console-inset p-3 rounded-sm">
@@ -574,7 +667,7 @@ export default function ReviewSessionsPage() {
                           {session.capturePlan.profile} · every {formatSamplingInterval(session.capturePlan.sampleIntervalMs)}
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          retention {session.capturePlan.maxSamples} · target {session.capturePlan.targetTaskCount ?? "n/a"} tasks · plan {formatDurationHours(session.capturePlan.intendedDurationHours)}
+                          retention {session.capturePlan.maxSamples} · target {formatCapturePlanTarget(session.capturePlan.targetTaskCount)} · plan {formatDurationHours(session.capturePlan.intendedDurationHours)}
                         </p>
                       </div>
                     </div>
@@ -611,7 +704,7 @@ export default function ReviewSessionsPage() {
                     <div className="console-inset p-3 rounded-sm">
                       <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">What this is for</p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Use bucket switches to label the current phase of the test. `Steady State` means normal running. `Burst Workload` means you intentionally started a heavy task wave. `User Experience` is where you capture how the box actually feels to use.
+                        Use bucket switches to label manual phases or unusual situations. The one-command review workload already flips to `Burst Workload` at the start of the push and back to `Steady State` when the run finishes.
                       </p>
                     </div>
                     <div className="grid md:grid-cols-[1fr_auto] gap-3 items-end">
@@ -664,7 +757,7 @@ export default function ReviewSessionsPage() {
                     <div className="console-inset p-3 rounded-sm">
                       <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">What belongs here</p>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Telemetry already captures CPU, memory, queue, incidents, and latency. Use these controls for the extra proof telemetry cannot know by itself: what you felt, what task wave you started, and which exact run proves a behavior.
+                        Telemetry already captures CPU, memory, queue, incidents, and latency. The automated review workload also records its own linked run and summary note. Use these controls for extra proof telemetry cannot know by itself: what you felt, what changed, and any special run you want to highlight.
                       </p>
                     </div>
                     <div className="space-y-2">
@@ -773,19 +866,19 @@ export default function ReviewSessionsPage() {
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Run Outcomes</p>
                         <p className="text-sm text-foreground mt-2">
-                          {session.summary.workload.successfulRuns} ok / {session.summary.workload.failedRuns} failed
+                          {displayedCumulativeWorkload.successfulRuns} ok / {displayedCumulativeWorkload.failedRuns} failed
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          retrying {session.summary.workload.retryingRuns} · pending {session.summary.workload.pendingRuns}
+                          accepted {displayedCumulativeWorkload.acceptedRuns} · retrying {displayedCumulativeWorkload.retriedRuns} · pending {displayedCumulativeWorkload.pendingRuns}
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
                         <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Latency</p>
                         <p className="text-sm text-foreground mt-2">
-                          avg {session.summary.workload.averageLatencyMs ?? "n/a"} ms
+                          cumulative avg {displayedCumulativeWorkload.averageLatencyMs ?? "n/a"} ms
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          p95 {session.summary.workload.p95LatencyMs ?? "n/a"} ms
+                          cumulative peak {displayedCumulativeWorkload.peakLatencyMs ?? "n/a"} ms · window p95 {workloadSummary?.p95LatencyMs ?? "n/a"} ms
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
@@ -816,24 +909,24 @@ export default function ReviewSessionsPage() {
 
                     <div className="grid xl:grid-cols-[1fr_1fr] gap-3">
                       <div className="console-inset p-3 rounded-sm">
-                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Workload Window</p>
+                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Retained Window Slice</p>
                         <p className="text-[11px] font-mono text-foreground mt-2">
-                          {formatDate(session.summary.workload.windowStartedAt)}
+                          {formatDate(workloadSummary?.windowStartedAt)}
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          to {formatDate(session.summary.workload.windowEndedAt)}
+                          to {formatDate(workloadSummary?.windowEndedAt)}
                         </p>
                         <p className="text-[10px] font-mono text-muted-foreground mt-2">
-                          total cost ${(session.summary.workload.totalCostUsd ?? 0).toFixed(4)}
+                          retained {workloadSummary?.consideredRuns ?? 0} runs · completed {workloadSummary?.completedRuns ?? 0} · total cost ${((workloadSummary?.totalCostUsd ?? 0)).toFixed(4)}
                         </p>
                       </div>
                       <div className="console-inset p-3 rounded-sm">
-                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Top Task Types</p>
+                        <p className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">Cumulative Top Task Types</p>
                         <div className="mt-2 space-y-1">
-                          {session.summary.workload.topTaskTypes.length === 0 ? (
-                            <p className="text-xs text-muted-foreground">No task executions landed inside the session window yet.</p>
+                          {displayedCumulativeWorkload.topTaskTypes.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No accepted task mix has been recorded for this soak yet.</p>
                           ) : (
-                            session.summary.workload.topTaskTypes.map((item) => (
+                            displayedCumulativeWorkload.topTaskTypes.map((item) => (
                               <p key={item.type} className="text-[11px] font-mono text-foreground">
                                 {item.type} · {item.count}
                               </p>
