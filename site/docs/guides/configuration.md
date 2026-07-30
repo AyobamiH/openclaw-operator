@@ -200,6 +200,38 @@ Those files define:
 - orchestrator state path
 - agent-specific runtime limits
 
+## Deterministic Publishing Harness
+
+The product-owned publishing guard uses two paths:
+
+```json
+{
+  "publishingRegistryPath": "/workspace/config/publishing/registry.v1.json",
+  "publishingDatabasePath": "/workspace/logs/deterministic-publishing.sqlite"
+}
+```
+
+Both values must be configured together. Relative values are resolved against
+the directory containing `orchestrator_config.json`.
+
+When `OPENCLAW_OPERATOR_STATE_DIR` is set, the publishing database is forced to
+`$OPENCLAW_OPERATOR_STATE_DIR/database/deterministic-publishing.sqlite`
+regardless of the portable development fallback in the JSON file. Production
+service templates set this state root outside the source checkout. Docker uses
+named `operator-state` and `operator-logs` volumes rather than bind-mounting the
+repository's `logs/` directory.
+
+- `publishingRegistryPath` is the versioned 18-family commercial and publication
+  registry.
+- `publishingDatabasePath` is the SQLite authority for opportunities, immutable
+  content specs, reservations, publications, metrics, attribution and the
+  hash-chained audit ledger.
+
+Startup fails closed when only one path is configured or the registry is
+invalid. Configuring this harness does not activate a provider adapter and does
+not change host schedules. Provider writes remain worker-owned and require the
+separate adapter/cutover process.
+
 ## Where To Look Next
 
 - [../reference/api.md](../reference/api.md): config-adjacent interfaces and

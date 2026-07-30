@@ -90,6 +90,14 @@ Protected operator routes (bearer token):
 - `POST /api/tasks/trigger`
 - `GET /api/tasks/runs`
 - `GET /api/tasks/runs/:runId`
+- `POST /api/review-sessions/bootstrap-handoff`
+- `GET /api/review-sessions`
+- `GET /api/review-sessions/:id`
+- `POST /api/review-sessions/:id/bucket`
+- `POST /api/review-sessions/:id/note`
+- `POST /api/review-sessions/:id/link-run`
+- `POST /api/review-sessions/:id/stop`
+- `GET /api/review-sessions/:id/export`
 - `GET /api/approvals/pending`
 - `POST /api/approvals/:id/decision`
 - `GET /api/incidents`
@@ -183,6 +191,26 @@ Specialist operator-console contract truth:
   orchestrator milestone feed surfaces for latest visible proof and proof-risk
   items.
 - `GET /api/auth/me`: protected auth identity surface.
+- `POST /api/review-sessions/bootstrap-handoff`: protected bootstrap seam. The
+  bootstrap helper creates a persisted `pending_handoff` session before
+  startup, then the orchestrator accepts this route only to promote that
+  existing session to `active` after startup ownership is transferred.
+- `GET /api/review-sessions` and `GET /api/review-sessions/:id`: protected
+  review-session ledger and detail surfaces.
+- Review sessions carry a private capture plan (`standard` or `soak-24h`) with
+  sampling interval, retention cap, intended duration, and target task count so
+  endurance runs are explicit rather than inferred from title text alone.
+- Active review-session detail returns a live derived summary, including
+  session-window run counts, latency, queue/incident peaks, retained-sample
+  totals, and top task types during the capture window.
+- `POST /api/review-sessions/:id/bucket`,
+  `POST /api/review-sessions/:id/note`, and
+  `POST /api/review-sessions/:id/link-run`: protected operator mutation routes
+  for active review sessions only.
+- `POST /api/review-sessions/:id/stop`: protected terminal transition from
+  `active` to `completed`.
+- `GET /api/review-sessions/:id/export`: protected export surface for
+  review-session evidence snapshots.
 - `GET /api/persistence/health`: public persistence dependency truth, now
   including the active persistence store (`file`, `mongo`, or `sqlite`) plus first-slice
   coordination status for Redis-backed claims, locks, and shared helper
@@ -223,6 +251,25 @@ Specialist operator-console contract truth:
   scheduler as active, so a persisted marker without live execution evidence
   cannot block future cycles indefinitely.
 - `/system-health`: not a backend route; it is a frontend-only page path.
+
+### Review Session Lifecycle Contract
+
+- Lifecycle states are exactly `pending_handoff`, `active`, `completed`, and
+  `handoff_failed`.
+- The bootstrap helper creates the persisted `pending_handoff` record before
+  orchestrator startup.
+- The orchestrator owns the transition from `pending_handoff` to `active` when
+  `POST /api/review-sessions/bootstrap-handoff` succeeds.
+- The bootstrap payload defines both the initial `startup_cost` bucket and the
+  post-handoff active bucket, so long-running soak captures can move
+  automatically into `steady_state_running_cost`.
+- The capture plan is part of the persisted session contract. `soak-24h` is the
+  private endurance profile for minute-grade day-long captures; `standard`
+  remains the short-session profile.
+- `completed` and `handoff_failed` are terminal. Review-session note and
+  run-link mutation is allowed only while the session is `active`.
+- `POST /api/review-sessions/:id/link-run` validates the identifier against
+  canonical task execution truth before storing the linked run.
 
 ### Operator Console Rendering Guardrails
 
@@ -743,6 +790,8 @@ Current cached read surfaces:
   - `POST /api/knowledge/query`
   - `GET /api/tasks/runs`
   - `GET /api/tasks/runs/:runId`
+  - `GET /api/review-sessions`
+  - `GET /api/review-sessions/:id`
   - `GET /api/skills/registry`
   - `GET /api/skills/policy`
   - `GET /api/skills/telemetry`
@@ -1290,3 +1339,41 @@ setInterval(async () => {
 ---
 
 See [Task Types](./task-types.md) for detailed task descriptions.
+
+## Deterministic Publishing Harness API
+
+The publishing route family is authenticated, rate-limited and deliberately
+cannot call a provider write.
+
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| `GET` | `/api/publishing/overview` | viewer | registry version, counts, slots, principles and audit-chain status |
+| `GET` | `/api/publishing/slots` | viewer | auditable opportunity outcomes |
+| `GET` | `/api/publishing/publications` | viewer | publication state-machine records |
+| `GET` | `/api/publishing/audit` | viewer | hash-chained audit events and integrity result |
+| `POST` | `/api/publishing/slots/plan` | operator | deterministic planning, validation and atomic local reservation |
+
+Planning accepts:
+
+```json
+{
+  "scheduledFor": "2026-07-30T05:00:00+01:00",
+  "platformId": "threads",
+  "accountId": "tailwaggingwebdesigns"
+}
+```
+
+`platformId` and `accountId` are optional filters. The request does not mean
+“publish.” A result may be reserved, skipped, failed closed or require
+reconciliation. Duplicate global slot identities return `409`.
+
+No route in this family exposes:
+
+- a raw Threads or Instagram write;
+- a media upload;
+- a container creation call;
+- a campaign-count override;
+- a reconciliation mutation that retries publish; or
+- a provider deletion.
+
+The machine-readable contract is in `GET /api/openapi.json`.
