@@ -24,7 +24,7 @@
     "publishing:harness": "tsx src/publishing/cli.ts"
   },
   "dependencies": {
-    "@oneclicksystems/agentproof": "0.1.0-rc.5",
+    "@oneclicksystems/agentproof": "github:AyobamiH/agentproof#0be72f5506d5b42a2463f6ce1d2803b89e525994",
     "chokidar": "^3.6.0",
     "express": "^4.22.1",
     "express-rate-limit": "^8.2.1",
