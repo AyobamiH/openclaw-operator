@@ -89,6 +89,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [architecture/AGENT_CAPABILITY_MODEL.md](./architecture/AGENT_CAPABILITY_MODEL.md) | target maturity model for agent capability and promotion gating |
 | [architecture/AGENT_CAPABILITY_IMPLEMENTATION_MATRIX.md](./architecture/AGENT_CAPABILITY_IMPLEMENTATION_MATRIX.md) | concrete per-agent implementation and promotion matrix for the full declared agent set |
 | [architecture/AGENT_ADAPTATION_PLAN.md](./architecture/AGENT_ADAPTATION_PLAN.md) | implementation-ready adaptation plan for strengthening the current agent portfolio using proven role patterns without changing the current runtime architecture |
+| [architecture/AGENTPROOF_INTEGRATION_BOUNDARY.md](./architecture/AGENTPROOF_INTEGRATION_BOUNDARY.md) | source, approval, runtime-state and evidence ownership between Operator and the standalone AgentProof package |
 | [architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md](./architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md) | current runtime/operator exposure matrix for routes, tasks, and agents |
 | [architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md](./architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md) | published docs-site structure and downstream publishing model |
 | [architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md](./architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md) | canonical commercial selection, publication state, evidence, platform-expansion and drift-guard architecture |
