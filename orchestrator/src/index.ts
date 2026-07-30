@@ -10542,7 +10542,11 @@ async function bootstrap() {
   // Phase 6: Metrics Persistence Layer (MongoDB)
   // ============================================================
 
-  if (!fastStartMode) {
+  const shouldInitializePersistence =
+    isMongoStateTarget(config.stateFile) ||
+    process.env.ENABLE_MONGO_PERSISTENCE === "true";
+
+  if (!fastStartMode && shouldInitializePersistence) {
     try {
       await PersistenceIntegration.initialize();
     } catch (error) {
@@ -10562,6 +10566,10 @@ async function bootstrap() {
         "[orchestrator] ⚠️ DEGRADED MODE: persistence unavailable, continuing without Mongo-backed persistence",
       );
     }
+  } else if (!fastStartMode) {
+    console.log(
+      "[orchestrator] file-backed runtime state configured; skipping Mongo persistence initialization",
+    );
   } else {
     console.log(
       "[orchestrator] fast-start: skipping persistence initialization",

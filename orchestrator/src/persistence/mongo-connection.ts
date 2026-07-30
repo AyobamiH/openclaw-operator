@@ -21,7 +21,7 @@ let database: Db | null = null;
 
 export class MongoConnection {
   private static config: ConnectionConfig = {
-    url: process.env.DATABASE_URL || 'mongodb://mongo:27017/orchestrator',
+    url: process.env.DATABASE_URL || 'mongodb://127.0.0.1:27017/orchestrator',
     dbName: process.env.DB_NAME || 'orchestrator',
     maxPoolSize: 10,
     maxIdleTimeMS: 60000,

@@ -66,9 +66,12 @@ export function resolveSqliteStatePath(target: string) {
 
 export function resolveMongoFallbackPath(key: string) {
   const safeKey = key.replace(/[^a-zA-Z0-9._-]+/g, "-");
+  const operatorStateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
   const fallbackDir =
     process.env.ORCHESTRATOR_STATE_FALLBACK_DIR?.trim() ||
-    join(process.cwd(), "data");
+    (operatorStateRoot
+      ? join(operatorStateRoot, "orchestrator", "fallback")
+      : join(process.cwd(), "data"));
   return join(fallbackDir, `${safeKey}.fallback.json`);
 }
 

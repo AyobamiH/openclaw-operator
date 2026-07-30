@@ -7,6 +7,7 @@ import ApprovalsPage from "@/pages/ApprovalsPage";
 import IncidentsPage from "@/pages/IncidentsPage";
 import KnowledgePage from "@/pages/KnowledgePage";
 import PublicProofPage from "@/pages/PublicProofPage";
+import ReviewSessionsPage from "@/pages/ReviewSessionsPage";
 import SystemHealthPage from "@/pages/SystemHealthPage";
 import TasksPage from "@/pages/TasksPage";
 import GovernancePage from "@/pages/GovernancePage";
@@ -1883,15 +1884,15 @@ describe("operator contract surfaces", () => {
     fireEvent.click(screen.getByText("Build Refactor"));
 
     expect(
-      screen.getByText(/Autonomous mode synthesizes bounded repo patches from real scope evidence/i),
+      screen.getByText(/Explicit mode applies the exact changes\[\] payload you supply/i),
     ).toBeInTheDocument();
     expect(screen.getByDisplayValue("orchestrator/src")).toBeInTheDocument();
     expect(screen.getByText("What To Do Next")).toBeInTheDocument();
     expect(
-      screen.getByText(/worker scans the declared scope for supported repository transforms/i),
+      screen.getByText(/worker applies your exact bounded changes\[\] patch set/i),
     ).toBeInTheDocument();
     expect(
-      screen.getByDisplayValue(/Repair the bounded runtime\/operator issue inside this scope/i),
+      screen.getByDisplayValue(/Apply the bounded patch set below and preserve rollback evidence/i),
     ).toBeInTheDocument();
   });
 

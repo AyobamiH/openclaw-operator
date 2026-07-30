@@ -407,7 +407,7 @@ export function useReviewSessionStop() {
 
 export function useReviewSessionExport() {
   return useMutation<
-    string | ReviewSessionDetailResponse,
+    string,
     Error,
     { id: string; format: "json" | "markdown" }
   >({

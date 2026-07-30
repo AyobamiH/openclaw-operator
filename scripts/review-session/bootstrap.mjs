@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { openSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
@@ -420,7 +420,10 @@ async function resolveStateFilePath() {
   if (typeof parsed?.stateFile !== "string" || parsed.stateFile.length === 0) {
     throw new Error(`Missing stateFile in ${orchestratorConfigPath}`);
   }
-  return parsed.stateFile;
+  if (isMongoStateTarget(parsed.stateFile)) {
+    return parsed.stateFile;
+  }
+  return resolve(dirname(orchestratorConfigPath), parsed.stateFile);
 }
 
 function isMongoStateTarget(target) {
@@ -438,7 +441,7 @@ function resolveMongoStateKey(target) {
 async function withMongoStateCollection(callback) {
   const { MongoClient } = orchestratorRequire("mongodb");
   const client = new MongoClient(
-    process.env.DATABASE_URL || "mongodb://mongo:27017/orchestrator",
+    process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/orchestrator",
   );
   await client.connect();
   try {
@@ -548,6 +551,7 @@ async function writeStateFile(stateFilePath, state) {
     return;
   }
 
+  await mkdir(dirname(stateFilePath), { recursive: true });
   await writeFile(stateFilePath, JSON.stringify(state, null, 2), "utf-8");
 }
 

@@ -16,12 +16,15 @@ const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof
 
 const roots: string[] = [];
 const originalFallbackDir = process.env.ORCHESTRATOR_STATE_FALLBACK_DIR;
+const originalOperatorStateDir = process.env.OPENCLAW_OPERATOR_STATE_DIR;
 const originalStrictPersistence = process.env.STRICT_PERSISTENCE;
 
 afterEach(async () => {
   vi.restoreAllMocks();
   if (originalFallbackDir === undefined) delete process.env.ORCHESTRATOR_STATE_FALLBACK_DIR;
   else process.env.ORCHESTRATOR_STATE_FALLBACK_DIR = originalFallbackDir;
+  if (originalOperatorStateDir === undefined) delete process.env.OPENCLAW_OPERATOR_STATE_DIR;
+  else process.env.OPENCLAW_OPERATOR_STATE_DIR = originalOperatorStateDir;
   if (originalStrictPersistence === undefined) delete process.env.STRICT_PERSISTENCE;
   else process.env.STRICT_PERSISTENCE = originalStrictPersistence;
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -94,6 +97,17 @@ describe("SQLite state store", () => {
 });
 
 describe("Mongo state-store local fallback", () => {
+  it("places fallback snapshots under the declared operator state root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openclaw-operator-state-"));
+    roots.push(root);
+    delete process.env.ORCHESTRATOR_STATE_FALLBACK_DIR;
+    process.env.OPENCLAW_OPERATOR_STATE_DIR = root;
+
+    expect(resolveMongoFallbackPath("test-state")).toBe(
+      join(root, "orchestrator", "fallback", "test-state.fallback.json"),
+    );
+  });
+
   it("keeps state durable locally when a Mongo save fails", async () => {
     const root = await mkdtemp(join(tmpdir(), "openclaw-state-fallback-"));
     roots.push(root);
