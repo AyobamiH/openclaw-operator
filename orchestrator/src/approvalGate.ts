@@ -75,6 +75,7 @@ export function decideApproval(
   decision: "approved" | "rejected",
   decidedBy: string,
   note?: string,
+  decidedAt: string = new Date().toISOString(),
 ): ApprovalRecord {
   const target = findApproval(state, taskId);
   if (!target) {
@@ -82,9 +83,26 @@ export function decideApproval(
   }
 
   target.status = decision;
-  target.decidedAt = new Date().toISOString();
+  target.decidedAt = decidedAt;
   target.decidedBy = decidedBy;
   target.note = note;
 
+  return target;
+}
+
+export function cancelApproval(
+  state: OrchestratorState,
+  taskId: string,
+  cancelledBy: string,
+  note?: string,
+  cancelledAt: string = new Date().toISOString(),
+): ApprovalRecord {
+  const target = findApproval(state, taskId);
+  if (!target) throw new Error(`Approval task not found: ${taskId}`);
+  if (target.status !== "pending") throw new Error(`Approval is already ${target.status}`);
+  target.status = "cancelled";
+  target.decidedAt = cancelledAt;
+  target.decidedBy = cancelledBy;
+  target.note = note;
   return target;
 }

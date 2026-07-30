@@ -136,7 +136,7 @@ export interface ApprovalRecord {
   type: string;
   payload: Record<string, unknown>;
   requestedAt: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "approved" | "rejected" | "cancelled";
   decidedAt?: string;
   decidedBy?: string;
   note?: string;
