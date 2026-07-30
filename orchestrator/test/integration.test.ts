@@ -414,6 +414,26 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       ) {
         return latestRun;
       }
+      if (
+        latestRun?.runId &&
+        ['failed', 'timed_out', 'cancelled'].includes(String(latestRun.status ?? '')) &&
+        typeof latestRun.completedAt === 'string' &&
+        latestRun.completedAt.length > 0
+      ) {
+        const detail = await fetchProtected<{ run?: TaskRunDetailRecord }>(
+          `/api/tasks/runs/${encodeURIComponent(latestRun.runId)}?pollTs=${Date.now()}`,
+        );
+        throw new Error(
+          [
+            `Task run reached an unexpected terminal status for taskId=${taskId}.`,
+            `acceptedStatuses=${JSON.stringify(acceptedStatuses)}`,
+            `runId=${latestRun.runId}`,
+            `status=${latestRun.status}`,
+            `completedAt=${latestRun.completedAt}`,
+            `lastError=${detail.run?.lastError ?? 'null'}`,
+          ].join(' '),
+        );
+      }
       await sleep(250);
     }
 
