@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
 import {
   loadRuntimeStateTarget,
+  resolveOperatorStatePath,
   resolveRuntimeStateTarget,
   saveRuntimeStateTarget,
 } from "../../shared/runtime-evidence.js";
@@ -112,13 +113,29 @@ async function loadConfig(): Promise<AgentConfig> {
   const raw = await readFile(configPath, "utf-8");
   const parsed = JSON.parse(raw) as AgentConfig;
   return {
-    knowledgePackDir: resolve(dirname(configPath), parsed.knowledgePackDir),
-    draftLogPath: resolve(dirname(configPath), parsed.draftLogPath),
+    knowledgePackDir: resolveOperatorStatePath(
+      configPath,
+      parsed.knowledgePackDir,
+      "logs/knowledge-packs",
+    ),
+    draftLogPath: resolveOperatorStatePath(
+      configPath,
+      parsed.draftLogPath,
+      "logs/reddit-drafts.jsonl",
+    ),
     devvitQueuePath: parsed.devvitQueuePath
-      ? resolve(dirname(configPath), parsed.devvitQueuePath)
+      ? resolveOperatorStatePath(
+          configPath,
+          parsed.devvitQueuePath,
+          "logs/devvit-submissions.jsonl",
+        )
       : undefined,
     orchestratorStatePath: resolveRuntimeStateTarget(configPath, parsed.orchestratorStatePath)!,
-    serviceStatePath: resolve(dirname(configPath), parsed.serviceStatePath),
+    serviceStatePath: resolveOperatorStatePath(
+      configPath,
+      parsed.serviceStatePath,
+      "logs/reddit-helper-service.json",
+    ),
   };
 }
 

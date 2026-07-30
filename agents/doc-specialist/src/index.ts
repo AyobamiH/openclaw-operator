@@ -8,6 +8,8 @@ import {
   buildSpecialistOperatorFields,
   buildWorkflowBlockerSummary,
   loadRuntimeState,
+  resolveOperatorStatePath,
+  resolveRuntimeStateTarget,
   summarizeProofSurface,
   summarizeTaskExecutions,
   type RuntimeStateSubset,
@@ -352,8 +354,12 @@ async function loadAgentConfig(): Promise<AgentConfig> {
   return {
     docsPath: resolve(dirname(configPath), parsed.docsPath),
     cookbookPath: parsed.cookbookPath ? resolve(dirname(configPath), parsed.cookbookPath) : undefined,
-    knowledgePackDir: resolve(dirname(configPath), parsed.knowledgePackDir),
-    stateFile: parsed.stateFile ? resolve(dirname(configPath), parsed.stateFile) : undefined,
+    knowledgePackDir: resolveOperatorStatePath(
+      configPath,
+      parsed.knowledgePackDir,
+      "logs/knowledge-packs",
+    ),
+    stateFile: resolveRuntimeStateTarget(configPath, parsed.stateFile),
     agentsRootPath: resolve(dirname(configPath), parsed.agentsRootPath || "../../agents"),
     orchestratorConfigPath: resolve(
       dirname(configPath),

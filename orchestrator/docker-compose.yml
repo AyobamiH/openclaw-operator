@@ -132,6 +132,7 @@ services:
 
   # Grafana for Visualization
   grafana:
+    profiles: ["optional-observability"]
     image: grafana/grafana:10.2.2
     container_name: openclaw-grafana
     ports:
@@ -152,6 +153,7 @@ services:
 
   # AlertManager (optional, for alert routing)
   alertmanager:
+    profiles: ["optional-observability"]
     image: prom/alertmanager:v0.26.0
     container_name: openclaw-alertmanager
     ports:

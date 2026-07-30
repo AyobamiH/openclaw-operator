@@ -4,11 +4,15 @@ After=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=%h/openclaw-operator/agents/reddit-helper
+WorkingDirectory=%h/.openclaw/workspace/projects/openclaw-operator/agents/reddit-helper
 Environment=ALLOW_DIRECT_SERVICE=true
-ExecStart=/usr/bin/env bash -lc 'exec node ../../node_modules/tsx/dist/cli.mjs src/service.ts'
+Environment=OPENCLAW_OPERATOR_STATE_DIR=%h/.openclaw/state/openclaw-operator
+Environment=OPENCLAW_ORCHESTRATOR_PACKAGE_JSON=%h/.openclaw/workspace/projects/openclaw-operator/orchestrator/package.json
+Environment=ORCHESTRATOR_CONFIG=%h/.openclaw/workspace/orchestrator_config.json
+ExecStart=/usr/bin/env bash -lc 'exec node --import tsx src/service.ts'
 Restart=always
 RestartSec=5
+UMask=0077
 
 [Install]
 WantedBy=default.target

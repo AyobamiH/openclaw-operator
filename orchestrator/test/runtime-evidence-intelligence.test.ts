@@ -9,6 +9,7 @@ import {
   buildIncidentPriorityQueue,
   buildWorkflowBlockerSummary,
   loadRuntimeStateTarget,
+  resolveOperatorStatePath,
   resolveRuntimeStateTarget,
   saveRuntimeStateTarget,
   setRuntimeStateMongoClientFactoryForTest,
@@ -192,6 +193,27 @@ describe("runtime intelligence helpers", () => {
     ).toBe("/tmp/state.json");
   });
 
+  it("routes mutable agent outputs through the configured operator state root", () => {
+    const previousStateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR;
+    process.env.OPENCLAW_OPERATOR_STATE_DIR = "/tmp/openclaw-operator-state";
+
+    try {
+      expect(
+        resolveOperatorStatePath(
+          "/tmp/operator/agents/reddit-helper/agent.config.json",
+          "../../logs/reddit-drafts.jsonl",
+          "logs/reddit-drafts.jsonl",
+        ),
+      ).toBe("/tmp/openclaw-operator-state/logs/reddit-drafts.jsonl");
+    } finally {
+      if (previousStateRoot === undefined) {
+        delete process.env.OPENCLAW_OPERATOR_STATE_DIR;
+      } else {
+        process.env.OPENCLAW_OPERATOR_STATE_DIR = previousStateRoot;
+      }
+    }
+  });
+
   it("reads and writes JSON runtime-state targets directly", async () => {
     const fixtureRoot = await mkdtemp(join(tmpdir(), "runtime-state-target-"));
     const targetPath = join(fixtureRoot, "state.json");
@@ -212,6 +234,26 @@ describe("runtime intelligence helpers", () => {
       const loaded = await loadRuntimeStateTarget(targetPath, {});
       expect(loaded).toMatchObject({
         updatedAt: "2026-03-28T10:00:00.000Z",
+      });
+    } finally {
+      await rm(fixtureRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("reads and writes normalized SQLite runtime-state targets through the canonical store", async () => {
+    const fixtureRoot = await mkdtemp(join(tmpdir(), "runtime-state-sqlite-target-"));
+    const target = `sqlite:${join(fixtureRoot, "operator.sqlite")}`;
+
+    try {
+      await saveRuntimeStateTarget(target, {
+        updatedAt: "2026-07-26T15:45:00.000Z",
+        taskExecutions: [{ idempotencyKey: "task-sqlite-1", status: "success" }],
+      });
+
+      const loaded = await loadRuntimeStateTarget(target, {});
+      expect(loaded).toMatchObject({
+        updatedAt: "2026-07-26T15:45:00.000Z",
+        taskExecutions: [{ idempotencyKey: "task-sqlite-1", status: "success" }],
       });
     } finally {
       await rm(fixtureRoot, { recursive: true, force: true });

@@ -181,6 +181,7 @@ const CHILD_ENV_ALLOWLIST = [
   "TEMP",
   "NODE_ENV",
   "ORCHESTRATOR_CONFIG",
+  "OPENCLAW_OPERATOR_STATE_DIR",
   "STATE_FILE",
   "TZ",
   "LANG",
@@ -1711,13 +1712,16 @@ async function persistSpawnedAgentServiceState(
   const config = await loadSpawnedAgentMemoryConfig(agentId);
   if (!config.serviceStatePath) return;
 
-  const serviceStatePath = join(
-    process.cwd(),
-    "..",
-    "agents",
-    agentId,
-    config.serviceStatePath,
-  );
+  const stateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
+  const serviceStatePath = stateRoot
+    ? join(stateRoot, "logs", basename(config.serviceStatePath))
+    : join(
+        process.cwd(),
+        "..",
+        "agents",
+        agentId,
+        config.serviceStatePath,
+      );
   let existing: Record<string, unknown> = {};
   try {
     const current = await readFile(serviceStatePath, "utf-8");

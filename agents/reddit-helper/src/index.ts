@@ -3,7 +3,10 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { Telemetry } from "../../shared/telemetry.js";
-import { buildSpecialistOperatorFields } from "../../shared/runtime-evidence.js";
+import {
+  buildSpecialistOperatorFields,
+  resolveOperatorStatePath,
+} from "../../shared/runtime-evidence.js";
 import {
   loadSharedBudgetState,
   saveSharedBudgetState,
@@ -386,12 +389,28 @@ async function loadConfig(): Promise<AgentConfig> {
       : parsed.openaiTemperature;
   return {
     ...parsed,
-    knowledgePackDir: resolve(configDir, parsed.knowledgePackDir),
-    draftLogPath: resolve(configDir, parsed.draftLogPath),
+    knowledgePackDir: resolveOperatorStatePath(
+      configPath,
+      parsed.knowledgePackDir,
+      "logs/knowledge-packs",
+    ),
+    draftLogPath: resolveOperatorStatePath(
+      configPath,
+      parsed.draftLogPath,
+      "logs/reddit-drafts.jsonl",
+    ),
     devvitQueuePath: parsed.devvitQueuePath
-      ? resolve(configDir, parsed.devvitQueuePath)
+      ? resolveOperatorStatePath(
+          configPath,
+          parsed.devvitQueuePath,
+          "logs/devvit-submissions.jsonl",
+        )
       : undefined,
-    serviceStatePath: resolve(configDir, parsed.serviceStatePath),
+    serviceStatePath: resolveOperatorStatePath(
+      configPath,
+      parsed.serviceStatePath,
+      "logs/reddit-helper-service.json",
+    ),
     docsPath:
       orchestratorDefaults.docsPath ??
       (typeof parsed.docsPath === "string" ? resolve(configDir, parsed.docsPath) : undefined),

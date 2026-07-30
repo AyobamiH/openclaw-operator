@@ -16,11 +16,13 @@
       }
     }
   },
-  "docsPath": "../../openclaw-docs",
-  "cookbookPath": "../../openai-cookbook",
+  "docsPath": "../../../../openclaw-docs",
+  "cookbookPath": "../../../../openai-cookbook",
   "stateFile": "../../orchestrator/data/orchestrator-state.json",
   "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/doc-specialist-service.json",
   "telemetryStream": "http://localhost:8700/telemetry",
-  "knowledgePackDir": "../../logs/knowledge-packs"
+  "knowledgePackDir": "../../logs/knowledge-packs",
+  "agentsRootPath": "../../agents",
+  "orchestratorConfigPath": "../../../../orchestrator_config.json"
 }
