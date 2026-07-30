@@ -279,6 +279,25 @@ long-term excuse for permanent partial maturity.
 
 ## 4. Immediate Surfacing Policy
 
+### Deterministic publishing harness
+
+The backend now exposes a bounded publishing guard:
+
+| Surface | Current truth | Operator exposure |
+|---|---|---|
+| Registry/engine overview | Product-owned and locally verified | Viewer read |
+| Slot outcome history | SQLite-backed and auditable | Viewer read |
+| Publication state history | SQLite-backed and auditable | Viewer read |
+| Hash-chained audit events | Integrity-checkable | Viewer read |
+| Deterministic slot planning | Local validation and atomic reservation only | Operator write |
+| Provider publication | Not exposed by operator API | Worker-only |
+| Ambiguity reconciliation mutation | Not exposed by operator API | Worker-only |
+
+The operator UI may surface these routes as evidence and planning controls. It
+must not label a reservation as a publication or add a “publish now” control.
+Live Threads/Instagram workers remain host runtime truth until an explicitly
+approved adapter and schedule cutover occurs.
+
 Use this policy until a stricter product split is chosen.
 
 ### Private operator console (`/operator` and `/operator/*`)

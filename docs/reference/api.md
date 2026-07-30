@@ -1339,3 +1339,41 @@ setInterval(async () => {
 ---
 
 See [Task Types](./task-types.md) for detailed task descriptions.
+
+## Deterministic Publishing Harness API
+
+The publishing route family is authenticated, rate-limited and deliberately
+cannot call a provider write.
+
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| `GET` | `/api/publishing/overview` | viewer | registry version, counts, slots, principles and audit-chain status |
+| `GET` | `/api/publishing/slots` | viewer | auditable opportunity outcomes |
+| `GET` | `/api/publishing/publications` | viewer | publication state-machine records |
+| `GET` | `/api/publishing/audit` | viewer | hash-chained audit events and integrity result |
+| `POST` | `/api/publishing/slots/plan` | operator | deterministic planning, validation and atomic local reservation |
+
+Planning accepts:
+
+```json
+{
+  "scheduledFor": "2026-07-30T05:00:00+01:00",
+  "platformId": "threads",
+  "accountId": "tailwaggingwebdesigns"
+}
+```
+
+`platformId` and `accountId` are optional filters. The request does not mean
+“publish.” A result may be reserved, skipped, failed closed or require
+reconciliation. Duplicate global slot identities return `409`.
+
+No route in this family exposes:
+
+- a raw Threads or Instagram write;
+- a media upload;
+- a container creation call;
+- a campaign-count override;
+- a reconciliation mutation that retries publish; or
+- a provider deletion.
+
+The machine-readable contract is in `GET /api/openapi.json`.

@@ -5,6 +5,8 @@
   "stateFile": "./orchestrator/data/orchestrator-state.json",
   "businessRegistryPath": "../../business/registry.json",
   "businessEvidenceDir": "../../artifacts/business-value",
+  "publishingRegistryPath": "./config/publishing/registry.v1.json",
+  "publishingDatabasePath": "./logs/deterministic-publishing.sqlite",
   "strictPersistence": false,
   "approvalRequiredTaskTypes": [
     "agent-deploy",

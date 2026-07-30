@@ -339,6 +339,29 @@ const components = {
       type: "object",
       additionalProperties: true,
     },
+    PublishingSlotPlanRequest: {
+      type: "object",
+      required: ["scheduledFor"],
+      additionalProperties: false,
+      properties: {
+        scheduledFor: {
+          type: "string",
+          format: "date-time",
+          description: "Approved opportunity timestamp evaluated in Europe/London.",
+        },
+        platformId: {
+          type: "string",
+          pattern: "^[a-z][a-z0-9-]{1,63}$",
+        },
+        accountId: { type: "string", minLength: 1 },
+      },
+    },
+    PublishingHarnessResponse: {
+      type: "object",
+      additionalProperties: true,
+      description:
+        "Deterministic publishing registry, planning, state, or audit payload. No provider-write operation is exposed by this API family.",
+    },
     StringArray: {
       type: "array",
       items: { type: "string" },
@@ -2601,6 +2624,152 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         },
       },
     },
+    "/api/publishing/overview": {
+      get: {
+        tags: ["Operator", "Publishing"],
+        summary: "Deterministic publishing harness overview",
+        operationId: "getPublishingOverview",
+        security: [{ bearerAuth: [] }],
+        "x-openclaw-access": {
+          requiredRole: "viewer",
+          rateLimitBucket: "viewer-read",
+          action: "publishing.overview.read",
+          externalWrites: false,
+        },
+        responses: {
+          "200": jsonResponse(
+            "Registry version, database counts, slot contract, principles, and audit-chain state.",
+            "PublishingHarnessResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "503": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/publishing/slots": {
+      get: {
+        tags: ["Operator", "Publishing"],
+        summary: "List deterministic opportunity-slot results",
+        operationId: "getPublishingSlots",
+        security: [{ bearerAuth: [] }],
+        parameters: [parameterRef("Limit")],
+        "x-openclaw-access": {
+          requiredRole: "viewer",
+          rateLimitBucket: "viewer-read",
+          action: "publishing.slots.read",
+          externalWrites: false,
+        },
+        responses: {
+          "200": jsonResponse(
+            "Auditable slot results.",
+            "PublishingHarnessResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "503": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/publishing/publications": {
+      get: {
+        tags: ["Operator", "Publishing"],
+        summary: "List publication state-machine records",
+        operationId: "getPublishingPublications",
+        security: [{ bearerAuth: [] }],
+        parameters: [parameterRef("Limit")],
+        "x-openclaw-access": {
+          requiredRole: "viewer",
+          rateLimitBucket: "viewer-read",
+          action: "publishing.publications.read",
+          externalWrites: false,
+        },
+        responses: {
+          "200": jsonResponse(
+            "Publication state-machine records.",
+            "PublishingHarnessResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "503": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/publishing/audit": {
+      get: {
+        tags: ["Operator", "Publishing"],
+        summary: "Inspect the hash-chained publishing audit ledger",
+        operationId: "getPublishingAudit",
+        security: [{ bearerAuth: [] }],
+        parameters: [parameterRef("Limit")],
+        "x-openclaw-access": {
+          requiredRole: "viewer",
+          rateLimitBucket: "viewer-read",
+          action: "publishing.audit.read",
+          externalWrites: false,
+        },
+        responses: {
+          "200": jsonResponse(
+            "Audit events and current chain-integrity result.",
+            "PublishingHarnessResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "503": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/publishing/slots/plan": {
+      post: {
+        tags: ["Operator", "Publishing"],
+        summary: "Plan and atomically reserve one approved opportunity",
+        description:
+          "Runs deterministic selection and validation, then reserves a slot. This route cannot publish to a provider.",
+        operationId: "planPublishingSlot",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: schemaRef("PublishingSlotPlanRequest"),
+            },
+          },
+        },
+        "x-openclaw-access": {
+          requiredRole: "operator",
+          rateLimitBucket: "operator-write",
+          action: "publishing.slots.plan",
+          externalWrites: false,
+          providerWriteAvailable: false,
+        },
+        responses: {
+          "200": jsonResponse(
+            "Auditable non-publication slot result.",
+            "PublishingHarnessResponse",
+            writeHeaders,
+          ),
+          "201": jsonResponse(
+            "Validated slot reservation.",
+            "PublishingHarnessResponse",
+            writeHeaders,
+          ),
+          "400": responseRef("BadRequest"),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "409": responseRef("Conflict"),
+          "429": responseRef("TooManyRequests"),
+          "503": responseRef("ServerError"),
+        },
+      },
+    },
     "/webhook/alerts": {
       post: {
         tags: ["Webhook"],
@@ -2666,6 +2835,7 @@ export function buildOpenApiSpec(port: string | number = 3000) {
     tags: [
       { name: "Public", description: "Unauthenticated public read surfaces." },
       { name: "Operator", description: "Bearer-protected operator/control-plane surfaces." },
+      { name: "Publishing", description: "Deterministic planning, publication state, evidence, and audit harness surfaces." },
       { name: "Tasks", description: "Task catalog, queueing, and run-ledger surfaces." },
       { name: "Incidents", description: "Runtime incident ledger and remediation surfaces." },
       { name: "Health", description: "Health and dashboard aggregation surfaces." },

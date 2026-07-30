@@ -146,3 +146,103 @@
   account or a separately chosen fork/PR handoff. Creating the sensitive
   export, changing GitHub identity/remotes, rewriting history, stopping
   services, or provisioning secrets remains separately approval-gated.
+
+## 2026-07-29 — deterministic self-identification publishing product implementation
+
+- Requested task: implement the complete attached publishing-engine knowledge
+  base inside the canonical project as a drift guard and product harness,
+  exclude Reddit, and preserve future platform extensibility.
+- Workflow lane: product architecture, local source implementation, durable
+  state, operator API contract, verification and documentation.
+- Tools and source:
+  - full DOCX extraction and read-only inspection;
+  - `coding_repo_map` for canonical repository ownership and source mapping;
+  - `coding_api_contract_audit`, `coding_route_trace`, and
+    `coding_migration_review` attempted for evidence; adapters were partial or
+    unavailable, so narrow core inspection was used;
+  - OpenClaw scheduler/status reads for current live-runtime evidence;
+  - official Ferryman pages for future-platform discovery;
+  - local `apply_patch` for project-owned source, registry, tests and docs;
+  - TypeScript, Vitest and the non-writing publishing harness for validation.
+- Changed-state declaration: `true` for local source-controlled files inside
+  `projects/openclaw-operator`. No live provider write, schedule change,
+  service restart, migration, install/update, commit, push, release or
+  deployment occurred.
+- Evidence:
+  - architecture:
+    `docs/architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md`;
+  - recon:
+    `docs/operations/deterministic-self-identification-publishing-engine-recon-2026-07-29.md`;
+  - acceptance:
+    `docs/operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md`;
+  - registry:
+    `config/publishing/registry.v1.json`;
+  - implementation:
+    `orchestrator/src/publishing/`;
+  - focused tests: 35 passed;
+  - TypeScript: passed;
+  - five-slot deterministic diagnostic: passed, zero external writes and zero
+    LLM calls.
+- Fallback reason: the coding-lane evidence package had no complete adapter for
+  route tracing, API contract audit or migration review in this repository.
+  Core inspection was limited to the canonical project, non-secret runtime
+  metadata and the exact live worker/scheduler declarations needed to reconcile
+  the specification.
+- Next safe step: run the full repository validation pack. Production
+  activation then requires a separately approved host-adapter migration,
+  protected-state rehearsal, schedule reconciliation and service restart.
+
+## 2026-07-30 — publishing specification conformance closure
+
+- Requested task: implement only the five missing behaviours identified by the
+  product-identity review and prove sequential portfolio conformance without
+  activating the runtime.
+- Workflow lane: bounded product conformance implementation and local
+  verification.
+- Tools and source:
+  - the complete authoritative 5,012-word DOCX specification, previously read
+    and fingerprinted;
+  - OpenClaw `coding_repo_map` from the read-only `coding-agent-skills`
+    evidence package;
+  - core `rg`, `jq` and exact source inspection for the registry, selector,
+    immutable content contract, store and harness;
+  - `apply_patch` for project-owned registry, source, tests and documentation;
+  - the local publishing harness, Vitest, TypeScript and repository `verify`
+    pack for validation.
+- Implemented:
+  - schedule-declared `self-identification` primary campaign model;
+  - fail-closed campaign/strategy compatibility in registry validation,
+    selection and immutable content validation;
+  - hashed `strategyId` in every content specification;
+  - specified Tax Lien investor audience, identity signal and active
+    self-identification campaign;
+  - deterministic seven-day sequential portfolio replay using one in-memory
+    state store and simulated official-provider readback.
+- Evidence:
+  - registry version: `2026-07-30.1`;
+  - registry SHA-256:
+    `7ae0ff2850e7e2005e1b5aaf339505e8156fc507193be02e2a8b793cc6a1c609`;
+  - five-slot diagnostic: passed; every isolated selection uses the primary
+    campaign model; zero external writes and zero LLM calls;
+  - portfolio replay: passed across 35 sequential opportunities and seven
+    days; all seven products represented; self-identification enforced on
+    `7/7` days; Tax Lien self-identification verified in simulation; strategy
+    integrity, stable replay and audit chain all true; 33 simulated verified
+    outcomes and two policy-correct no-candidate skips; zero external writes;
+  - focused publishing acceptance: `35/35`;
+  - full repository verify: build, documentation drift/links, `86/86` unit
+    fixtures, `33/33` live middleware integration tests, `33/33` operator UI
+    tests and both typechecks passed;
+  - canonical acceptance:
+    `docs/operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md`.
+- Changed-state declaration: `true` for local product registry, source, tests
+  and documentation only. No runtime configuration, campaign ownership,
+  scheduler, provider, outbox, state migration, service, restart, external
+  publication, commit, push, release or deployment changed.
+- Fallback reason: `coding-agent-skills` is intentionally read-only and
+  adapter-limited for this repository, so implementation and local validation
+  used project-owned tools after the required repo-map evidence step.
+- Next safe step: retain the current no-activation boundary and review the
+  separately documented activation preconditions. Any runtime activation,
+  migration, schedule/config change, restart, commit, push or deployment
+  remains separately approval-gated.

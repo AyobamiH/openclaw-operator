@@ -53,6 +53,8 @@ const CONFIG_PATH_KEYS: Array<keyof OrchestratorConfig> = [
   "businessRegistryPath",
   "businessEvidenceDir",
   "businessOperationsStateFile",
+  "publishingRegistryPath",
+  "publishingDatabasePath",
 ];
 
 function isRuntimeTarget(value: string): boolean {
@@ -126,6 +128,14 @@ export async function loadConfig(
   }
   if (process.env.ORCHESTRATOR_BUSINESS_DAY_PULSE_TIME_ZONE?.trim()) {
     parsed.businessDayPulseTimeZone = process.env.ORCHESTRATOR_BUSINESS_DAY_PULSE_TIME_ZONE.trim();
+  }
+  const operatorStateRoot = process.env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
+  if (operatorStateRoot && parsed.publishingDatabasePath) {
+    parsed.publishingDatabasePath = resolve(
+      operatorStateRoot,
+      "database",
+      "deterministic-publishing.sqlite",
+    );
   }
 
   for (const key of CONFIG_PATH_KEYS) {

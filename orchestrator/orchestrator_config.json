@@ -9,6 +9,8 @@
   "redditDraftsPath": "/workspace/logs/reddit-drafts.jsonl",
   "knowledgePackDir": "/workspace/logs/knowledge-packs",
   "runtimeEngagementOsPath": "/workspace/RUNTIME_ENGAGEMENT_OS.md",
+  "publishingRegistryPath": "/workspace/config/publishing/registry.v1.json",
+  "publishingDatabasePath": "/workspace/logs/deterministic-publishing.sqlite",
   "digestDir": "/workspace/logs/digests",
   "corsAllowedOrigins": [
     "http://127.0.0.1:3000",

@@ -151,6 +151,10 @@ import {
   releaseTaskExecutionLease,
 } from "./coordination/runtime-coordination.js";
 import { createReviewSessionService } from "./reviewSessions.js";
+import { DeterministicPublishingEngine } from "./publishing/engine.js";
+import { loadRegistryBundle } from "./publishing/registry.js";
+import { PublishingStore } from "./publishing/store.js";
+import { registerPublishingRoutes } from "./publishing/routes.js";
 
 /**
  * Security Posture Verification
@@ -10467,6 +10471,22 @@ async function bootstrap() {
   if (getStateStoreKind(config.stateFile) === "file") {
     await mkdir(dirname(config.stateFile), { recursive: true });
   }
+  let publishingEngine: DeterministicPublishingEngine | null = null;
+  if (config.publishingRegistryPath || config.publishingDatabasePath) {
+    if (!config.publishingRegistryPath || !config.publishingDatabasePath) {
+      throw new Error(
+        "publishingRegistryPath and publishingDatabasePath must be configured together",
+      );
+    }
+    await mkdir(dirname(config.publishingDatabasePath), { recursive: true });
+    const publishingRegistry = await loadRegistryBundle(config.publishingRegistryPath);
+    const publishingStore = new PublishingStore(config.publishingDatabasePath);
+    publishingEngine = new DeterministicPublishingEngine(
+      publishingRegistry,
+      publishingStore,
+    );
+    publishingEngine.initialize();
+  }
 
   console.log("[orchestrator] config loaded", config);
   if (fastStartMode) {
@@ -13051,6 +13071,8 @@ async function bootstrap() {
   // Protected Endpoints (Authentication Required)
   // ============================================================
 
+  registerPublishingRoutes(app, publishingEngine);
+
   app.get(
     "/api/auth/me",
     authLimiter,
@@ -15075,6 +15097,7 @@ async function bootstrap() {
     server.close(async () => {
       console.log("[orchestrator] HTTP server closed");
       try {
+        publishingEngine?.store.close();
         await PersistenceIntegration.close();
         console.log("[orchestrator] Database connections closed");
       } catch (err) {

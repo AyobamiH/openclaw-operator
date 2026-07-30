@@ -46,6 +46,8 @@ export interface OrchestratorConfig {
   businessDayPulseTimeZone?: string;
   businessValueCadenceMinutes?: number;
   businessOperationsStateFile?: string;
+  publishingRegistryPath?: string;
+  publishingDatabasePath?: string;
 }
 
 export interface DocRecord {

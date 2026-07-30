@@ -35,13 +35,15 @@ services:
       PROMETHEUS_PORT: 9100
       GRAFANA_ENABLED: "true"
       GRAFANA_PORT: 3001
+      OPENCLAW_OPERATOR_STATE_DIR: /workspace/state
     depends_on:
       mongo:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ../logs:/workspace/logs
+      - operator-logs:/workspace/logs
+      - operator-state:/workspace/state
       - ./data:/workspace/orchestrator/data
     networks:
       - orchestrator-net
@@ -169,6 +171,10 @@ services:
     restart: unless-stopped
 
 volumes:
+  operator-logs:
+    driver: local
+  operator-state:
+    driver: local
   mongo-data:
     driver: local
   redis-data:

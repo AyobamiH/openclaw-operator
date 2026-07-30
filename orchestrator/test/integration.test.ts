@@ -875,6 +875,18 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       digestDir: digestDirPath,
       businessRegistryPath,
       businessEvidenceDir,
+      publishingRegistryPath: resolve(
+        process.cwd(),
+        '..',
+        'config',
+        'publishing',
+        'registry.v1.json',
+      ),
+      publishingDatabasePath: join(
+        runtimeRootDir,
+        'logs',
+        'deterministic-publishing.sqlite',
+      ),
     };
     const seededState = createDefaultState();
     const seedDemandTimestamp = new Date().toISOString();
@@ -1210,6 +1222,45 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(runDetail.run?.queueAttempts?.[0]).toMatchObject({
       taskId: body.taskId,
     });
+  });
+
+  it('exposes the deterministic publishing guard without a provider-write route', async () => {
+    const overview = await fetchProtected<{
+      registryVersion?: string;
+      slotTimes?: string[];
+      auditChainValid?: boolean;
+    }>('/api/publishing/overview');
+    expect(overview.registryVersion).toBe('2026-07-30.1');
+    expect(overview.slotTimes).toEqual(['05:00', '07:00', '11:00', '15:00', '17:00']);
+    expect(overview.auditChainValid).toBe(true);
+
+    const planResponse = await fetch(`${baseUrl}/api/publishing/slots/plan`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${TEST_API_KEY}`,
+      },
+      body: JSON.stringify({
+        scheduledFor: '2026-07-31T05:00:00+01:00',
+      }),
+    });
+    expect(planResponse.status).toBe(201);
+    const plan = await planResponse.json() as {
+      result?: string;
+      reservation?: { publicationId?: string };
+    };
+    expect(plan.result).toBe('reserved');
+    expect(plan.reservation?.publicationId).toBeTruthy();
+
+    const rawWriteResponse = await fetch(`${baseUrl}/api/publishing/publish`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${TEST_API_KEY}`,
+      },
+      body: JSON.stringify({}),
+    });
+    expect(rawWriteResponse.status).toBe(404);
   });
 
   it('protects and operates the business-value API without duplicate triggers', async () => {

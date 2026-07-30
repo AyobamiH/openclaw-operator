@@ -280,3 +280,19 @@ These route work to specialized agents or helper flows:
 - `workspace/orchestrator/src/middleware/validation.ts`: request schema allowlist
 - `workspace/orchestrator/src/approvalGate.ts`: approval logic
 - [./api.md](./api.md): API surfaces that trigger or inspect work
+
+## Publishing Harness Is Not A Task Type
+
+Deterministic publishing planning is intentionally not added to
+`ALLOWED_TASK_TYPES`. It is a separately governed product state machine:
+
+- the operator planning route can validate and reserve locally;
+- the conversational/task surface cannot turn that reservation into a raw
+  provider write;
+- only an approved deterministic worker adapter may execute a reserved
+  publication;
+- ambiguous writes reconcile through provider evidence and cannot enqueue a
+  new publish task.
+
+This separation prevents generic task triggers, agent prompts or LLM execution
+from bypassing the commercial registry and exactly-once authority.
