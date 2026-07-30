@@ -246,3 +246,55 @@
   separately documented activation preconditions. Any runtime activation,
   migration, schedule/config change, restart, commit, push or deployment
   remains separately approval-gated.
+
+## 2026-07-30 — release-candidate recovery and production integration
+
+- Requested task: preserve and explain the full dirty tree, establish a clean
+  local release candidate, close the verified production-integration blockers,
+  prove the exact zero-write path, and stop before activation.
+- Workflow lanes: repository forensics, source recovery, connector integration,
+  publishing runtime, documentation and local release evidence.
+- Tools and source:
+  - OpenClaw `coding_repo_map`, `coding_deployment_preflight`,
+    `coding_api_contract_audit` and `coding_migration_review` from the
+    read-only coding evidence package;
+  - OpenClaw cron, connector status/capability/activity and exact official API
+    worker evidence;
+  - core Git history, reflog, worktree, diff, timestamp, filesystem and process
+    inspection where the coding package did not cover live runtime ownership;
+  - `apply_patch` for intentional source, test, configuration and documentation
+    changes;
+  - repository build/typecheck/test/documentation packs, deterministic
+    diagnostics, portfolio replay, exact-runner shadow and rollback rehearsal.
+- Changed-state declaration: local Git branches, commits, source, tests,
+  configuration and documentation changed. A preservation worktree and
+  non-source recovery archive were created. No installed connector, live
+  configuration, scheduler, service, state, credential, provider publication,
+  push, release or deployment changed.
+- Evidence:
+  - full 408-path disposition:
+    `~/.openclaw/workspace/artifacts/release-recovery/openclaw-operator-20260730/path-disposition.json`,
+    SHA-256
+    `1e64eb5bd3345750922c603556cb0c3687e0c4a004de1c8a7e873590c0999aed`;
+  - preservation commit:
+    `6b66c83c1174159ab0a760eb67d3f5915b38d39b`;
+  - operator integration commit:
+    `5301ffce18ef49a0bcb7091799e8c84c75363c01`;
+  - connector admission commit:
+    `ee2c2cc96105a08f278ae8e61f0e369d7f127e90`;
+  - formal report:
+    `docs/operations/openclaw-release-candidate-recovery-and-production-integration-2026-07-30.md`.
+- Secret-surface limitation: the read-only coding secret audit returned
+  `partial` because the project adapter enables only `repo-map`. A bounded
+  filename-only and value-suppressing scan of the candidate diffs found no new
+  secret-bearing file or credential assignment. No `.env`, credential store or
+  runtime-injected value was read.
+- Result: conditional go for a separately approved shadow-only installation;
+  no go for provider-writing activation until installed-runtime, natural-slot,
+  Reel baseline and live rollback gates pass.
+- Fallback reason: the coding evidence package is intentionally read-only and
+  cannot inspect OpenClaw-owned cron, connector configuration, official account
+  readback or mutable runtime state. Core and OpenClaw runtime tools were used
+  only for those bounded evidence gaps.
+- Next safe step: review the local candidate commits and separately approve or
+  reject the bounded shadow installation sequence. No automatic activation.

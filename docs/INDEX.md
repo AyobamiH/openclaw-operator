@@ -70,6 +70,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/protected-runtime-export-plan.md](./operations/protected-runtime-export-plan.md) | protected non-source state export/restore contract and secret separation boundary |
 | [operations/deterministic-self-identification-publishing-engine-recon-2026-07-29.md](./operations/deterministic-self-identification-publishing-engine-recon-2026-07-29.md) | evidence-first product/runtime reconciliation and activation gaps |
 | [operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md](./operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md) | local implementation, diagnostic and acceptance evidence |
+| [operations/openclaw-release-candidate-recovery-and-production-integration-2026-07-30.md](./operations/openclaw-release-candidate-recovery-and-production-integration-2026-07-30.md) | dirty-tree forensics, preserved-work receipts, production integration proof, rollback and activation gates |
 
 ## Guides
 
