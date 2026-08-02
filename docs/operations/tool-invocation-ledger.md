@@ -709,7 +709,8 @@
 - Changed-state declaration: corrected the portable production-integration
   registry to protect the separately authorised Phase G graph owner, added its
   regression assertion, reconciled architecture/readiness/workboard evidence,
-  and prepared the coherent portable operator change set. The connector
+  and committed the coherent portable operator implementation as
+  `dcbcc01d13e40ec32a221cf97dd5d67c97073d5a`. The connector
   `0.10.2` change set was committed as
   `fb3c4cac29d8fc09e09b5d7e6b2347ed05fd9041` and pushed to `origin/main`.
   No package install, Gateway/service restart, provider write, scheduler edit,
@@ -727,8 +728,9 @@
   writes disabled; the separately authorised Phase G Instagram schedule
   `24afbb84-457c-41bb-92c9-24a19725e984` remains graph-owned and protected;
   remaining schedules were not reassigned.
-- Next safe step/approval boundary: finish the portable operator commit/push,
-  then require explicit operator approval for the exact connector `0.10.2`
-  installation plus named Gateway reload, and separate payload-bound approval
-  for one dated `self-id-1500` provider-writing canary. Neither boundary is
-  implied by source-release authority.
+- Next safe step/approval boundary: publish the already verified portable
+  operator commits to `origin/main`, then require explicit operator approval
+  for the exact connector `0.10.2` installation plus named Gateway reload, and
+  separate payload-bound approval for one dated `self-id-1500`
+  provider-writing canary. Neither boundary is implied by source-release
+  authority.
