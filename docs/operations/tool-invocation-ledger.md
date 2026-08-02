@@ -728,9 +728,18 @@
   writes disabled; the separately authorised Phase G Instagram schedule
   `24afbb84-457c-41bb-92c9-24a19725e984` remains graph-owned and protected;
   remaining schedules were not reassigned.
-- Next safe step/approval boundary: publish the already verified portable
-  operator commits to `origin/main`, then require explicit operator approval
-  for the exact connector `0.10.2` installation plus named Gateway reload, and
-  separate payload-bound approval for one dated `self-id-1500`
+- Git handoff and final runtime readback: operator commits
+  `dcbcc01d13e40ec32a221cf97dd5d67c97073d5a` and
+  `fd04cf5e45c0092dfcdba69dc693f00bcb288f47` were pushed to `origin/main` only
+  after the protected-branch pre-push `verify:main` passed again. The active
+  user service remained healthy with PID `1193152` and zero restarts. Campaign
+  state remained six `shadow_verified`, four `skipped_policy`, 83 audit events
+  and zero in-flight publications. Phase G migration
+  `phase-g-instagram-image-v1` remained `graph_owned`; graph effects were two
+  verified and zero ambiguous/in-flight. Loaded Relay telemetry remained
+  `0.10.0`, proving no unapproved installation or reload occurred.
+- Remaining safe boundary: explicit operator approval is required for the
+  exact connector `0.10.2` installation plus named Gateway reload, and a
+  separate payload-bound approval is required for one dated `self-id-1500`
   provider-writing canary. Neither boundary is implied by source-release
   authority.

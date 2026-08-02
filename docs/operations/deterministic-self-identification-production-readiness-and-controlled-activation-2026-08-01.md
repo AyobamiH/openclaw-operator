@@ -155,6 +155,9 @@ Legacy Threads and Instagram schedulers continue independently and converge only
 - Operator implementation source: commit
   `dcbcc01d13e40ec32a221cf97dd5d67c97073d5a`, containing the reviewed Phase F,
   Phase G, Threads-recovery and self-identification production-completion set.
+- Operator release-evidence commit:
+  `fd04cf5e45c0092dfcdba69dc693f00bcb288f47`, pushed with the implementation
+  to `origin/main` after the protected-branch pre-push contract passed.
 - Immutable shadow runtime input hash: `972c41b65241a407fdc8ee593541c5c4f782f52345081b6868551f9cd0889e16`.
 - Connector source: clean commit `fb3c4cac29d8fc09e09b5d7e6b2347ed05fd9041`, pushed to `origin/main`.
 - Connector artefact: version `0.10.2`, SHA-256 `bd2051222b27919c126d72b1876a5e1e3bd2e208cca4d7f95358f1bb929e4a5d`, 92 files, exact source/tar/install byte convergence.
