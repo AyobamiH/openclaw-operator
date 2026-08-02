@@ -28,6 +28,8 @@ describe("OpenAPI contract", () => {
     expect(spec.paths["/api/publishing/slots"]?.get).toBeTruthy();
     expect(spec.paths["/api/publishing/publications"]?.get).toBeTruthy();
     expect(spec.paths["/api/publishing/audit"]?.get).toBeTruthy();
+    expect(spec.paths["/api/graphs/scheduler-migrations"]?.get).toBeTruthy();
+    expect(spec.paths["/api/graphs/scheduler-migrations/{migrationId}"]?.get).toBeTruthy();
     expect(spec.paths["/api/publishing/slots/plan"]?.post).toBeTruthy();
   });
 

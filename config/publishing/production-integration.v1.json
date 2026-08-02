@@ -3,6 +3,7 @@
   "laneId": "self-identification-engine",
   "timezone": "Europe/London",
   "mode": "shadow",
+  "schedulerLatenessToleranceMinutes": 5,
   "runtimeOwner": "deterministic-self-identification-runner",
   "workerAgentId": "social-publication-worker",
   "opportunities": [
@@ -65,7 +66,7 @@
     },
     {
       "id": "24afbb84-457c-41bb-92c9-24a19725e984",
-      "owner": "instagram-publisher-outbox-runner:image",
+      "owner": "graph-runtime:phase-g-instagram-image-v1",
       "mutationPolicy": "untouched"
     },
     {

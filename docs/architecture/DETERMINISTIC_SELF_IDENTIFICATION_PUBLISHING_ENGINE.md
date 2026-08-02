@@ -289,19 +289,24 @@ The authenticated API surface is:
 
 Planning is a local transactional mutation. None of these routes can publish.
 
-## Cutover Boundary
+## Current Production Boundary
 
-This code is production-ready as a product-owned planning and governance
-harness. It is not claimed as the active host publication authority until a
-separate migration:
+The product-owned planning and governance harness is active on the retained
+host in immutable, scheduler-driven shadow mode. It owns its five product
+opportunities, durable SQLite state and audit chain while forcing zero provider
+writes. It is not the active provider-writing publication authority until a
+separate, exact canary approval:
 
-1. maps live Threads and Instagram outbox identities into this schema;
-2. binds host workers to the connector contract;
-3. reconciles current platform schedules with the five global opportunities;
-4. reheases rollback and protected-state migration;
-5. runs non-writing live-runtime diagnostics; and
-6. receives explicit approval for migration, service restart and schedule
-   changes.
+1. names the exact dated canary opportunity and frozen payload;
+2. binds the approved provider account and connector release;
+3. confirms shared-admission availability and duplicate absence;
+4. records provider-effect intent and exactly-once recovery evidence;
+5. receives explicit provider-writing authority; and
+6. separately approves any connector installation or Gateway lifecycle action
+   needed to load the verified release.
 
-Until then, the existing verified workers remain live truth and this product
-remains the validated future authority.
+Until then, existing verified workers remain provider-publication truth and the
+product remains the active zero-write shadow authority for its own campaign
+lane. The separately migrated Instagram Image schedule is graph-owned under
+`phase-g-instagram-image-v1`; this campaign continues to treat that schedule as
+an external protected job and does not mutate it.

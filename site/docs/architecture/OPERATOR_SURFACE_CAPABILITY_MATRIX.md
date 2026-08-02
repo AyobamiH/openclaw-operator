@@ -293,6 +293,25 @@ The backend now exposes a bounded publishing guard:
 | Provider publication | Not exposed by operator API | Worker-only |
 | Ambiguity reconciliation mutation | Not exposed by operator API | Worker-only |
 
+### Graph execution routes
+
+| Route / Family | Role | Safe for `/operator` | Safe for `operator-s-console` | Decision | Notes |
+|---|---|---|---|---|---|
+| `GET /api/graphs/health` | viewer | Summary | Yes | Expose now | Loaded durable graph and scheduler posture without raw secrets or run-ID metrics. |
+| `GET /api/graphs/scheduler-migrations*` | viewer | Summary | Yes | Expose now | Redacted ownership, trigger lineage and event-chain truth; no HTTP mutation surface. |
+| `GET /api/graphs/definitions` | viewer | Optional | Yes | Expose now after deployment | Definitions are immutable inspectable data. |
+| `GET /api/graphs/adapters` | viewer | Optional | Yes | Expose with zero-write runtime | Contracts are code-allowlisted and redact executor functions and secrets. |
+| `GET /api/graphs/runs*` | viewer | Summary | Yes | Expose now after deployment | Run, event and evidence truth; Telegram remains a projection. |
+| `POST /api/graphs/runs` | operator | Curated only | Yes | Expose after adapter proof | Authority envelope is explicit; registration alone grants no side-effect authority. |
+| `POST .../pause`, `resume`, `cancel` | operator | Contextual | Yes | Expose after deployment | Resume/cancel fail closed around approvals and unresolved effects. |
+| `POST .../approvals/:approvalId` | operator | Yes | Yes | Expose after deployment | Decision must repeat the bound action, target and payload hash. |
+| `POST .../effects/reconcile` | operator | No by default | Admin workflow | Admin-only | Requires official readback evidence; it never means “retry blindly.” |
+| `POST /api/graphs/definitions/register` | admin | No | Admin workflow | Admin-only | Unknown handlers and changed immutable versions are rejected. |
+
+Source completeness is not loaded-runtime proof. Until deployment and restart
+are explicitly approved, these routes remain source-only and must not appear as
+active controls in the built console.
+
 The operator UI may surface these routes as evidence and planning controls. It
 must not label a reservation as a publication or add a “publish now” control.
 Live Threads/Instagram workers remain host runtime truth until an explicitly

@@ -25,6 +25,7 @@ export type ProductionIntegration = {
   laneId: string;
   timezone: "Europe/London";
   mode: "shadow" | "canary" | "live";
+  schedulerLatenessToleranceMinutes: number;
   runtimeOwner: string;
   workerAgentId: string;
   opportunities: ProductionOpportunity[];
@@ -63,6 +64,18 @@ export async function loadProductionIntegration(
   }
   if (!["shadow", "canary", "live"].includes(String(parsed.mode))) {
     throw new Error("Production integration mode is invalid");
+  }
+  const schedulerLatenessToleranceMinutes = Number(
+    parsed.schedulerLatenessToleranceMinutes,
+  );
+  if (
+    !Number.isInteger(schedulerLatenessToleranceMinutes) ||
+    schedulerLatenessToleranceMinutes < 0 ||
+    schedulerLatenessToleranceMinutes > 10
+  ) {
+    throw new Error(
+      "Production integration schedulerLatenessToleranceMinutes must be an integer from 0 to 10",
+    );
   }
   const laneId = String(parsed.laneId || "");
   const runtimeOwner = String(parsed.runtimeOwner || "");
@@ -164,12 +177,78 @@ export async function loadProductionIntegration(
     laneId,
     timezone: "Europe/London",
     mode: parsed.mode as ProductionIntegration["mode"],
+    schedulerLatenessToleranceMinutes,
     runtimeOwner,
     workerAgentId,
     opportunities,
     protectedLegacyJobs: parsed.protectedLegacyJobs as ProductionIntegration["protectedLegacyJobs"],
     historicalReconciliations,
     rollback: parsed.rollback as ProductionIntegration["rollback"],
+  };
+}
+
+function localClock(date: Date, timezone: "Europe/London"): {
+  hour: number;
+  minute: number;
+  second: number;
+} {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: timezone,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+  };
+}
+
+export function resolveProductionOpportunity(
+  integration: ProductionIntegration,
+  opportunityId: string,
+  observedAt: Date,
+): {
+  opportunity: ProductionOpportunity;
+  scheduledFor: Date;
+  latenessMs: number;
+} {
+  const observed = localClock(observedAt, integration.timezone);
+  const observedMinute = observed.hour * 60 + observed.minute;
+  const candidates = integration.opportunities
+    .filter((candidate) => candidate.enabled)
+    .filter((candidate) => opportunityId === "auto" || candidate.id === opportunityId)
+    .map((candidate) => {
+      const [hour, minute] = candidate.localTime.split(":").map(Number);
+      const latenessMinutes = observedMinute - (hour * 60 + minute);
+      return { candidate, latenessMinutes };
+    })
+    .filter(
+      ({ latenessMinutes }) =>
+        latenessMinutes >= 0 &&
+        latenessMinutes <= integration.schedulerLatenessToleranceMinutes,
+    );
+  if (candidates.length !== 1) {
+    throw new Error(
+      `No unique product opportunity is allocated within the ${integration.schedulerLatenessToleranceMinutes}-minute scheduler tolerance`,
+    );
+  }
+  const selected = candidates[0];
+  const latenessMs =
+    selected.latenessMinutes * 60_000 +
+    observed.second * 1_000 +
+    observedAt.getMilliseconds();
+  return {
+    opportunity: selected.candidate,
+    scheduledFor: new Date(observedAt.getTime() - latenessMs),
+    latenessMs,
   };
 }
 

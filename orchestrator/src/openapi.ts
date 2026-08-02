@@ -2624,6 +2624,174 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         },
       },
     },
+    "/api/graphs/health": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "Graph execution health and recovery posture", operationId: "getGraphHealth",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.health.read"),
+        responses: { "200": jsonResponse("Graph health payload.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "429": responseRef("TooManyRequests") },
+      },
+    },
+    "/api/graphs/scheduler-migrations": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "List durable scheduler ownership migrations", operationId: "listGraphSchedulerMigrations",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.scheduler-migrations.read"),
+        responses: { "200": jsonResponse("Scheduler migration registry.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/scheduler-migrations/{migrationId}": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "Read one scheduler migration, trigger ledger and chain result", operationId: "getGraphSchedulerMigration",
+        parameters: [{ name: "migrationId", in: "path", required: true, schema: { type: "string" } }],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.scheduler-migration.read"),
+        responses: { "200": jsonResponse("Scheduler migration detail.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "404": responseRef("NotFound") },
+      },
+    },
+    "/api/graphs/definitions": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "List immutable graph definitions", operationId: "listGraphDefinitions",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.definitions.read"),
+        responses: { "200": jsonResponse("Registered graph definitions.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/adapters": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "List allowlisted production graph adapters", operationId: "listGraphAdapters",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.adapters.read"),
+        responses: { "200": jsonResponse("Registered production adapter contracts.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/definitions/validate": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Validate a graph definition without registering it", operationId: "validateGraphDefinition",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.definitions.validate"),
+        requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } },
+        responses: { "200": jsonResponse("Validation result.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/definitions/register": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Register an immutable graph definition", operationId: "registerGraphDefinition",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("admin", "operator-write", "graphs.definitions.register"),
+        requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } },
+        responses: { "201": jsonResponse("Registered definition.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "List durable graph runs", operationId: "listGraphRuns",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.runs.read"),
+        responses: { "200": jsonResponse("Graph run list.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Start a graph run", operationId: "startGraphRun",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.start"),
+        requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } },
+        responses: { "201": jsonResponse("Created graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/runs/{runId}": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "Inspect one graph run", operationId: "getGraphRun",
+        parameters: [parameterRef("RunId")], security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.run.read"),
+        responses: { "200": jsonResponse("Graph run detail.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "404": responseRef("NotFound") },
+      },
+    },
+    "/api/graphs/runs/{runId}/events": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "Inspect append-only graph events", operationId: "getGraphRunEvents",
+        parameters: [parameterRef("RunId")], security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.events.read"),
+        responses: { "200": jsonResponse("Hash-chained graph events.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/runs/{runId}/evidence": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "Inspect graph evidence", operationId: "getGraphRunEvidence",
+        parameters: [parameterRef("RunId")], security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.evidence.read"),
+        responses: { "200": jsonResponse("Graph evidence package.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/runs/{runId}/pause": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Pause a graph run", operationId: "pauseGraphRun", parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.pause"), responses: { "200": jsonResponse("Paused run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/resume": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Resume a safe graph run", operationId: "resumeGraphRun", parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.resume"), responses: { "200": jsonResponse("Resumed run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/cancel": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Cancel a graph run when external effects are safe", operationId: "cancelGraphRun", parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.cancel"), responses: { "200": jsonResponse("Cancelled run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/step": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Execute one allowed graph node", operationId: "stepGraphRun", parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.step"), responses: { "200": jsonResponse("Advanced graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/execute": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Execute a graph until it settles at a terminal or wait boundary", operationId: "executeGraphRun", parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.execute"), responses: { "200": jsonResponse("Settled graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/checkpoints/{checkpointId}/retry": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Retry from an allowed durable checkpoint", operationId: "retryGraphCheckpoint",
+        parameters: [parameterRef("RunId"), { name: "checkpointId", in: "path", required: true, schema: { type: "string" } }],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.checkpoint-retry"), responses: { "200": jsonResponse("Resumed graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/approvals/{approvalId}": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Grant or deny a payload-bound graph approval", operationId: "decideGraphApproval",
+        parameters: [parameterRef("RunId"), { name: "approvalId", in: "path", required: true, schema: { type: "string" } }],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.approvals.decide"), requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } }, responses: { "200": jsonResponse("Approval decision.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/live-capabilities": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Issue one exact payload-bound live capability from persisted run, claim, envelope and approval references", operationId: "issueOneRunLiveCapability",
+        parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("admin", "operator-write", "graphs.live-capabilities.issue"), requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } }, responses: { "201": jsonResponse("Prepared one-run capability and ordered dispatch plan.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/live-capabilities/{capabilityId}/revoke": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Permanently revoke an unused one-run live capability", operationId: "revokeOneRunLiveCapability",
+        parameters: [parameterRef("RunId"), { name: "capabilityId", in: "path", required: true, schema: { type: "string", pattern: "^glc_[a-f0-9]{32}$" } }],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("admin", "operator-write", "graphs.live-capabilities.revoke"), requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } }, responses: { "200": jsonResponse("Revoked one-run capability.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "404": responseRef("NotFound"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/effects/reconcile": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Record authoritative reconciliation of an ambiguous external effect", operationId: "reconcileGraphExternalEffect", parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.effects.reconcile"), requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } }, responses: { "200": jsonResponse("Reconciled external effect.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/recover": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Recover safe runs and block ambiguous effects", operationId: "recoverGraphRuns",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.recover"), responses: { "200": jsonResponse("Recovery decisions.", "GenericObject", writeHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/blocked": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "List blocked graph runs", operationId: "listBlockedGraphRuns",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.blocked.read"), responses: { "200": jsonResponse("Blocked graph runs.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
+    "/api/graphs/orphaned": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "List expired graph node leases", operationId: "listOrphanedGraphAttempts",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.orphaned.read"), responses: { "200": jsonResponse("Orphaned attempts.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
+      },
+    },
     "/api/publishing/overview": {
       get: {
         tags: ["Operator", "Publishing"],
@@ -2835,6 +3003,7 @@ export function buildOpenApiSpec(port: string | number = 3000) {
     tags: [
       { name: "Public", description: "Unauthenticated public read surfaces." },
       { name: "Operator", description: "Bearer-protected operator/control-plane surfaces." },
+      { name: "Graphs", description: "Durable graph definitions, runs, events, approvals, recovery, and evidence surfaces." },
       { name: "Publishing", description: "Deterministic planning, publication state, evidence, and audit harness surfaces." },
       { name: "Tasks", description: "Task catalog, queueing, and run-ledger surfaces." },
       { name: "Incidents", description: "Runtime incident ledger and remediation surfaces." },

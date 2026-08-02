@@ -71,6 +71,19 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/deterministic-self-identification-publishing-engine-recon-2026-07-29.md](./operations/deterministic-self-identification-publishing-engine-recon-2026-07-29.md) | evidence-first product/runtime reconciliation and activation gaps |
 | [operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md](./operations/deterministic-self-identification-publishing-engine-acceptance-2026-07-29.md) | local implementation, diagnostic and acceptance evidence |
 | [operations/openclaw-release-candidate-recovery-and-production-integration-2026-07-30.md](./operations/openclaw-release-candidate-recovery-and-production-integration-2026-07-30.md) | dirty-tree forensics, preserved-work receipts, production integration proof, rollback and activation gates |
+| [operations/deterministic-self-identification-production-readiness-and-controlled-activation-2026-08-01.md](./operations/deterministic-self-identification-production-readiness-and-controlled-activation-2026-08-01.md) | final production gates, hardening, packaging/reuse contracts, shadow evidence, activation decision and ownership |
+| [operations/graph-native-engineering-migration-2026-08-01.md](./operations/graph-native-engineering-migration-2026-08-01.md) | graph-kernel implementation, representative workflows, recovery proof and activation gates |
+| [operations/graph-production-adapter-binding-and-shadow-equivalence-2026-08-01.md](./operations/graph-production-adapter-binding-and-shadow-equivalence-2026-08-01.md) | production adapter binding, zero-write equivalence and staged activation package |
+| [operations/graph-runtime-gate-a-deployment-2026-08-01.md](./operations/graph-runtime-gate-a-deployment-2026-08-01.md) | Gate A in-place deployment evidence, disabled-runtime proof and rollback boundary |
+| [operations/graph-runtime-gate-b-persistence-initialisation-2026-08-01.md](./operations/graph-runtime-gate-b-persistence-initialisation-2026-08-01.md) | Gate B atomicity blocker, no-initialisation evidence and required repair boundary |
+| [operations/graph-persistence-initializer-hardening-2026-08-01.md](./operations/graph-persistence-initializer-hardening-2026-08-01.md) | atomic graph schema migration, stable metadata, secure permissions, path guards and fresh Gate B readiness |
+| [operations/graph-runtime-autonomous-zero-write-activation-2026-08-01.md](./operations/graph-runtime-autonomous-zero-write-activation-2026-08-01.md) | Gate B/C persistence and load evidence, credential rotation, loaded zero-write canary and ten-sample natural equivalence proof |
+| [operations/graph-runtime-phase-f-live-publication-proof-2026-08-01.md](./operations/graph-runtime-phase-f-live-publication-proof-2026-08-01.md) | Phase F natural candidate preflight and immutable zero-write graph-version blocker before any provider mutation |
+| [operations/graph-runtime-live-capable-publication-version-and-phase-f-proof-2026-08-01.md](./operations/graph-runtime-live-capable-publication-version-and-phase-f-proof-2026-08-01.md) | Immutable live-capable publication graph v2, loaded zero-write proof, frozen-envelope evidence, and fail-closed live activation blocker |
+| [operations/graph-runtime-one-run-live-capability-and-phase-f-proof-2026-08-02.md](./operations/graph-runtime-one-run-live-capability-and-phase-f-proof-2026-08-02.md) | Payload-bound one-run capability architecture, adversarial proof, loaded runtime evidence and Phase F publication verification |
+| [operations/graph-runtime-scheduler-transfer-and-phase-g-proof-2026-08-02.md](./operations/graph-runtime-scheduler-transfer-and-phase-g-proof-2026-08-02.md) | One-schedule graph ownership registry, fixed trigger, rollback and natural-cycle Phase G evidence |
+| [operations/threads-prepared-image-creative-repair-and-recovery-2026-08-02.md](./operations/threads-prepared-image-creative-repair-and-recovery-2026-08-02.md) | Shared Threads prepared-image contract, exact approval binding, missed-slot recovery and Phase G isolation proof |
+| [operations/graph-native-migration-registry.md](./operations/graph-native-migration-registry.md) | active workflow classification, graph targets, risks and next migration steps |
 
 ## Guides
 
@@ -80,6 +93,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [guides/running-agents.md](./guides/running-agents.md) | agent execution guidance |
 | [guides/monitoring.md](./guides/monitoring.md) | monitoring and health checks |
 | [guides/adding-tasks.md](./guides/adding-tasks.md) | extending the task surface |
+| [guides/graph-execution-runbook.md](./guides/graph-execution-runbook.md) | defining, running, approving, recovering and migrating durable graphs |
 
 ## Technical References
 
@@ -93,6 +107,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md](./architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md) | current runtime/operator exposure matrix for routes, tasks, and agents |
 | [architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md](./architecture/DOCUMENTATION_SITE_INFORMATION_ARCHITECTURE.md) | published docs-site structure and downstream publishing model |
 | [architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md](./architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md) | canonical commercial selection, publication state, evidence, platform-expansion and drift-guard architecture |
+| [architecture/ADR-001-GRAPH-NATIVE-EXECUTION.md](./architecture/ADR-001-GRAPH-NATIVE-EXECUTION.md) | internal graph-kernel decision, persistence, recovery, authority and compatibility design |
 | [reference/api.md](./reference/api.md) | API and code-facing reference |
 | [reference/task-types.md](./reference/task-types.md) | task allowlist reference |
 | [reference/state-schema.md](./reference/state-schema.md) | runtime state summary |

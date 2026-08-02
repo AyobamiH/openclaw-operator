@@ -232,6 +232,27 @@ invalid. Configuring this harness does not activate a provider adapter and does
 not change host schedules. Provider writes remain worker-owned and require the
 separate adapter/cutover process.
 
+## Graph runtime activation flags
+
+The graph subsystem is disabled by default. A normal service boot neither
+opens its database nor exposes graph routes.
+
+- `OPENCLAW_GRAPH_RUNTIME_ENABLED=true` enables the separately initialized
+  graph runtime.
+- `OPENCLAW_GRAPH_ZERO_WRITE_ONLY=true` is mandatory for the current loaded
+  runtime and blocks external mutation nodes inside the executor.
+- `OPENCLAW_GRAPH_ALLOWED_DEFINITIONS` is a comma-separated exact
+  `graphId@version` allowlist; the zero-write canary uses only
+  `deterministic-social-publication@1.1.0`.
+- `OPENCLAW_GRAPH_RUN_NAMESPACE` controls the bounded run-ID prefix; the canary
+  uses `grzwcanary`.
+- `OPENCLAW_GRAPH_DATABASE_PATH` may override the default
+  `$OPENCLAW_OPERATOR_STATE_DIR/database/graph-runs.sqlite` only under an
+  approved deployment.
+
+Do not combine database initialization, service restart, canary execution or
+scheduler cutover into one approval.
+
 ## Where To Look Next
 
 - [../reference/api.md](../reference/api.md): config-adjacent interfaces and

@@ -4,12 +4,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readApiCredentialReference } from '../src/auth/credential-reference.js';
 
 describe('Phase 7: Load & Stress Tests', () => {
   const BASE_URL = process.env.OPENCLAW_LOAD_TEST_BASE_URL ?? 'http://localhost:3000';
   const CONCURRENT_REQUESTS = 100;
   const REQUEST_ITERATIONS = 5;
-  const API_KEY = process.env.API_KEY?.trim() ?? '';
+  const credentialFile = process.env.OPENCLAW_API_CREDENTIAL_FILE?.trim();
+  const API_KEY = credentialFile
+    ? readApiCredentialReference(credentialFile, { requiredRole: 'admin' })
+    : process.env.API_KEY?.trim() ?? '';
 
   function authHeaders() {
     return API_KEY ? { Authorization: `Bearer ${API_KEY}` } : {};

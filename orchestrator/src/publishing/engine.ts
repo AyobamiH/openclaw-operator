@@ -413,7 +413,10 @@ export class DeterministicPublishingEngine {
     };
     receipt: Record<string, unknown>;
     now?: Date;
-  }): { state: "shadow_verified"; externalWritePerformed: false } {
+  }): {
+    state: "shadow_verified" | "skipped_policy";
+    externalWritePerformed: false;
+  } {
     const now = input.now ?? new Date();
     const publication = this.store.publication(input.publicationId);
     if (!publication) throw new Error(`Unknown publication: ${input.publicationId}`);
@@ -447,10 +450,11 @@ export class DeterministicPublishingEngine {
       !admission ||
       typeof admission !== "object" ||
       (admission as Record<string, unknown>).shadow !== true ||
-      (admission as Record<string, unknown>).admitted !== true
+      typeof (admission as Record<string, unknown>).admitted !== "boolean"
     ) {
-      throw new Error("Shadow receipt did not prove shared account admission");
+      throw new Error("Shadow receipt did not prove a shared account admission decision");
     }
+    const admissionRecord = admission as Record<string, unknown>;
     this.store.saveRenderedCandidate(
       spec.id,
       input.connectorId,
@@ -458,6 +462,26 @@ export class DeterministicPublishingEngine {
       input.renderedCandidate,
       now,
     );
+    if (admissionRecord.admitted !== true) {
+      const admissionReasons = Array.isArray(admissionRecord.reasons)
+        ? admissionRecord.reasons
+          .filter((reason): reason is string => typeof reason === "string")
+          .slice(0, 20)
+        : [];
+      this.store.transitionPublication(publication.id, "superseded", {
+        providerReceipt: input.receipt,
+        failureCode: "shadow-shared-account-admission-blocked",
+      }, now);
+      this.store.completeSlot(
+        `slot_${sha256(spec.slotKey).slice(0, 24)}`,
+        "skipped_policy",
+        ["shared-account-admission-blocked", ...admissionReasons],
+        null,
+        spec.id,
+        now,
+      );
+      return { state: "skipped_policy", externalWritePerformed: false };
+    }
     this.store.transitionPublication(publication.id, "shadow_verified", {
       providerReceipt: input.receipt,
       failureCode: "shadow-mode-provider-mutation-disabled",

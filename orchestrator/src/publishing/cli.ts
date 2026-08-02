@@ -373,9 +373,11 @@ async function main(): Promise<void> {
         "portfolio-replay": "--registry <path> [--date YYYY-MM-DD] [--days 1-31]",
         "production-shadow":
           "--registry <path> --integration <path> --db <path> [--opportunity <id|auto>] [--at <ISO>]",
+        "production-canary":
+          "--registry <path> --integration <path> --db <path> --opportunity <id> --at <ISO>",
       },
       guardrail:
-        "This harness has no provider-write command. External publication remains worker-owned.",
+        "Provider-writing commands require an exact matching approved integration mode and remain official-worker-owned.",
     });
     return;
   }
@@ -404,7 +406,16 @@ async function main(): Promise<void> {
     if (!result.passed) process.exitCode = 1;
     return;
   }
-  if (command === "production-shadow") {
+  if (["production-shadow", "production-canary"].includes(command)) {
+    const productionMode = command === "production-shadow"
+      ? "shadow"
+      : "canary";
+    if (
+      productionMode === "canary" &&
+      (typeof options.opportunity !== "string" || typeof options.at !== "string")
+    ) {
+      throw new Error("production-canary requires an explicit --opportunity and --at");
+    }
     const isolatedInvoker =
       typeof options["connector-entry"] === "string"
         ? await isolatedConnectorShadowInvoker({
@@ -421,7 +432,8 @@ async function main(): Promise<void> {
         typeof options.opportunity === "string" ? options.opportunity : "auto",
       scheduledFor:
         typeof options.at === "string" ? date(options.at) : new Date(),
-      mode: "shadow",
+      mode: productionMode,
+      allowProviderWrite: productionMode !== "shadow",
       toolInvoker: isolatedInvoker,
       openclawBin:
         typeof options["openclaw-bin"] === "string"
@@ -433,7 +445,10 @@ async function main(): Promise<void> {
           : process.cwd(),
     });
     print(result);
-    if (result.result !== "shadow_verified") process.exitCode = 1;
+    const accepted = productionMode === "shadow"
+      ? new Set(["shadow_verified", "skipped_policy", "skipped_no_eligible_candidate"])
+      : new Set(["verified"]);
+    if (!accepted.has(String(result.result))) process.exitCode = 1;
     return;
   }
   const { engine, store } = await engineFor(options);

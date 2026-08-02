@@ -137,11 +137,16 @@ export async function loadConfig(
       "orchestrator",
       "orchestrator-state.json",
     );
-    parsed.publishingDatabasePath = resolve(
-      operatorStateRoot,
-      "database",
-      "deterministic-publishing.sqlite",
-    );
+    // A host state root relocates explicitly configured publishing state; it
+    // must not activate the embedded publishing engine by synthesising half of
+    // the required registry/database pair.
+    if (parsed.publishingRegistryPath || parsed.publishingDatabasePath) {
+      parsed.publishingDatabasePath = resolve(
+        operatorStateRoot,
+        "database",
+        "deterministic-publishing.sqlite",
+      );
+    }
   }
 
   for (const key of CONFIG_PATH_KEYS) {

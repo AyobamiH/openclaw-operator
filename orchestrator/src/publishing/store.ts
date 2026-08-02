@@ -493,6 +493,11 @@ export class PublishingStore {
         "reserved",
         now.toISOString(),
       );
+      this.database.prepare(`
+        UPDATE publishing_slot_runs
+        SET content_spec_id=?
+        WHERE id=? AND content_spec_id IS NULL
+      `).run(spec.id, slotRunId);
       this.appendAudit("publication", publicationId, "publication.reserved", {
         reservationId,
         idempotencyKey,
@@ -525,6 +530,16 @@ export class PublishingStore {
       providerId: row.provider_id ? String(row.provider_id) : null,
       idempotencyKey: String(row.idempotency_key),
     } : null;
+  }
+
+  publicationForSlotKey(slotKey: string): ReturnType<PublishingStore["publication"]> {
+    const row = this.database.prepare(`
+      SELECT p.id
+      FROM publishing_publications p
+      JOIN publishing_reservations r ON r.id=p.reservation_id
+      WHERE r.slot_key=?
+    `).get(slotKey) as { id?: string } | undefined;
+    return row?.id ? this.publication(row.id) : null;
   }
 
   contentSpec(specId: string): ContentSpec | null {

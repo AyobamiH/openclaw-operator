@@ -738,3 +738,22 @@ This architecture does **not** assume:
 - “general intelligence” detached from role and evidence
 
 The target is disciplined operational intelligence, not theatrical autonomy.
+
+## Graph-Native Execution Spine
+
+The canonical Operator now has a locally verified graph kernel. Agent output is
+an input to a node result; it is not completion authority. Code owns current
+node, validated transition, attempts, budgets, approval state, idempotency,
+external-effect reconciliation, checkpoints and the completion contract.
+
+All agents remain in scope, but migration is incremental. Existing task and
+agent lanes retain their current maturity labels until their graph adapters
+pass equivalence, recovery and operator-surface proof. The graph lane therefore
+strengthens the execution spine without pretending every existing workflow is
+already graph-native.
+
+One production Instagram Image schedule now has an explicit graph-ownership
+record. Its scheduler carries timing only and supplies one fixed migration ID;
+the graph owns the fresh claim, envelope, approval, one-run authority, provider
+effect and verification. This does not promote or transfer any adjacent
+schedule.

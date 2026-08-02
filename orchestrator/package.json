@@ -29,7 +29,10 @@
     "docs:check-sync": "node scripts/check-doc-sync.mjs",
     "docs:check-sync:staged": "node scripts/check-doc-sync.mjs --staged",
     "state:sqlite:rehearse": "tsx scripts/rehearse-sqlite-state-migration.ts",
-    "publishing:harness": "tsx src/publishing/cli.ts"
+    "publishing:harness": "tsx src/publishing/cli.ts",
+    "graph:live-capability": "tsx scripts/manage-one-run-live-capability.ts",
+    "graph:scheduler-migration": "tsx scripts/manage-graph-scheduler-migration.ts",
+    "graph:scheduler-trigger": "tsx scripts/trigger-graph-schedule.ts"
   },
   "dependencies": {
     "@oneclicksystems/agentproof": "github:AyobamiH/agentproof#0be72f5506d5b42a2463f6ce1d2803b89e525994",

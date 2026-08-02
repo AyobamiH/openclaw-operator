@@ -1224,6 +1224,18 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     });
   });
 
+  it('loads graph scheduler health and read routes under the zero-write guard', async () => {
+    if (process.env.OPENCLAW_GRAPH_RUNTIME_ENABLED !== 'true') return;
+    const unauthorized = await fetch(`${baseUrl}/api/graphs/scheduler-migrations`);
+    expect(unauthorized.status).toBe(401);
+    const health = await fetch(`${baseUrl}/api/graphs/health`, { headers: { Authorization: `Bearer ${TEST_API_KEY}` } });
+    expect(health.status).toBe(200);
+    expect(await health.json()).toMatchObject({ zeroWriteOnly: true, scheduler: { schemaVersion: 1, migrations: 0, graphOwned: 0, activeTriggers: 0 } });
+    const registry = await fetch(`${baseUrl}/api/graphs/scheduler-migrations`, { headers: { Authorization: `Bearer ${TEST_API_KEY}` } });
+    expect(registry.status).toBe(200);
+    expect(await registry.json()).toEqual({ items: [] });
+  });
+
   it('exposes the deterministic publishing guard without a provider-write route', async () => {
     const overview = await fetchProtected<{
       registryVersion?: string;

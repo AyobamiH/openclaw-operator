@@ -14,6 +14,7 @@ import {
 import {
   loadProductionIntegration,
   opportunityFor,
+  resolveProductionOpportunity,
 } from "./production-integration.js";
 import { loadRegistryBundle } from "./registry.js";
 import { PublishingStore } from "./store.js";
@@ -39,24 +40,16 @@ export async function runProductionOpportunity(input: {
   if (mode !== integration.mode) {
     throw new Error(`Runner mode ${mode} does not match approved integration mode ${integration.mode}`);
   }
-  const requestedOpportunityId = input.opportunityId === "auto"
-    ? integration.opportunities.find((candidate) => {
-      const localTime = new Intl.DateTimeFormat("en-GB", {
-        timeZone: integration.timezone,
-        hour: "2-digit",
-        minute: "2-digit",
-        hourCycle: "h23",
-      }).format(input.scheduledFor);
-      return candidate.enabled && candidate.localTime === localTime;
-    })?.id
-    : input.opportunityId;
-  if (!requestedOpportunityId) {
-    throw new Error("No product opportunity is allocated at the current Europe/London time");
-  }
+  const resolution = resolveProductionOpportunity(
+    integration,
+    input.opportunityId,
+    input.scheduledFor,
+  );
+  const scheduledFor = resolution.scheduledFor;
   const opportunity = opportunityFor(
     integration,
-    requestedOpportunityId,
-    input.scheduledFor,
+    resolution.opportunity.id,
+    scheduledFor,
   );
   const policy = registry.platformPolicies.find(
     (candidate) =>
@@ -70,39 +63,53 @@ export async function runProductionOpportunity(input: {
     const engine = new DeterministicPublishingEngine(registry, store);
     engine.initialize();
     const existingSlot = store.slotRuns(500).find(
-      (candidate) => candidate.slot_key === slotKey(input.scheduledFor),
+      (candidate) => candidate.slot_key === slotKey(scheduledFor),
     );
+    let existingPublication: ReturnType<PublishingStore["publication"]> = null;
     if (existingSlot) {
-      const existingPublication = store.publications(500).find(
-        (candidate) => candidate.content_spec_id === existingSlot.content_spec_id,
-      );
-      return {
-        mode,
-        laneId: integration.laneId,
-        opportunityId: opportunity.id,
-        platformId: opportunity.platformId,
-        result: existingSlot.result || existingPublication?.state || "recovery_required",
-        publicationId: existingPublication?.id || null,
-        recovered: true,
-        providerDispatchSuppressed: true,
-        auditChainValid: store.auditChainValid(),
-        externalWrites: 0,
-        llmCalls: 0,
-      };
+      existingPublication = store.publicationForSlotKey(String(existingSlot.slot_key));
+      if (existingSlot.result || (existingPublication && ![
+        "reserved",
+        "publishing",
+        "published_unverified",
+        "reconciliation_required",
+      ].includes(existingPublication.state))) {
+        return {
+          mode,
+          laneId: integration.laneId,
+          opportunityId: opportunity.id,
+          platformId: opportunity.platformId,
+          result: existingSlot.result || existingPublication?.state || "recovery_required",
+          publicationId: existingPublication?.id || null,
+          recovered: true,
+          providerDispatchSuppressed: true,
+          scheduledFor: scheduledFor.toISOString(),
+          observedAt: input.scheduledFor.toISOString(),
+          schedulerLatenessMs: resolution.latenessMs,
+          auditChainValid: store.auditChainValid(),
+          externalWrites: 0,
+          llmCalls: 0,
+        };
+      }
     }
-    const plan = engine.planSlot({
-      platformId: opportunity.platformId,
-      accountId: opportunity.accountId,
-      scheduledFor: input.scheduledFor,
-      now: input.scheduledFor,
-    });
-    if (plan.result !== "reserved" || !plan.reservation || !plan.contentSpec) {
+    const plan = existingPublication
+      ? null
+      : engine.planSlot({
+        platformId: opportunity.platformId,
+        accountId: opportunity.accountId,
+        scheduledFor,
+        now: scheduledFor,
+      });
+    if (plan && (plan.result !== "reserved" || !plan.reservation || !plan.contentSpec)) {
       return {
         mode,
         laneId: integration.laneId,
         opportunityId: opportunity.id,
         result: plan.result,
         reasons: plan.reasons,
+        scheduledFor: scheduledFor.toISOString(),
+        observedAt: input.scheduledFor.toISOString(),
+        schedulerLatenessMs: resolution.latenessMs,
         externalWrites: 0,
         llmCalls: 0,
       };
@@ -117,7 +124,7 @@ export async function runProductionOpportunity(input: {
       connectorId: policy.connectorId,
       integration,
       opportunity,
-      scheduledFor: input.scheduledFor,
+      scheduledFor,
       mode,
       allowProviderWrite: input.allowProviderWrite === true,
       invoker,
@@ -134,54 +141,102 @@ export async function runProductionOpportunity(input: {
           candidate.accountId === opportunity.accountId,
       ),
     });
-    const rendered = deterministicRenderedCandidate(plan.contentSpec);
-    if (mode === "shadow") {
-      const readiness = await worker.readiness();
-      if (!readiness.ready) {
-        throw new Error(`Official worker is not ready: ${readiness.reasons.join(",")}`);
-      }
-      const receipt = await worker.publishOnce({
-        idempotencyKey: plan.reservation.idempotencyKey,
-        contentSpec: plan.contentSpec,
-        renderedCandidate: rendered,
-      });
-      const result = engine.completeShadow({
-        publicationId: plan.reservation.publicationId,
-        connectorId: connector.connectorId,
-        renderedCandidate: rendered,
-        receipt,
-        now: input.scheduledFor,
+    if (existingPublication?.state === "publishing") {
+      store.transitionPublication(existingPublication.id, "reconciliation_required", {
+        failureCode: "restart-during-provider-dispatch-unknown",
+      }, scheduledFor);
+      existingPublication = store.publication(existingPublication.id);
+    }
+    if (
+      existingPublication &&
+      ["published_unverified", "reconciliation_required"].includes(existingPublication.state)
+    ) {
+      const reconciled = await engine.reconcile({
+        publicationId: existingPublication.id,
+        connector,
+        now: scheduledFor,
       });
       return {
         mode,
         laneId: integration.laneId,
         opportunityId: opportunity.id,
         platformId: opportunity.platformId,
-        publicationId: plan.reservation.publicationId,
-        contentHash: plan.contentSpec.contentHash,
+        publicationId: existingPublication.id,
+        result: reconciled.state,
+        recovered: true,
+        providerDispatchSuppressed: true,
+        reconciliationMatches: reconciled.matches,
+        scheduledFor: scheduledFor.toISOString(),
+        observedAt: input.scheduledFor.toISOString(),
+        schedulerLatenessMs: resolution.latenessMs,
+        auditChainValid: store.auditChainValid(),
+        externalWrites: 0,
+        llmCalls: 0,
+      };
+    }
+    const contentSpec = existingPublication
+      ? store.contentSpec(existingPublication.contentSpecId)
+      : plan?.contentSpec ?? null;
+    const publicationId = existingPublication?.id ?? plan?.reservation?.publicationId;
+    if (!contentSpec || !publicationId) {
+      throw new Error("Reserved production opportunity is missing immutable state");
+    }
+    const rendered = deterministicRenderedCandidate(contentSpec);
+    if (mode === "shadow") {
+      const readiness = await worker.readiness();
+      if (!readiness.ready) {
+        throw new Error(`Official worker is not ready: ${readiness.reasons.join(",")}`);
+      }
+      const receipt = await worker.publishOnce({
+        idempotencyKey: existingPublication?.idempotencyKey ?? plan!.reservation!.idempotencyKey,
+        contentSpec,
+        renderedCandidate: rendered,
+      });
+      const result = engine.completeShadow({
+        publicationId,
+        connectorId: connector.connectorId,
+        renderedCandidate: rendered,
+        receipt,
+        now: scheduledFor,
+      });
+      return {
+        mode,
+        laneId: integration.laneId,
+        opportunityId: opportunity.id,
+        platformId: opportunity.platformId,
+        publicationId,
+        contentHash: contentSpec.contentHash,
         result: result.state,
         connectorReceipt: receipt,
+        recovered: Boolean(existingPublication),
+        scheduledFor: scheduledFor.toISOString(),
+        observedAt: input.scheduledFor.toISOString(),
+        schedulerLatenessMs: resolution.latenessMs,
         auditChainValid: store.auditChainValid(),
         externalWrites: 0,
         llmCalls: 0,
       };
     }
     const result = await engine.executeReserved({
-      publicationId: plan.reservation.publicationId,
+      publicationId,
       connector,
       renderedCandidate: rendered,
-      now: input.scheduledFor,
+      now: scheduledFor,
     });
     return {
       mode,
       laneId: integration.laneId,
       opportunityId: opportunity.id,
       platformId: opportunity.platformId,
-      publicationId: plan.reservation.publicationId,
-      contentHash: plan.contentSpec.contentHash,
+      publicationId,
+      contentHash: contentSpec.contentHash,
       result: result.state,
       providerId: result.providerId ?? null,
       permalink: result.permalink ?? null,
+      recovered: Boolean(existingPublication),
+      scheduledFor: scheduledFor.toISOString(),
+      observedAt: input.scheduledFor.toISOString(),
+      schedulerLatenessMs: resolution.latenessMs,
       auditChainValid: store.auditChainValid(),
       externalWrites: result.state === "verified" ? 1 : "unknown",
       llmCalls: 0,

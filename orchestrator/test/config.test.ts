@@ -67,4 +67,26 @@ describe("config loader", () => {
       join(stateRoot, "database", "deterministic-publishing.sqlite"),
     );
   });
+
+  it("does not activate publishing solely because an operator state root is declared", async () => {
+    const root = await mkdtemp(join(tmpdir(), "openclaw-config-"));
+    const stateRoot = await mkdtemp(join(tmpdir(), "openclaw-state-"));
+    tempRoots.push(root, stateRoot);
+    process.env.OPENCLAW_OPERATOR_STATE_DIR = stateRoot;
+
+    await writeFile(
+      join(root, "orchestrator_config.json"),
+      JSON.stringify({
+        docsPath: "./openclaw-docs",
+        logsDir: "./logs",
+        stateFile: "./orchestrator/data/orchestrator-state.json",
+      }),
+      "utf8",
+    );
+
+    const config = await loadConfig(join(root, "orchestrator_config.json"));
+
+    expect(config.publishingRegistryPath).toBeUndefined();
+    expect(config.publishingDatabasePath).toBeUndefined();
+  });
 });

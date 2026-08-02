@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-07-30`
+Last updated: `2026-08-02`
 
 ## Current Headline
 
@@ -34,11 +34,24 @@ The public repo direction is now explicit.
 
 ## Recently Finished
 
+0. Payload-bound one-run graph live capability and Phase F are complete.
+   - global `OPENCLAW_GRAPH_ZERO_WRITE_ONLY=true` remains the production invariant
+   - schema v2 persists immutable run/envelope authority and two ordered one-use dispatch reservations
+   - the admin API and owner-only CLI accept canonical references, never unchecked payload prose
+   - missing/mismatched/expired/revoked/consumed authority reaches zero provider-spy mutations
+   - crash/restart and database replay do not restore consumed authority
+   - controlled production load completed with zero-write preserved; exactly one fresh capability produced exactly one verified Instagram publication and is permanently consumed
+   - official readback, duplicate proof, claim finalisation, event-chain validation and local reconciliation passed; scheduler ownership is unchanged
+   - scheduler transfer remains Phase G and was not executed
+
 0. The deterministic self-identification publishing engine is specification-conformant locally.
    - the versioned registry, primary self-identification rule, campaign/strategy compatibility, immutable `strategyId`, Tax Lien coverage, deterministic five-slot diagnostic, and seven-day sequential portfolio replay are implemented
    - the product remains a separate governed campaign state machine rather than a replacement for existing Threads or Instagram campaign owners
    - operator routes expose evidence and local reservation only; there is no provider-write API route
-   - production activation remains blocked until a separate runner, shared account admission, explicit opportunity allocation, exact-path shadow proof, and rollback rehearsal are implemented and verified
+   - the immutable production-shadow runner is active for five product opportunities; 10 terminal slots, 83 audit events, seven consecutive natural hardened-runtime cycles and zero provider writes are verified
+   - both Instagram and Threads identities are API-ready; exact-path shadow proof, restart recovery and rollback are complete
+   - provider-writing activation remains correctly blocked pending one exact dated canary approval plus an explicitly approved Relay 0.10.2 installation/Gateway reload
+   - the separately graph-owned Instagram Image schedule remains external to and untouched by this campaign
 
 0. A retained-host portability and migration source-of-truth is now tracked.
    - the manifest records live services, ports, source repositories, plugin and

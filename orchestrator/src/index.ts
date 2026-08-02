@@ -157,6 +157,8 @@ import { DeterministicPublishingEngine } from "./publishing/engine.js";
 import { loadRegistryBundle } from "./publishing/registry.js";
 import { PublishingStore } from "./publishing/store.js";
 import { registerPublishingRoutes } from "./publishing/routes.js";
+import { createGraphRuntime } from "./graph/runtime.js";
+import { registerGraphRoutes } from "./graph/routes.js";
 
 /**
  * Security Posture Verification
@@ -10489,6 +10491,20 @@ async function bootstrap() {
     );
     publishingEngine.initialize();
   }
+  const graphRuntimeEnabled = process.env.OPENCLAW_GRAPH_RUNTIME_ENABLED === "true";
+  const graphRuntime = graphRuntimeEnabled
+    ? createGraphRuntime(undefined, {
+        zeroWriteOnly: process.env.OPENCLAW_GRAPH_ZERO_WRITE_ONLY === "true",
+        runIdPrefix: process.env.OPENCLAW_GRAPH_RUN_NAMESPACE?.trim() || "gr",
+        allowedDefinitions: (process.env.OPENCLAW_GRAPH_ALLOWED_DEFINITIONS ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+      })
+    : null;
+  if (graphRuntime) {
+    if (process.env.OPENCLAW_GRAPH_ZERO_WRITE_ONLY !== "true") throw new Error("graph_runtime_requires_explicit_zero_write_policy");
+    console.log(`[orchestrator] graph runtime initialized in zero-write mode (${graphRuntime.registry.list().length} definitions, recovery resumed=${graphRuntime.recovery.resumed.length}, blocked=${graphRuntime.recovery.blocked.length})`);
+  } else {
+    console.log("[orchestrator] graph runtime disabled; graph persistence and routes were not initialized");
+  }
 
   console.log("[orchestrator] config loaded", config);
   if (fastStartMode) {
@@ -13120,6 +13136,7 @@ async function bootstrap() {
   // ============================================================
 
   registerPublishingRoutes(app, publishingEngine);
+  if (graphRuntime) registerGraphRoutes(app, graphRuntime);
 
   app.get(
     "/api/auth/me",
@@ -15146,6 +15163,8 @@ async function bootstrap() {
       console.log("[orchestrator] HTTP server closed");
       try {
         publishingEngine?.store.close();
+        graphRuntime?.scheduler.close();
+        graphRuntime?.store.close();
         await PersistenceIntegration.close();
         console.log("[orchestrator] Database connections closed");
       } catch (err) {

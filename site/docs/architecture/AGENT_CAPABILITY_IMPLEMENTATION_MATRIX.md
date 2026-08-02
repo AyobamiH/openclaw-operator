@@ -840,6 +840,22 @@ Document movement as it happens. If one wave advances materially, update this
 matrix in the same change set so the repo continues to describe what has been
 built versus what is still missing.
 
+## Shared Graph-Kernel Capability (2026-08-01)
+
+| Capability | Current runtime truth | Status | Next gate |
+|---|---|---|---|
+| Immutable graph definitions | typed/Zod validated, SQLite immutable by graph ID/version | locally verified | deploy and inspect loaded registry |
+| Durable run/event state | revisioned SQLite snapshots plus append-only hash chain | locally verified | restart recovery proof in loaded service |
+| Authority and approval | ordered classes and run/version/node/action/target/payload binding | locally verified | operator API canary with non-external payload |
+| External reconciliation | explicit effect states; crash with provider acceptance blocks retry | locally verified | bind one official connector read adapter |
+| Bounded repair | attempt/transition/loop/time/tool/external/cost budgets and no-progress stop | locally verified | measure production telemetry |
+| Legacy compatibility | only code-registered handlers can be wrapped | locally verified | migrate one low-risk live task |
+| Representative workflows | coding fixture, zero-write social and fixture-backed research | locally verified | natural shadow equivalence |
+| One-schedule ownership | durable migration/rollback registry and fixed Instagram Image graph trigger | loaded; natural observation active | require multiple verified natural cycles before Phase G terminal verdict |
+
+This shared capability does not upgrade every agent's maturity automatically.
+Per-agent promotion still requires real adapter and live-path evidence.
+
 ## Done Condition
 
 This matrix should be considered materially complete only when:

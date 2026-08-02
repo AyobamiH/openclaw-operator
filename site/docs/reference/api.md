@@ -1377,3 +1377,48 @@ No route in this family exposes:
 - a provider deletion.
 
 The machine-readable contract is in `GET /api/openapi.json`.
+
+## Durable Graph Execution API
+
+The graph route family is bearer-protected and role-checked. It is the new
+durable orchestration lane; Telegram and operator UI summaries are projections,
+not state authority.
+
+| Method | Route | Role | Purpose |
+|---|---|---|---|
+| `GET` | `/api/graphs/health` | viewer | schema, definition, active/waiting/blocked and recovery posture |
+| `GET` | `/api/graphs/scheduler-migrations` | viewer | redacted durable ownership registry |
+| `GET` | `/api/graphs/scheduler-migrations/:migrationId` | viewer | one migration, trigger lineage and event-chain result |
+| `GET` | `/api/graphs/definitions` | viewer | immutable registered definitions |
+| `GET` | `/api/graphs/adapters` | viewer | allowlisted production adapter contracts and safety metadata |
+| `POST` | `/api/graphs/definitions/validate` | operator | validate without registration |
+| `POST` | `/api/graphs/definitions/register` | admin | register one allowlisted immutable version |
+| `GET/POST` | `/api/graphs/runs` | viewer/operator | list or start runs |
+| `GET` | `/api/graphs/runs/:runId` | viewer | state, approvals, effects, chain status and Telegram summary |
+| `GET` | `/api/graphs/runs/:runId/events` | viewer | append-only hash-chained events |
+| `GET` | `/api/graphs/runs/:runId/evidence` | viewer | completion evidence package |
+| `POST` | `/api/graphs/runs/:runId/step` | operator | execute one allowed node |
+| `POST` | `/api/graphs/runs/:runId/execute` | operator | execute until terminal/wait/approval/block |
+| `POST` | `/api/graphs/runs/:runId/pause` | operator | checkpoint and pause |
+| `POST` | `/api/graphs/runs/:runId/resume` | operator | resume only when approval/effects allow |
+| `POST` | `/api/graphs/runs/:runId/cancel` | operator | cancel when provider-side work is safe |
+| `POST` | `/api/graphs/runs/:runId/approvals/:approvalId` | operator | exact payload-bound approval decision |
+| `POST` | `/api/graphs/runs/:runId/live-capabilities` | admin | issue one non-wildcard capability from canonical run, claim, envelope and approval references |
+| `POST` | `/api/graphs/runs/:runId/live-capabilities/:capabilityId/revoke` | admin | permanently revoke an unused one-run capability |
+| `POST` | `/api/graphs/runs/:runId/checkpoints/:checkpointId/retry` | operator | retry without resetting budgets |
+| `POST` | `/api/graphs/runs/:runId/effects/reconcile` | operator | record official external-effect observation |
+| `GET` | `/api/graphs/blocked` | viewer | blocked runs |
+| `GET` | `/api/graphs/orphaned` | viewer | expired active attempts |
+| `POST` | `/api/graphs/recover` | operator | resume safe runs and block ambiguity |
+
+Graph definitions cannot identify arbitrary modules. Starting a graph grants no
+authority beyond the supplied envelope. A run can complete only when its
+structured completion assertions and required evidence kinds pass.
+
+The live-capability issuance body contains only `approvalId`, `expiresAt` and
+an optional `notBefore`. The server recomputes every graph, definition, run,
+claim, account, candidate, slot, payload, media, envelope and idempotency
+binding from durable canonical state. Issuance is inert: it does not step or
+execute the run. The production startup guard still requires
+`OPENCLAW_GRAPH_ZERO_WRITE_ONLY=true`; the mutating adapter reserves each
+ordered dispatch transactionally immediately before its network boundary.

@@ -296,3 +296,20 @@ Deterministic publishing planning is intentionally not added to
 
 This separation prevents generic task triggers, agent prompts or LLM execution
 from bypassing the commercial registry and exactly-once authority.
+
+## Task-to-Graph Migration Boundary
+
+Task types remain valid compatibility entry points. They are not equivalent to
+durable graph completion.
+
+- `graph_native`: execution, transition, evidence and completion are owned by a
+  registered graph version.
+- `graph_wrapped_legacy`: a code-registered task/worker runs inside a node with
+  timeout, attempt, authority, idempotency and evidence contracts.
+- `legacy_approved_for_temporary_use`: the current task path remains active
+  while graph equivalence is proved.
+
+The initial graph targets are `coding-change@1.0.0`,
+`deterministic-social-publication@1.0.0`, and
+`research-to-action@1.0.0`. Existing task types are not silently rerouted by
+source registration; production cutover remains separately approved.

@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 import {
   loadProductionIntegration,
   opportunityFor,
+  resolveProductionOpportunity,
   rehearseProductionRollback,
 } from "../../src/publishing/production-integration.js";
 import { OpenClawOfficialApiWorkerClient } from "../../src/publishing/official-worker.js";
@@ -24,6 +25,7 @@ describe("production publishing integration", () => {
     const registry = await loadRegistryBundle(registryPath);
     const integration = await loadProductionIntegration(integrationPath, registry);
     expect(integration.mode).toBe("shadow");
+    expect(integration.schedulerLatenessToleranceMinutes).toBe(5);
     expect(integration.opportunities.map((item) => item.localTime).sort()).toEqual([
       "05:00",
       "07:00",
@@ -35,9 +37,32 @@ describe("production publishing integration", () => {
     expect(integration.protectedLegacyJobs.every(
       (job) => job.mutationPolicy === "untouched",
     )).toBe(true);
+    expect(integration.protectedLegacyJobs).toContainEqual({
+      id: "24afbb84-457c-41bb-92c9-24a19725e984",
+      owner: "graph-runtime:phase-g-instagram-image-v1",
+      mutationPolicy: "untouched",
+    });
     expect(integration.opportunities.filter((item) => item.canaryEligible)).toEqual([
       expect.objectContaining({ id: "self-id-1500", platformId: "threads" }),
     ]);
+  });
+
+  it("canonicalizes a bounded late scheduler start to the immutable opportunity time", async () => {
+    const registry = await loadRegistryBundle(registryPath);
+    const integration = await loadProductionIntegration(integrationPath, registry);
+    const resolution = resolveProductionOpportunity(
+      integration,
+      "auto",
+      new Date("2026-07-30T15:03:29.450+01:00"),
+    );
+    expect(resolution.opportunity.id).toBe("self-id-1500");
+    expect(resolution.scheduledFor.toISOString()).toBe("2026-07-30T14:00:00.000Z");
+    expect(resolution.latenessMs).toBe(209_450);
+    expect(() => resolveProductionOpportunity(
+      integration,
+      "auto",
+      new Date("2026-07-30T15:06:00+01:00"),
+    )).toThrow(/within the 5-minute scheduler tolerance/);
   });
 
   it("rejects a scheduler time that does not match the explicit opportunity", async () => {
@@ -112,6 +137,115 @@ describe("production publishing integration", () => {
         providerDispatchSuppressed: true,
         externalWrites: 0,
       });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("records a zero-write shared-admission denial as an auditable policy skip", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "publishing-production-shadow-denied-"));
+    let calls = 0;
+    try {
+      const databasePath = join(directory, "publishing.sqlite");
+      const result = await runProductionOpportunity({
+        integrationPath,
+        registryPath,
+        databasePath,
+        opportunityId: "auto",
+        scheduledFor: new Date("2026-07-30T17:00:20+01:00"),
+        mode: "shadow",
+        toolInvoker: async () => {
+          calls += 1;
+          return {
+            namespace: "relay-live-business-engagement",
+            outcome: "validated",
+            dryRun: true,
+            externalWritePerformed: false,
+            accountAdmission: {
+              admitted: false,
+              shadow: true,
+              reasons: ["exact-duplicate-risk"],
+            },
+          };
+        },
+      });
+      expect(result).toMatchObject({
+        result: "skipped_policy",
+        scheduledFor: "2026-07-30T16:00:00.000Z",
+        schedulerLatenessMs: 20_000,
+        externalWrites: 0,
+        auditChainValid: true,
+      });
+      expect(calls).toBe(1);
+
+      const recovered = await runProductionOpportunity({
+        integrationPath,
+        registryPath,
+        databasePath,
+        opportunityId: "self-id-1700",
+        scheduledFor: new Date("2026-07-30T17:04:59+01:00"),
+        mode: "shadow",
+        toolInvoker: async () => {
+          throw new Error("terminal policy skip must not dispatch again");
+        },
+      });
+      expect(recovered).toMatchObject({
+        result: "skipped_policy",
+        recovered: true,
+        providerDispatchSuppressed: true,
+        externalWrites: 0,
+      });
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("resumes only a provably pre-dispatch reserved shadow after interruption", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "publishing-production-shadow-resume-"));
+    let attempts = 0;
+    try {
+      const databasePath = join(directory, "publishing.sqlite");
+      await expect(runProductionOpportunity({
+        integrationPath,
+        registryPath,
+        databasePath,
+        opportunityId: "self-id-1500",
+        scheduledFor: new Date("2026-07-30T15:00:00+01:00"),
+        mode: "shadow",
+        toolInvoker: async () => {
+          attempts += 1;
+          throw new Error("simulated interruption before any provider-capable call");
+        },
+      })).rejects.toThrow(/simulated interruption/);
+
+      const resumed = await runProductionOpportunity({
+        integrationPath,
+        registryPath,
+        databasePath,
+        opportunityId: "self-id-1500",
+        scheduledFor: new Date("2026-07-30T15:02:00+01:00"),
+        mode: "shadow",
+        toolInvoker: async () => {
+          attempts += 1;
+          return {
+            outcome: "validated",
+            dryRun: true,
+            externalWritePerformed: false,
+            accountAdmission: {
+              admitted: true,
+              shadow: true,
+              reasons: ["shadow-admission-passed"],
+            },
+          };
+        },
+      });
+      expect(resumed).toMatchObject({
+        result: "shadow_verified",
+        recovered: true,
+        scheduledFor: "2026-07-30T14:00:00.000Z",
+        externalWrites: 0,
+      });
+      expect(attempts).toBe(2);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
