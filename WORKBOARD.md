@@ -52,6 +52,7 @@ The public repo direction is now explicit.
    - both Instagram and Threads identities are API-ready; exact-path shadow proof, restart recovery and rollback are complete
    - provider-writing activation remains correctly blocked pending one exact dated canary approval plus an explicitly approved Relay 0.10.2 installation/Gateway reload
    - the separately graph-owned Instagram Image schedule remains external to and untouched by this campaign
+   - GitHub workflows use the Node 24 action-runtime generation and both repos enforce that contract in local/CI verification
 
 0. A retained-host portability and migration source-of-truth is now tracked.
    - the manifest records live services, ports, source repositories, plugin and

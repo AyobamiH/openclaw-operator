@@ -743,3 +743,33 @@
   separate payload-bound approval is required for one dated `self-id-1500`
   provider-writing canary. Neither boundary is implied by source-release
   authority.
+
+## 2026-08-02 — Post-push CI runtime hardening
+
+- Requested task: challenge remote CI consistency after source handoff and fix
+  every non-approval-gated release-engineering defect.
+- Tools/source: GitHub CLI under the `github` skill queried official workflow
+  runs and the official `actions/checkout` and `actions/setup-node` release
+  metadata. Core `apply_patch`, Node tests, connector package verification and
+  protected-branch hooks supplied mutation and verification. No credential
+  value, provider API mutation, deployment, service reload or scheduler change
+  occurred.
+- Root cause and repair: the first successful operator CI run warned that
+  `checkout@v4` and `setup-node@v4` still target the deprecated Node 20 action
+  runtime. Official `v7` action metadata declares `node24`. All operator and
+  connector workflows now use v7. The operator shipping contract now runs
+  `scripts/check-ci-action-runtime.mjs`; the connector suite includes
+  `scripts/ci-action-runtime.test.mjs`, preventing regression below the Node 24
+  generation.
+- Verification: operator CI-action audit passed seven references. Connector
+  `npm run check` passed 140 tests (135 required passes, five explicitly
+  unsupported external integrations), manifest/typecheck/skip audit and exact
+  package convergence. Clean release preflight at
+  `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3` remained release-eligible with
+  unchanged 92-file tarball SHA-256
+  `bd2051222b27919c126d72b1876a5e1e3bd2e208cca4d7f95358f1bb929e4a5d`.
+  Connector GitHub CI run `30749503903` passed.
+- Changed-state declaration: connector CI hardening commit
+  `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3` was pushed to `origin/main`.
+  Operator workflow/runtime-audit changes are included in the final protected
+  branch handoff. Production runtime and campaign authority remain unchanged.

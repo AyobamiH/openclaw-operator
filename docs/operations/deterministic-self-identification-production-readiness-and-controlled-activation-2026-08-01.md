@@ -26,7 +26,7 @@ LLM allocation or publication decisions: 0
 | Connector installation | Active connector is healthy but loaded telemetry still reports `0.10.0`; the `0.10.2` identity/convergence repair is verified locally and awaits an explicitly approved installation/reload | APPROVAL BOUNDARY |
 | Production runner and scheduler ownership | Shadow job `6fd37958-b450-400e-8c06-a781670f3a03` exclusively owns five product opportunities; four legacy jobs unchanged | PASS in shadow |
 | Provider readiness | Instagram and Threads owner identities both authenticated and API-ready on 2026-08-02 | PASS |
-| Documentation and release artefacts | Canonical reports, rollback evidence and exact release inputs exist; connector `0.10.2` is clean-release verified and pushed at `fb3c4cac29d8fc09e09b5d7e6b2347ed05fd9041` | PASS |
+| Documentation and release artefacts | Canonical reports, rollback evidence and exact release inputs exist; connector `0.10.2` is clean-release verified and pushed at `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3` | PASS |
 
 ## 2. Production hardening report
 
@@ -43,8 +43,8 @@ The release candidate was repaired without changing product scope:
   separate operator-authority boundary; and
 - image/Reel creative now carries `Tail Wagging Website Design Factory Northampton` once and removes the redundant `Built locally` badge.
 
-Verification: focused production-integration isolation 9/9; connector 139 total
-tests with 134 required passes, five declared unsupported external integrations
+Verification: focused production-integration isolation 9/9; connector 140 total
+tests with 135 required passes, five declared unsupported external integrations
 and zero required skips; manifest, typecheck, package convergence and clean
 installation validation passed. The operator protected-branch `verify:main`
 contract passed: build, documentation drift/link checks, 95 unit simulations,
@@ -64,7 +64,7 @@ release artefact is `0.10.2`, 92 files, SHA-256
 `bd2051222b27919c126d72b1876a5e1e3bd2e208cca4d7f95358f1bb929e4a5d`, npm
 integrity
 `sha512-EQlHjA4A1hCohu8+nNeUdJReGaLMk+rTNR05HMZcov/JMB1qgWPVunEcYSXydvPw4NQ5FlTMzL4jky+0UCI6gw==`,
-from clean commit `fb3c4cac29d8fc09e09b5d7e6b2347ed05fd9041`.
+from clean commit `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3`.
 
 ## 4. Packaging harness
 
@@ -159,7 +159,7 @@ Legacy Threads and Instagram schedulers continue independently and converge only
   `fd04cf5e45c0092dfcdba69dc693f00bcb288f47`, pushed with the implementation
   to `origin/main` after the protected-branch pre-push contract passed.
 - Immutable shadow runtime input hash: `972c41b65241a407fdc8ee593541c5c4f782f52345081b6868551f9cd0889e16`.
-- Connector source: clean commit `fb3c4cac29d8fc09e09b5d7e6b2347ed05fd9041`, pushed to `origin/main`.
+- Connector source: clean commit `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3`, pushed to `origin/main`; GitHub CI passed.
 - Connector artefact: version `0.10.2`, SHA-256 `bd2051222b27919c126d72b1876a5e1e3bd2e208cca4d7f95358f1bb929e4a5d`, 92 files, exact source/tar/install byte convergence.
 - Operator protected-branch verification: `verify:main` passed build,
   documentation, 95 unit, 35 integration and 34 UI tests plus typecheck and
