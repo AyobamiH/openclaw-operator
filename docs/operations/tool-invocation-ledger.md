@@ -994,3 +994,56 @@
   write, upload, canary consumption, post deletion or repost occurred.
 - Evidence: the dated graph/factory audit, schema initializer test, service
   read-backs and the owner-only rollback packet.
+
+### Post-restart verification and migration-coverage reconciliation
+
+- Requested task: resume after the approved Gateway restart, prove the exact
+  installed revision, schema-v3 migration, restart-persistent ToolGate,
+  service health, unchanged Factory schedule ownership, 11:00 run separation,
+  frozen creative repair and remaining migration coverage.
+- Workflow lane: interruption recovery, read-only live verification, bounded
+  documentation reconciliation and release handoff.
+- Tools/source: coding-agent `repo-map`, `migration-review` and
+  `deployment-preflight`; core `systemctl`, `journalctl`, `curl`, OpenClaw cron
+  readbacks, SQLite metadata/integrity queries, Git, HyperFrames receipt reads,
+  original-resolution image inspection, Vitest, TypeScript and documentation
+  checks.
+- Preferred-tool fallback: the coding adapter enabled metadata-only repo-map
+  but not migration or deployment detail. Narrow project/runtime reads and
+  owner-approved SQLite/systemd checks supplied the missing evidence without
+  reading secret values. The first focused Vitest command launched from the
+  repository root and produced four path-fixture failures; the identical four
+  files passed 24/24 from their required `orchestrator/` package root.
+- Changed-state declaration: true. No new service, Gateway, scheduler,
+  database, provider or external mutation occurred during this resumed phase.
+  Canonical reports and the migration registry were updated to match the
+  already-loaded runtime.
+- Verification: the orchestrator and Gateway are active/running after their
+  single approved restarts. Graph startup loaded exactly four supported
+  definitions in zero-write mode with schema v3 integrity `ok`. The durable
+  ToolGate chain retained its pre-restart state and appended post-restart
+  allowed and denied decisions. The repeatable full-runtime audit passed all
+  ten findings; focused schema, ToolGate and child/verifier receipt tests passed
+  24/24; typecheck, build, docs drift, links and `git diff --check` passed.
+  Frozen renderer tests passed 19 with 5 classified unsupported and 0 failures;
+  the actual local render passed with zero upload/provider calls.
+- Service caveats: Gateway connectivity is healthy on matching CLI/runtime
+  `2026.7.1`. Its read-only status reports a pre-existing NVM-managed service
+  path and `llama-cpp` plugin `2026.6.11` version drift; the separate legacy
+  Mongo persistence endpoint also remains unhealthy while Redis is healthy.
+  These were not mutated because installation/plugin update and another
+  Gateway restart require separate approval.
+- Separate-run proof: Instagram cron `24af…e984` ran from 11:00:00.042 BST to
+  11:06:32 and verified `Dbku7t0jidZ`; Factory cron `6fd3…a03` began separately
+  at 11:06:31.009 and failed its old tolerance after 748 ms. The object was not
+  deleted or reposted, and `self-id-1100` approval remains unconsumed.
+- Evidence:
+  `docs/operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md`,
+  `docs/operations/graph-native-migration-registry.md`,
+  `~/.openclaw/state/openclaw-operator/backups/20260803T105942Z-schema-v3-activation/`,
+  and
+  `artifacts/business-value/marketing/2026-08-03/frozen-render-badge-regression-v1/`.
+- Next safe step: retain zero-write mode and existing schedule ownership. The
+  exact canary may run only after its next successful natural shadow proof;
+  every additional provider write, service reload, schedule mutation or
+  workflow transfer remains separately approval-gated.

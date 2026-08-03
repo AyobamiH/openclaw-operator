@@ -214,17 +214,19 @@ authorised to start. Changing the active scheduler/runtime mode away from
 shadow remains a separate boundary. The zero-write render/audit scheduler
 activation is complete.
 
-The graph-runtime engineering findings are closed. Loading the new graph
-portfolio, applying schema v3 to the production graph database, selecting the
-durable ToolGate production path, and exercising the queue dispatcher in the
-running service require a production deployment/configuration change and a
-service or Gateway reload. Those actions were explicitly excluded from this
-mission and remain human-authority boundaries; source completion must not be
-misreported as live activation.
+The graph-runtime engineering findings are closed, and the separately approved
+production activation is now complete. Schema v3, the exact four-definition
+zero-write portfolio and durable ToolGate are active in the running service.
+Remaining migration coverage is workflow transfer rather than runtime
+infrastructure: Threads publishing, Meta replies, the content-factory shadow,
+the daily digest, business-value planning, most of the general task queue and
+Git publication remain legacy-owned or graph-wrapped as recorded in the
+migration registry. Only the Instagram image schedule has transferred to graph
+ownership; no adjacent schedule was implicitly migrated.
 
-Any connector install, Gateway/service reload, further scheduler mutation,
-production migration, provider write beyond the approved exact canary, release
-or deployment still requires separate explicit approval.
+Any further connector install, Gateway/service reload, scheduler mutation,
+workflow transfer, production migration, provider write beyond the approved
+exact canary, release or deployment still requires separate explicit approval.
 
 ## Approved production activation follow-up
 
@@ -248,6 +250,65 @@ The production portfolio remains zero-write and contains exactly
 production SQLite path and is initialized during service startup; startup
 fails if its durable decision hash chain is invalid. Database and configuration
 rollback copies were retained before activation.
+
+### Post-restart live proof
+
+The orchestrator restarted once at `2026-08-03 12:14:44 BST` and the Gateway
+completed its one approved restart at `12:21:09 BST`. Both are active/running;
+the orchestrator has `NRestarts=0`, its loopback socket is listening and
+`/health` returns HTTP 200. Startup logged four graph definitions with zero
+recovery debt, then opened the durable ToolGate and accepted its decision hash
+chain. The production graph database reports schema v3, SQLite integrity `ok`,
+no foreign-key violations, 4 definitions, 21 retained runs and both child and
+verifier receipt tables. The exact loaded definitions are:
+
+- `coding-change@1.2.0`;
+- `deterministic-social-publication@1.1.0`;
+- `deterministic-social-publication@2.0.0`;
+- `research-to-action@1.1.0`.
+
+ToolGate retained three allowed decisions and three consumed capabilities from
+the pre-reload backup. After restart, the same chain grew to nine decisions
+(eight allowed, one denied) and five consumed capabilities. Every decision's
+`previous_hash` points to the preceding `decision_hash`, and the running
+service had already rejected startup if that chain were invalid. This is live
+restart-persistence and denial proof in addition to isolated replay/tamper
+tests.
+
+The legacy application persistence endpoint still reports the separately
+configured Mongo store unavailable while Redis coordination is healthy. This
+predates and is independent of the graph SQLite activation, as recorded in the
+2026-08-01 activation report; graph and ToolGate integrity are healthy. It is
+not being silently described as a healthy legacy store or changed under this
+bounded graph activation.
+
+Gateway connectivity is healthy and its CLI/runtime versions both report
+`2026.7.1`. The read-only service check also reports two pre-existing host
+maintenance risks: the unit uses an NVM-managed Node/PATH rather than a system
+Node, and official `llama-cpp` plugin `2026.6.11` trails the Gateway version.
+Neither affects the graph/ToolGate proof. Installing a system Node or updating
+that plugin would require a new install plus Gateway-restart approval and was
+not folded into this activation.
+
+### 11:00 run separation and creative regression
+
+Cron history proves two separate job/run identities. Instagram job
+`24afbb84-457c-41bb-92c9-24a19725e984` began at `11:00:00.042 BST`, completed
+after 390.967 seconds and verified provider object `18100722784953182` at
+`https://www.instagram.com/p/Dbku7t0jidZ/`. Factory job
+`6fd37958-b450-400e-8c06-a781670f3a03` then began independently at
+`11:06:31.009 BST` and failed its old five-minute lateness gate after 748 ms.
+The Factory run did not upload or call a provider. The Instagram object is
+preserved; it was neither deleted nor reposted.
+
+Renderer revision `de459225e7dfe8adc64d0d8c3a1ee8039584e2f0` now rejects
+mixed badge families such as `→`, `✓`, `1`, placeholder markers and missing or
+duplicate creative fields before rendering. A frozen, local-only 1080x1350
+regression render uses three consistent arrows, preserves complete copy and
+passes semantic, font, bounding-box, overlap, contrast and source/render text
+hash checks. Its PNG SHA-256 is
+`1f6084d4a55fdc6244141e2f2280b2d7555892ee331156b3d7fd3ab78894d66e`;
+upload, Instagram publish, external generation and retry counters are all zero.
 
 ## 2026-08-03 Operational Follow-Up
 
@@ -279,6 +340,10 @@ uploads and zero provider writes; it is not accepted as the conditional canary
 proof. Source configuration now permits at most ten minutes of scheduler
 lateness—the validator's existing hard maximum—and tests prove that the
 observed 391-second delay canonicalises to the immutable slot while 601 seconds
-still fails closed. Installing that source/config revision and repointing the
-cron payload remain runtime/scheduler lifecycle changes, so the running pinned
-job was not mutated by this source repair.
+still fails closed. The separately approved follow-up installed exact revision
+`11a8067b299505e7a942791b0d902b1fa16a871b` with the repaired renderer and
+repointed only the existing cron command. Its expression
+`0 5,7,11,15,17 * * *`, `Europe/London` timezone, enabled state,
+delivery-none setting and zero-write shadow mode are unchanged. No diagnostic
+run was forced. The exact `self-id-1100` canary approval remains unconsumed and
+may be used only after its next successful natural shadow proof.
