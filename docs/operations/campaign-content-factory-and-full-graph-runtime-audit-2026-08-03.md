@@ -225,3 +225,25 @@ misreported as live activation.
 Any connector install, Gateway/service reload, further scheduler mutation,
 production migration, provider write beyond the approved exact canary, release
 or deployment still requires separate explicit approval.
+
+## 2026-08-03 Operational Follow-Up
+
+The repeatable full-graph audit was rerun after source completion and returned
+`passed` for all ten findings: 8 definitions, 3 families, 8 production
+adapters, 19 manifests and 20 governed task bindings. Focused publishing
+integration and media-artifact tests passed 12/12, including a strict CLI
+parser for importing a hash-bound `CampaignMediaDelivery` receipt. The CLI now
+accepts `--media-delivery <path>` for `production-canary`; the runner still
+refuses every non-text canary or live dispatch without an immutable receipt
+whose artifact, content, media and upload hashes bind to the exact content
+specification.
+
+The orchestrator typecheck and isolated 77-test ToolGate/runtime suite passed.
+The full suite also passed the graph kernel, durable ToolGate, child/verifier
+receipts, production adapters, Campaign Factory and publishing groups. Its
+legacy HTTP load file was not counted as a local unit regression because it
+requires an explicitly started `OPENCLAW_LOAD_TEST_BASE_URL`; without that
+server it failed at `fetch`. One verifier case exceeded the global 60-second
+timeout only under full-suite contention and passed in isolation in 23.79
+seconds. No running service, database, Gateway, scheduler or provider state
+was changed by this follow-up.

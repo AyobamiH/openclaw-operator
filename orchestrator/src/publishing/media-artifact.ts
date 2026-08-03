@@ -53,6 +53,56 @@ export type CampaignMediaDelivery = {
   uploadReceiptHash: string;
 };
 
+export function parseCampaignMediaDelivery(value: unknown): CampaignMediaDelivery {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("campaign_media_delivery_invalid");
+  }
+  const input = value as Record<string, unknown>;
+  if (input.schemaVersion !== "1.0.0") {
+    throw new Error("campaign_media_delivery_schema_invalid");
+  }
+  const format = input.format;
+  if (format !== "image" && format !== "reel") {
+    throw new Error("campaign_media_delivery_format_invalid");
+  }
+  const artifactHash = requiredString(input.artifactHash, "campaign_media_artifact_hash");
+  const contentHash = requiredString(input.contentHash, "campaign_media_content_hash");
+  const mediaSha256 = requiredString(input.mediaSha256, "campaign_media_sha256");
+  const uploadReceiptHash = requiredString(
+    input.uploadReceiptHash,
+    "campaign_media_upload_receipt_hash",
+  );
+  for (const [label, digest] of [
+    ["artifact", artifactHash],
+    ["content", contentHash],
+    ["media", mediaSha256],
+    ["upload_receipt", uploadReceiptHash],
+  ] as const) {
+    if (!SHA256.test(digest)) throw new Error(`campaign_media_delivery_${label}_hash_invalid`);
+  }
+  const publicUrl = new URL(requiredString(input.publicUrl, "campaign_media_public_url"));
+  if (
+    publicUrl.protocol !== "https:" ||
+    publicUrl.username ||
+    publicUrl.password ||
+    ["localhost", "127.0.0.1", "::1"].includes(publicUrl.hostname)
+  ) {
+    throw new Error("campaign_media_delivery_url_not_public_https");
+  }
+  return {
+    schemaVersion: "1.0.0",
+    artifactId: requiredString(input.artifactId, "campaign_media_artifact_id"),
+    artifactHash,
+    contentSpecId: requiredString(input.contentSpecId, "campaign_media_content_spec_id"),
+    contentHash,
+    format,
+    mediaSha256,
+    publicUrl: publicUrl.toString(),
+    uploadProvider: requiredString(input.uploadProvider, "campaign_media_upload_provider"),
+    uploadReceiptHash,
+  };
+}
+
 type RendererReceipt = {
   schema?: unknown;
   outcome?: unknown;

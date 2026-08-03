@@ -1382,6 +1382,14 @@ No route in this family exposes:
 
 The machine-readable contract is in `GET /api/openapi.json`.
 
+The repository CLI uses the same immutable publishing contract. A media
+`production-canary` may accept `--media-delivery <path>` only when the JSON is
+a schema `1.0.0` `CampaignMediaDelivery` receipt. The parser requires a public
+HTTPS URL and SHA-256 bindings for the media artifact, content specification,
+delivered bytes and upload receipt. Non-text canary/live execution fails
+closed when this receipt is missing or any binding differs. This CLI import
+does not add an HTTP upload or provider-write route.
+
 ## Durable Graph Execution API
 
 The graph route family is bearer-protected and role-checked. It is the new

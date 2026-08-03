@@ -921,3 +921,36 @@
   approval. Applying schema v3 and the production graph/config portfolio to the
   running service still requires an explicit production migration and
   service/Gateway reload approval.
+
+## 2026-08-03 — Operational graph revalidation and media-delivery CLI boundary
+
+- Requested task: continue until the Campaign Content Factory and graph runtime
+  are operational within current authority, using bounded live diagnostics and
+  preserving the exact single-canary preconditions.
+- Workflow lane: bounded coding verification and fail-closed delivery wiring.
+- Tools/source: coding-agent `repo-map`, project validation and deployment
+  preflight first; core TypeScript, Vitest, full graph audit, Git diff and
+  narrow source inspection as fallback.
+- Preferred-tool fallback: the configured coding deployment-preflight adapter
+  returned `partial` and explicitly ran no runtime, build or deployment checks.
+  Repository-native tests, typecheck and the repeatable graph audit supplied
+  the missing evidence. The first Vitest command inherited the workspace root
+  and encountered an unrelated unreadable artifact directory; rerunning from
+  the orchestrator package root isolated the intended repository.
+- Changed-state declaration: source, tests and documentation changed. The
+  canary CLI can now import a strictly parsed immutable media-delivery receipt.
+  No service, Gateway, production database, schedule, upload or provider state
+  changed.
+- Verification: media and publishing integration tests passed 12/12;
+  typecheck passed; `graph:audit:full` passed every finding; the isolated
+  ToolGate/runtime file passed 77/77. Full-suite graph, persistence,
+  child-receipt, adapter, Campaign Factory and publishing groups passed. The
+  legacy HTTP load file requires an explicitly running load-test target, and
+  one contention timeout passed when isolated.
+- Evidence: `orchestrator/src/publishing/media-artifact.ts`,
+  `orchestrator/src/publishing/cli.ts`,
+  `orchestrator/test/campaign-media-artifact.test.ts`, and the dated audit.
+- Next safe step: observe the first natural pinned 11:00 shadow proof, then use
+  only the canonical deterministic Instagram worker for the exact approved
+  canary if the delivery receipt and all hashes bind. Production graph
+  deployment/migration/reload remains a separate lifecycle authority boundary.

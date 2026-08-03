@@ -1,10 +1,12 @@
 import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { DeterministicPublishingEngine } from "./engine.js";
 import { deterministicRenderedCandidate } from "./engine.js";
 import { registryBundleHash, loadRegistryBundle } from "./registry.js";
 import { PublishingStore } from "./store.js";
 import { runProductionOpportunity } from "./production-runner.js";
 import { isolatedConnectorShadowInvoker } from "./official-worker.js";
+import { parseCampaignMediaDelivery } from "./media-artifact.js";
 import { PROHIBITED_PLATFORM_IDS } from "./types.js";
 import type {
   ContentSpec,
@@ -374,7 +376,7 @@ async function main(): Promise<void> {
         "production-shadow":
           "--registry <path> --integration <path> --db <path> [--opportunity <id|auto>] [--at <ISO>]",
         "production-canary":
-          "--registry <path> --integration <path> --db <path> --opportunity <id> --at <ISO>",
+          "--registry <path> --integration <path> --db <path> --opportunity <id> --at <ISO> [--media-delivery <path>]",
       },
       guardrail:
         "Provider-writing commands require an exact matching approved integration mode and remain official-worker-owned.",
@@ -424,6 +426,11 @@ async function main(): Promise<void> {
           admissionDatabasePath: option(options, "admission-db"),
         })
         : undefined;
+    const mediaDelivery = typeof options["media-delivery"] === "string"
+      ? parseCampaignMediaDelivery(JSON.parse(
+        await readFile(resolve(options["media-delivery"]), "utf8"),
+      ))
+      : undefined;
     const result = await runProductionOpportunity({
       registryPath: option(options, "registry", projectDefaultRegistry()),
       integrationPath: option(options, "integration"),
@@ -443,6 +450,7 @@ async function main(): Promise<void> {
         typeof options.workspace === "string"
           ? options.workspace
           : process.cwd(),
+      mediaDelivery,
     });
     print(result);
     const accepted = productionMode === "shadow"

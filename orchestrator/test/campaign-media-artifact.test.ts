@@ -9,6 +9,7 @@ import {
   artifactFromLocalRendererReceipt,
   bindCampaignMediaDelivery,
   buildLocalRendererSpec,
+  parseCampaignMediaDelivery,
   renderedCandidateWithDelivery,
 } from "../src/publishing/media-artifact.js";
 import { planCampaignFactoryContentForDate } from "../src/publishing/campaign-factory.js";
@@ -118,6 +119,11 @@ describe("campaign media artifacts", () => {
       mediaUrl: delivery.publicUrl,
       mediaHash: mediaSha256,
     });
+    expect(parseCampaignMediaDelivery(JSON.parse(JSON.stringify(delivery)))).toEqual(delivery);
+    expect(() => parseCampaignMediaDelivery({
+      ...delivery,
+      mediaSha256: "changed",
+    })).toThrow("campaign_media_delivery_media_hash_invalid");
     expect(() => renderedCandidateWithDelivery(contentSpec, null)).toThrow(
       "campaign_media_delivery_not_bound_to_content_spec",
     );
