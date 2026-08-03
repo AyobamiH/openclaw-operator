@@ -1,6 +1,6 @@
 ---
 title: "Campaign Content Factory And Full-Graph Runtime Audit"
-summary: "Deterministic factory readiness, active shadow proof, multi-agent graph audit, repaired manifest/task bindings, and remaining terminal blockers."
+summary: "Deterministic factory readiness, active shadow proof, complete governed graph-runtime engineering, and remaining live-activation authority boundaries."
 ---
 
 # Campaign Content Factory And Full-Graph Runtime Audit
@@ -15,7 +15,7 @@ provider-writing live path remains deliberately unactivated.
 
 - Campaign factory zero-write verdict: `ready`.
 - Campaign factory live verdict: `blocked at approval and durable delivery`.
-- Full-graph multi-agent runtime verdict: `partial`.
+- Full-graph multi-agent source/runtime contract verdict: `complete`.
 - Provider writes performed by this mission: `0`.
 - Approved scheduler changes: `1` payload/description update on the existing
   zero-write shadow job; its schedule, enabled state and delivery mode are
@@ -145,29 +145,37 @@ confirmed the exact payload and stable adjacent schedule/delivery fields.
 
 ## Full-Graph Multi-Agent Audit Evidence
 
-Passing structural findings:
+The repeatable `graph:audit:full` verdict is now `passed`:
 
-- 7 immutable graph definitions across 3 graph families register successfully.
-- all production-bound nodes declare an available handler and capability.
-- 7 production adapters respect the zero-write/shadow boundary.
-- all 19 discovered agent manifests validate.
-- all 20 governed task/agent/skill bindings resolve and pass ToolGate task and
-  skill policy.
-- every agent manifest with an orchestrator task is represented in the central
-  binding map.
+- 8 immutable graph definitions across 3 graph families register successfully;
+- the exact production policy supports four non-experimental definitions:
+  `coding-change@1.2.0`, `deterministic-social-publication@1.1.0`,
+  `deterministic-social-publication@2.0.0`, and
+  `research-to-action@1.1.0`;
+- 8 production adapters respect their declared authority and zero-write
+  boundaries;
+- all 19 discovered agent manifests and all 20 governed task/agent/skill
+  bindings validate;
+- legacy `coding-change@1.0.0` and `@1.1.0` remain immutable compatibility
+  definitions but are excluded from production loading; production
+  implementation and repair nodes now use `production.agent-child-run.v1`;
+- ToolGate decisions, denials, policies, usage ceilings and single-use
+  execution capabilities persist in an owner-only SQLite database with an
+  immutable hash chain;
+- the queue and skill execution paths authorize immediately before execution
+  and close each capability as consumed or failed;
+- graph child tasks can reuse a graph approval only when internal metadata
+  resolves to the exact active receipt, supported production graph and
+  unexpired granted approval;
+- child and verifier receipts bind parent run/node/attempt, task and agent,
+  authority, input/policy/output/evidence hashes and terminal outcome;
+- restart/replay returns the recorded outcome without redispatch, and SQLite
+  triggers reject terminal receipt or ToolGate-chain mutation.
 
-Non-terminal runtime findings:
-
-- production allows only `deterministic-social-publication@1.1.0` and `@2.0.0`,
-  not the complete seven-definition source portfolio;
-- coding graph implementation/repair stages still reference `legacy.command`
-  while no legacy task body is registered;
-- ToolGate is preflight-only, stores decisions in process memory, and does not
-  provide host containment or enforce declared call ceilings, network domains,
-  or write paths;
-- the integration agent emits delegation plans and handoff packages, but no
-  graph adapter dispatches downstream agents or records durable child run IDs
-  and verifier closure.
+ToolGate remains an authorization and durable decision layer, not a host
+filesystem/network/process sandbox. That is an explicit design boundary, not
+an unimplemented policy claim: host containment remains `false`, while every
+declared ToolGate policy in the governed queue/skill path is enforced.
 
 ## Validation
 
@@ -179,34 +187,41 @@ The focused verification passed:
 - actual zero-write HyperFrames renders for two Reels and one image;
 - original-resolution image and extracted Reel-frame visual inspection;
 - full graph runtime audit contract test;
+- graph schema-v3 migration, child/verifier restart/replay, approval-reuse and
+  tamper-rejection tests;
 - production graph adapter tests;
-- ToolGate runtime tests;
+- ToolGate runtime plus durable restart/denial/capability/tamper tests;
 - scheduler-safe factory shadow-cycle idempotency test and exact pinned-runtime
   replay;
 - repository `npm run verify`: 95 unit simulations, 35 live middleware
   integrations, 34 Operator UI tests, builds, docs checks and both typechecks;
+- the complete orchestrator suite: 538 non-load tests plus all 10 load tests
+  against an isolated temporary server and state directory;
 - `git diff --check`.
 
 Independent read-only workers also passed 189 focused publishing/content tests
 and 205 focused graph/agent/ToolGate tests before the new harnesses were added.
 
-## Required Next Work
+## Remaining Authority Boundaries
 
-The local content factory is complete. Live Instagram publication still needs
-the existing generated-media delivery worker to upload each exact artifact and
-return a durable public URL plus matching SHA-256 receipt. The source contract
-for that binding is implemented and canary/live execution now refuses media
-publication without it. Uploading, changing the active scheduler/runtime
-mode away from shadow, issuing an exact one-run capability and making the
-provider write are external state changes and remain separate approval
-boundaries. The zero-write render/audit scheduler activation is complete.
+The local content factory is complete. John has conditionally approved the
+existing generated-media delivery worker to upload the exact selected artifact
+and make one exact provider canary only after the first natural pinned-runtime
+shadow proof succeeds. The delivery worker must return a durable public URL
+plus matching SHA-256 receipt; canary execution fails closed without it. Until
+that natural proof exists, neither the upload nor provider mutation is
+authorised to start. Changing the active scheduler/runtime mode away from
+shadow remains a separate boundary. The zero-write render/audit scheduler
+activation is complete.
 
-The multi-agent runtime cannot receive a terminal verdict until an
-orchestrator-owned dispatcher creates real child tasks/runs, persists the
-source and target receipts, survives restart/replay, and closes through an
-independent verifier. ToolGate persistence/enforcement and graph portfolio
-ownership must also be resolved.
+The graph-runtime engineering findings are closed. Loading the new graph
+portfolio, applying schema v3 to the production graph database, selecting the
+durable ToolGate production path, and exercising the queue dispatcher in the
+running service require a production deployment/configuration change and a
+service or Gateway reload. Those actions were explicitly excluded from this
+mission and remain human-authority boundaries; source completion must not be
+misreported as live activation.
 
 Any connector install, Gateway/service reload, further scheduler mutation,
-migration, provider write, further commit, push, release or deployment still
-requires separate explicit approval.
+production migration, provider write beyond the approved exact canary, release
+or deployment still requires separate explicit approval.

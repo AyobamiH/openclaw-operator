@@ -139,9 +139,9 @@ describe("graph initializer successful and repeatable behavior", () => {
       integrityCheck: "ok",
       foreignKeyCheck: "ok",
       mode: "0600",
-      tables: 12,
-      indexes: 7,
-      triggers: 4,
+      tables: 14,
+      indexes: 11,
+      triggers: 8,
       executionRows: 0,
     });
     expect(statSync(value.databasePath).mode & 0o777).toBe(0o600);
@@ -417,10 +417,10 @@ describe("graph schema drift detection", () => {
     expect(captureError(() => initializeFixture(value, false)).code).toBe("foreign_key_failed");
   });
 
-  it("keeps the manifest inventory bounded to 12 tables, 7 indexes and 4 triggers", () => {
-    expect(GRAPH_SCHEMA_OBJECTS.filter((object) => object.type === "table")).toHaveLength(12);
-    expect(GRAPH_SCHEMA_OBJECTS.filter((object) => object.type === "index")).toHaveLength(7);
-    expect(GRAPH_SCHEMA_OBJECTS.filter((object) => object.type === "trigger")).toHaveLength(4);
+  it("keeps the manifest inventory bounded to 14 tables, 11 indexes and 8 triggers", () => {
+    expect(GRAPH_SCHEMA_OBJECTS.filter((object) => object.type === "table")).toHaveLength(14);
+    expect(GRAPH_SCHEMA_OBJECTS.filter((object) => object.type === "index")).toHaveLength(11);
+    expect(GRAPH_SCHEMA_OBJECTS.filter((object) => object.type === "trigger")).toHaveLength(8);
     expect(GRAPH_MIGRATION_CHECKSUM).toMatch(/^[a-f0-9]{64}$/);
     expect(GRAPH_SCHEMA_OBJECTS.every((object) => !/IF NOT EXISTS/i.test(object.sql))).toBe(true);
   });

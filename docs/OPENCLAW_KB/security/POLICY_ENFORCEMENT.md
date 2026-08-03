@@ -8,17 +8,20 @@ Last updated: 2026-03-02
 - HMAC webhook signature verification
 - Request schema validation and content-size restrictions
 - Task allowlist at queue ingress
+- Durable ToolGate policy, decision, denial and single-use capability state
+- Immediate pre-execution ToolGate enforcement for governed tasks and skills
+- Manifest skill call ceilings and concrete read/write/network target checks
+- Hash-chain and terminal-state tamper rejection for ToolGate decisions and
+  execution capabilities
 - Explicit context gating on `openclawdbot` internal mutating route groups
 - Fail-closed bootstrap signing in `openclawdbot` when the app signing secret is missing
 
 ## Not Fully Enforced Yet
-- Runtime enforcement of all declared agent file/network/secret boundaries
 - Universal skill/tool policy gateway for every execution path
 - Approval hard-stop for all destructive actions
 - Host/process sandboxing for spawned agents
 
 ## Partial Runtime Controls
-- ToolGate preflight and task/skill authorization checks
 - SkillAudit-backed skill registration through the current skill-registry
   bootstrap path
 - Governed non-built-in skill intake and explicit review approval through
@@ -30,8 +33,6 @@ Last updated: 2026-03-02
   approvals, retry backlog, delivery backlog, and governed skill durability
   state
 - Manifest skill allowlists
-- Manifest `permissions.fileSystem.readPaths` on the current file-based
-  `skills/index.ts` execution path when a skill call includes `input.filePath`
 - Child-process env minimization
 - Direct task-run narrowing via orchestrator-run marker
 
@@ -45,8 +46,7 @@ Last updated: 2026-03-02
   durable path is limited to approved governed skills whose executor can be
   rehydrated from a builtin binding; metadata-only governed entries still
   require re-registration after restart.
-- Manifest `permissions.network`, `permissions.fileSystem.writePaths`, and
-  full manifest-boundary coverage as runtime-enforced boundaries
+- Host-level enforcement outside governed queue/skill paths
 
 ## Protected Governance Surfaces
 - `orchestrator/src/toolGate.ts`
@@ -58,6 +58,7 @@ Last updated: 2026-03-02
 These should be preserved and described honestly as enforced, partial, or deferred based on runtime evidence.
 
 ## Priority Fixes
-1. Mandatory policy engine before all spawn/tool actions.
+1. Preserve the mandatory ToolGate execution-capability boundary for governed
+   queue and skill actions.
 2. Tighten the current child env allowlist and align it more closely with per-agent manifests.
 3. Signed audit records for state-changing operations.

@@ -3,10 +3,11 @@ import { GraphExecutor, NodeExecutorRegistry } from "./engine.js";
 import { GraphRegistry } from "./registry.js";
 import { registerBuiltinGraphHandlers, LegacyTaskAdapterRegistry } from "./handlers.js";
 import { GraphStore } from "./store.js";
-import { representativeGraphDefinitions } from "./workflows.js";
+import { PRODUCTION_GRAPH_DEFINITION_IDENTITIES, representativeGraphDefinitions } from "./workflows.js";
 import { createProductionAdapterRegistry } from "./production-adapters.js";
 import type { ProductionAdapterRegistry } from "./adapter-registry.js";
 import { GraphSchedulerStore, resolveGraphSchedulerDatabasePath } from "./scheduler-store.js";
+import { GraphChildRunCoordinator, type ChildRunDispatcher } from "./child-runs.js";
 
 export type GraphRuntime = {
   store: GraphStore;
@@ -16,6 +17,8 @@ export type GraphRuntime = {
   adapters: ProductionAdapterRegistry;
   engine: GraphExecutor;
   scheduler: GraphSchedulerStore;
+  childRuns: GraphChildRunCoordinator;
+  attachChildDispatcher(dispatcher: ChildRunDispatcher): void;
   zeroWriteOnly: boolean;
   expiredCapabilities: ReturnType<GraphStore["expireOneRunLiveCapabilities"]>;
   recovery: ReturnType<GraphExecutor["recover"]>;
@@ -30,7 +33,7 @@ export function resolveGraphDatabasePath(): string {
     : join(process.cwd(), "data", "graph-runs.sqlite");
 }
 
-export function createGraphRuntime(path = resolveGraphDatabasePath(), options: { zeroWriteOnly?: boolean; runIdPrefix?: string; allowedDefinitions?: string[]; schedulerPath?: string } = {}): GraphRuntime {
+export function createGraphRuntime(path = resolveGraphDatabasePath(), options: { zeroWriteOnly?: boolean; runIdPrefix?: string; allowedDefinitions?: string[]; schedulerPath?: string; productionLoadPolicy?: boolean } = {}): GraphRuntime {
   const zeroWriteOnly = options.zeroWriteOnly ?? true;
   const store = new GraphStore(path);
   const schedulerPath = options.schedulerPath ?? (path === resolveGraphDatabasePath() ? resolveGraphSchedulerDatabasePath() : `${path}.scheduler`);
@@ -39,10 +42,21 @@ export function createGraphRuntime(path = resolveGraphDatabasePath(), options: {
   const executors = new NodeExecutorRegistry();
   const legacy = new LegacyTaskAdapterRegistry();
   registerBuiltinGraphHandlers(executors, legacy);
-  const adapters = createProductionAdapterRegistry(store);
+  const childRuns = new GraphChildRunCoordinator(store);
+  const adapters = createProductionAdapterRegistry(store, childRuns);
   adapters.bindExecutors(executors);
   const engine = new GraphExecutor(registry, store, executors, undefined, adapters, { zeroWriteOnly, runIdPrefix: options.runIdPrefix });
   const allowed = options.allowedDefinitions ? new Set(options.allowedDefinitions) : null;
+  if (options.productionLoadPolicy) {
+    const expected = new Set<string>(PRODUCTION_GRAPH_DEFINITION_IDENTITIES);
+    const missing = [...expected].filter((identity) => !allowed?.has(identity));
+    const unsupported = [...(allowed ?? [])].filter((identity) => !expected.has(identity));
+    if (!allowed || missing.length > 0 || unsupported.length > 0) {
+      scheduler.close();
+      store.close();
+      throw new Error(`graph_production_load_policy_mismatch:missing=${missing.join("|") || "none"}:unsupported=${unsupported.join("|") || "none"}`);
+    }
+  }
   for (const definition of representativeGraphDefinitions()) {
     if (!allowed || allowed.has(`${definition.graphId}@${definition.version}`)) engine.register(definition);
   }
@@ -55,5 +69,5 @@ export function createGraphRuntime(path = resolveGraphDatabasePath(), options: {
   }
   const expiredCapabilities = store.expireOneRunLiveCapabilities();
   const recovery = engine.recover();
-  return { store, registry, executors, legacy, adapters, engine, scheduler, zeroWriteOnly, expiredCapabilities, recovery };
+  return { store, registry, executors, legacy, adapters, engine, scheduler, childRuns, attachChildDispatcher: (dispatcher) => childRuns.setDispatcher(dispatcher), zeroWriteOnly, expiredCapabilities, recovery };
 }

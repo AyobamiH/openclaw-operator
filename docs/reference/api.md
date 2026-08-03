@@ -490,6 +490,10 @@ Safe leaf fields to render:
   `operatorSummary`, `recommendedNextActions[]`, and
   `specialistContract.{role,workflowStage,deliverable,status,refusalReason,escalationReason}`
   when the owning agent emits them.
+- `GET /api/graphs/runs/:runId` includes durable
+  `childRunReceipts[]`, `verifierReceipts[]`, `eventChainValid`, and
+  `childRunReceiptChainValid`. Receipt objects expose authority and hashed
+  input/policy/output/evidence bindings but never raw executor secrets.
 - `/health`: `status`, `timestamp`
 
 Auth persistence requirement:

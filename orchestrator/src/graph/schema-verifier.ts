@@ -10,6 +10,10 @@ import {
   GRAPH_SCHEMA_V1_MIGRATION_ID,
   GRAPH_SCHEMA_V1_OBJECTS,
   GRAPH_SCHEMA_V1_VERSION,
+  GRAPH_SCHEMA_V2_MIGRATION_CHECKSUM,
+  GRAPH_SCHEMA_V2_MIGRATION_ID,
+  GRAPH_SCHEMA_V2_OBJECTS,
+  GRAPH_SCHEMA_V2_VERSION,
   normalizeGraphSql,
   type GraphSchemaObjectType,
 } from "./migrations.js";
@@ -228,14 +232,24 @@ export function verifyGraphSchema(
 }
 
 export function verifyGraphSchemaV1(database: GraphSqliteDatabase): GraphSchemaVerification {
-  const v1Tables = GRAPH_EXECUTION_STATE_TABLES.filter((table) =>
-    table !== "graph_one_run_live_capabilities" && table !== "graph_live_capability_dispatches"
-  );
+  const v1Tables = GRAPH_SCHEMA_V1_OBJECTS.filter((object) => object.type === "table").map((object) => object.name);
   return verifyGraphSchemaAgainst(database, {
     version: GRAPH_SCHEMA_V1_VERSION,
     migrationId: GRAPH_SCHEMA_V1_MIGRATION_ID,
     migrationChecksum: GRAPH_SCHEMA_V1_MIGRATION_CHECKSUM,
     objects: GRAPH_SCHEMA_V1_OBJECTS,
     executionTables: v1Tables,
+  });
+}
+
+export function verifyGraphSchemaV2(database: GraphSqliteDatabase): GraphSchemaVerification {
+  const objects = [...GRAPH_SCHEMA_V1_OBJECTS, ...GRAPH_SCHEMA_V2_OBJECTS];
+  const tables = objects.filter((object) => object.type === "table").map((object) => object.name);
+  return verifyGraphSchemaAgainst(database, {
+    version: GRAPH_SCHEMA_V2_VERSION,
+    migrationId: GRAPH_SCHEMA_V2_MIGRATION_ID,
+    migrationChecksum: GRAPH_SCHEMA_V2_MIGRATION_CHECKSUM,
+    objects,
+    executionTables: tables,
   });
 }

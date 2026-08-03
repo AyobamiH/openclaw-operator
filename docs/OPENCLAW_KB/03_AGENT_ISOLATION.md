@@ -9,8 +9,9 @@ Last reviewed: 2026-03-02
   wrappers for `doc-specialist` and `reddit-helper`.
 - The active task handlers now cover the broader agent set, including
   `market-research`, `data-extraction`, `qa-verification`, and `skill-audit`.
-- ToolGate preflight now exists, so dispatch is no longer relying only on
-  handler-local conventions.
+- ToolGate now issues a durable single-use capability immediately before
+  governed queue and skill execution, so dispatch no longer relies on
+  handler-local preflight conventions.
 
 ## Current Coverage
 
@@ -35,7 +36,7 @@ runtime handler layer.
 
 ## Isolation Limits That Still Matter
 
-1. ToolGate is an authorization layer, not a full process sandbox.
+1. ToolGate is a durable authorization layer, not a full process sandbox.
 2. Child processes now run with an allowlisted environment, but they are still
    not sandboxed and do not fully enforce manifest runtime boundaries.
 3. Direct task entrypoints are narrower now, but systemd service units still

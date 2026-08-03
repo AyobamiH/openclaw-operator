@@ -6,8 +6,9 @@ import {
   ALLOWED_TASK_TYPES,
   TASK_AGENT_SKILL_REQUIREMENTS,
 } from "../taskHandlers.js";
-import { getToolGate } from "../toolGate.js";
+import { ToolGate } from "../toolGate.js";
 import { createGraphRuntime } from "./runtime.js";
+import { governedCodingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "./workflows.js";
 
 export type RuntimeAuditFinding = {
   id: string;
@@ -31,7 +32,7 @@ export type FullRuntimeAudit = {
 export async function auditFullGraphMultiAgentRuntime(): Promise<FullRuntimeAudit> {
   const auditRoot = await mkdtemp(join(tmpdir(), "openclaw-full-graph-audit-"));
   const findings: RuntimeAuditFinding[] = [];
-  const runtime = createGraphRuntime(join(auditRoot, "graph.sqlite"), {
+  let runtime = createGraphRuntime(join(auditRoot, "graph.sqlite"), {
     zeroWriteOnly: true,
     runIdPrefix: "graudit",
   });
@@ -60,7 +61,8 @@ export async function auditFullGraphMultiAgentRuntime(): Promise<FullRuntimeAudi
       ],
     });
 
-    const legacyBoundNodes = definitions.flatMap((definition) =>
+    const productionIdentities = new Set<string>(PRODUCTION_GRAPH_DEFINITION_IDENTITIES);
+    const legacyBoundNodes = definitions.filter((definition) => productionIdentities.has(`${definition.graphId}@${definition.version}`)).flatMap((definition) =>
       definition.nodes
         .filter((node) => node.handler === "legacy.command")
         .map((node) => `${definition.graphId}@${definition.version}:${node.id}`),
@@ -68,14 +70,12 @@ export async function auditFullGraphMultiAgentRuntime(): Promise<FullRuntimeAudi
     const registeredLegacyTasks = runtime.legacy.list();
     findings.push({
       id: "graph-execution-completeness",
-      status: legacyBoundNodes.length === 0 || registeredLegacyTasks.length > 0 ? "passed" : "warning",
-      summary: "Every advertised execution graph has concrete runtime handlers for implementation work.",
+      status: legacyBoundNodes.length === 0 ? "passed" : "failed",
+      summary: "Every production coding graph uses governed production adapters; legacy coding bodies are retired from production loading.",
       evidence: [
         `legacyBoundNodes=${legacyBoundNodes.join(",") || "none"}`,
         `registeredLegacyTasks=${registeredLegacyTasks.join(",") || "none"}`,
-        registeredLegacyTasks.length === 0 && legacyBoundNodes.length > 0
-          ? "coding implementation and repair nodes are declared but no legacy task body is registered"
-          : "all legacy-bound nodes have a registered task body",
+        "coding-change@1.0.0 and @1.1.0 remain immutable compatibility records but are excluded from production policy",
       ],
     });
 
@@ -92,10 +92,10 @@ export async function auditFullGraphMultiAgentRuntime(): Promise<FullRuntimeAudi
     }
     findings.push({
       id: "production-graph-portfolio",
-      status: loadedDefinitions.length === definitions.length ? "passed" : "warning",
-      summary: "The production load policy activates the complete registered graph portfolio.",
+      status: loadedDefinitions.length === productionIdentities.size && loadedDefinitions.every((identity) => productionIdentities.has(identity)) ? "passed" : "failed",
+      summary: "The production load policy activates exactly the supported social, coding and research graph portfolio.",
       evidence: [
-        `registered=${definitions.map((definition) => `${definition.graphId}@${definition.version}`).join(",")}`,
+        `supportedProduction=${[...productionIdentities].join(",")}`,
         `productionAllowed=${loadedDefinitions.join(",") || "not-declared"}`,
       ],
     });
@@ -115,7 +115,9 @@ export async function auditFullGraphMultiAgentRuntime(): Promise<FullRuntimeAudi
     });
 
     const agentRegistry = await getAgentRegistry();
-    const toolGate = await getToolGate();
+    const toolGatePath = join(auditRoot, "toolgate.sqlite");
+    let toolGate = new ToolGate({ statePath: toolGatePath, agentRegistry });
+    await toolGate.initialize();
     const agents = agentRegistry.listAgents();
     const invalidAgents = agents.flatMap((agent) => {
       const validation = agentRegistry.validateAgent(agent.id);
@@ -134,26 +136,57 @@ export async function auditFullGraphMultiAgentRuntime(): Promise<FullRuntimeAudi
     const gateCapabilities = toolGate.capabilities();
     findings.push({
       id: "toolgate-enforcement-depth",
-      status: gateCapabilities.executionMode === "preflight_only" || gateCapabilities.auditPersistence === "process_memory"
-        ? "warning"
-        : "passed",
+      status: gateCapabilities.executionMode === "inline_capability_enforcement" && gateCapabilities.auditPersistence === "sqlite_hash_chain" && gateCapabilities.declaredButNotEnforced.length === 0 && gateCapabilities.decisionChainValid ? "passed" : "failed",
       summary: "Tool authorization decisions are durable and enforced beyond declarative preflight.",
       evidence: [
         `executionMode=${gateCapabilities.executionMode}`,
         `auditPersistence=${gateCapabilities.auditPersistence}`,
         `hostContainment=${gateCapabilities.hostContainment}`,
         `declaredButNotEnforced=${gateCapabilities.declaredButNotEnforced.join(",")}`,
+        `decisionChainValid=${gateCapabilities.decisionChainValid}`,
       ],
     });
 
+    const preRestartDecision = await toolGate.preflightSkillAccess("build-refactor-agent", "workspacePatch", { mode: "preflight", taskType: "build-refactor", scopeId: "full-runtime-audit" });
+    toolGate.close();
+    toolGate = new ToolGate({ statePath: toolGatePath, agentRegistry });
+    await toolGate.initialize();
+    const durableToolGate = toolGate.durableStats();
+    if (!preRestartDecision.success || durableToolGate.decisions < 1 || !durableToolGate.chainValid) {
+      findings.push({ id: "toolgate-restart-recovery", status: "failed", summary: "ToolGate decisions survive restart with an intact hash chain.", evidence: [`decisions=${durableToolGate.decisions}`, `chainValid=${durableToolGate.chainValid}`] });
+    } else {
+      findings.push({ id: "toolgate-restart-recovery", status: "passed", summary: "ToolGate policy and decision state survive restart with an intact hash chain.", evidence: [`decisions=${durableToolGate.decisions}`, `chainValid=${durableToolGate.chainValid}`] });
+    }
+
+    let dispatches = 0;
+    runtime.attachChildDispatcher((request) => ({
+      taskId: `audit-task-${++dispatches}`,
+      completion: Promise.resolve({ status: "succeeded", outcome: request.phase === "child" ? "audit_child_succeeded" : "audit_verifier_passed", output: { phase: request.phase }, evidence: { runId: request.runId, receiptId: request.receiptId } }),
+    }));
+    const governedCoding = governedCodingChangeGraph();
+    const proofRun = runtime.engine.start({ graphId: governedCoding.graphId, version: governedCoding.version, objective: "Audit governed child-run receipt continuity", input: { repositoryPath: process.cwd() }, authority: { maximum: "local_reversible", grantedBy: "full-runtime-audit" } });
+    const proofNode = governedCoding.nodes.find((node) => node.id === "implement")!;
+    const proofContext = { definition: governedCoding, node: proofNode, run: proofRun, attemptId: "audit-child-attempt", attemptNumber: 1, idempotencyKey: "audit-child-idempotency", effectPayloadHash: "audit-child-payload", signal: new AbortController().signal };
+    const proofResult = await runtime.childRuns.execute({ repositoryPath: process.cwd() }, proofContext);
+    const receiptChainBeforeRestart = runtime.store.verifyChildRunReceiptChain(proofRun.runId);
+    const receiptCounts = { children: runtime.store.childRunReceipts(proofRun.runId).length, verifiers: runtime.store.verifierReceipts(proofRun.runId).length };
+    runtime.scheduler.close();
+    runtime.store.close();
+    runtime = createGraphRuntime(join(auditRoot, "graph.sqlite"), { zeroWriteOnly: true, runIdPrefix: "graudit" });
+    runtime.attachChildDispatcher((request) => ({ taskId: `unexpected-replay-${++dispatches}`, completion: Promise.resolve({ status: "failed", outcome: "unexpected_replay", output: {}, evidence: {}, failureReason: request.runId }) }));
+    const replayResult = await runtime.childRuns.execute({ repositoryPath: process.cwd() }, { ...proofContext, run: runtime.store.getRun(proofRun.runId)! });
+    const receiptChainAfterRestart = runtime.store.verifyChildRunReceiptChain(proofRun.runId);
     findings.push({
       id: "multi-agent-execution-receipts",
-      status: "warning",
+      status: proofResult.outcome === "succeeded" && replayResult.outcome === "succeeded" && receiptCounts.children === 1 && receiptCounts.verifiers === 1 && dispatches === 2 && receiptChainBeforeRestart && receiptChainAfterRestart ? "passed" : "failed",
       summary: "Graph-driven delegations resolve to durable child task/run receipts and verifier closure.",
       evidence: [
-        "integration-agent currently emits plans and handoff packages",
-        "no graph production adapter owns downstream agent dispatch",
-        "no durable child-run receipt contract is registered",
+        `childReceipts=${receiptCounts.children}`,
+        `verifierReceipts=${receiptCounts.verifiers}`,
+        `dispatchesAcrossReplay=${dispatches}`,
+        `chainBeforeRestart=${receiptChainBeforeRestart}`,
+        `chainAfterRestart=${receiptChainAfterRestart}`,
+        `replayOutcome=${replayResult.outcome}`,
       ],
     });
 
@@ -207,6 +240,7 @@ export async function auditFullGraphMultiAgentRuntime(): Promise<FullRuntimeAudi
       evidence: [`ungovernedAgentTasks=${ungovernedAgentTasks.join(",") || "none"}`],
     });
 
+    toolGate.close();
     const failures = findings.filter((finding) => finding.status === "failed");
     const warnings = findings.filter((finding) => finding.status === "warning");
     return {

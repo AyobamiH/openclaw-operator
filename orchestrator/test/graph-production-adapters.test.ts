@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
-import { codingChangeGraph } from "../src/graph/workflows.js";
+import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../src/graph/workflows.js";
 import { compareShadowDecisions, prepareProductionPublishingShadowDecision, type ShadowDecisionEnvelope } from "../src/publishing/shadow-equivalence.js";
 import type { AuthorityClass, GraphDefinition } from "../src/graph/types.js";
 
@@ -78,9 +78,32 @@ function publishingInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe("production adapter registry", () => {
+  it("loads exactly the policy-supported production graph portfolio", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-production-policy-"));
+    cleanups.push(() => rm(root, { recursive: true, force: true }));
+    const supported = [...PRODUCTION_GRAPH_DEFINITION_IDENTITIES];
+    const runtime = createGraphRuntime(join(root, "accepted.sqlite"), {
+      allowedDefinitions: supported,
+      productionLoadPolicy: true,
+    });
+    expect(runtime.registry.list().map((item) => `${item.graphId}@${item.version}`).sort()).toEqual(supported.sort());
+    runtime.scheduler.close();
+    runtime.store.close();
+
+    expect(() => createGraphRuntime(join(root, "missing.sqlite"), {
+      allowedDefinitions: supported.slice(1),
+      productionLoadPolicy: true,
+    })).toThrow("graph_production_load_policy_mismatch");
+    expect(() => createGraphRuntime(join(root, "unsupported.sqlite"), {
+      allowedDefinitions: [...supported, "experimental-graph@0.1.0"],
+      productionLoadPolicy: true,
+    })).toThrow("graph_production_load_policy_mismatch");
+  });
+
   it("exposes only explicit allowlisted production adapters", async () => {
     const runtime = await testRuntime();
     expect(runtime.adapters.list().map((item) => item.adapterId).sort()).toEqual([
+      "production.agent-child-run.v1",
       "production.instagram-publication-live.v2",
       "production.instagram-publication-prepare.v2",
       "production.instagram-publication-readback.v2",

@@ -21,6 +21,7 @@ import {
   type FrozenPublicationEnvelope,
 } from "./live-publication.js";
 import { expectedCapabilityBindings } from "./live-capability.js";
+import type { GraphChildRunCoordinator } from "./child-runs.js";
 
 const execFileAsync = promisify(execFile);
 const PROJECT_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/projects";
@@ -39,6 +40,8 @@ async function git(repositoryPath: string, args: string[]): Promise<string> {
 const RepoInputSchema = z.object({ repositoryPath: z.string().min(1) }).passthrough();
 const RepoOutputSchema = z.object({ repositoryPath: z.string(), head: z.string(), branch: z.string(), dirty: z.boolean(), statusHash: z.string().regex(/^[a-f0-9]{64}$/), diffHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict();
 const CommandOutputSchema = z.object({ action: z.string(), exitCode: z.number().int(), outputHash: z.string().regex(/^[a-f0-9]{64}$/), skipped: z.boolean() }).strict();
+const ChildRunInputSchema = z.object({ repositoryPath: z.string().min(1), childPayload: z.record(z.unknown()).optional(), verifierPayload: z.record(z.unknown()).optional() }).passthrough();
+const ChildRunOutputSchema = z.object({ status: z.string(), childRunId: z.string(), childReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), verifierRunId: z.string().optional(), verifierReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), chainValid: z.boolean().optional() }).passthrough();
 
 const PublishingInputSchema = z.object({
   integrationPath: z.string().min(1), registryPath: z.string().min(1), opportunityId: z.string().min(1), observedAt: z.string().datetime({ offset: true }), shadowMode: z.literal(true),
@@ -87,7 +90,7 @@ function projectionFromValidation(value: Record<string, unknown>, input: LivePub
   });
 }
 
-export function createProductionAdapterRegistry(graphStore?: GraphStore): ProductionAdapterRegistry {
+export function createProductionAdapterRegistry(graphStore?: GraphStore, childRuns?: GraphChildRunCoordinator): ProductionAdapterRegistry {
   const registry = new ProductionAdapterRegistry();
   registry.register({
     adapterId: "production.repo-inspect.v1", version: "1.0.0", sourceOwner: "orchestrator/githubWorkflowMonitor.ts + git CLI", bindingStatus: "production",
@@ -102,6 +105,15 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore): Produc
       const output = { repositoryPath, head, branch, dirty: status.length > 0, statusHash: sha256(status), diffHash: sha256(diff) };
       return { outcome: "succeeded", output, evidence: [{ kind: context.node.id === "diff_review" ? "git-diff" : "repository-truth", uri: `graph://${context.run.runId}/${context.node.id}`, sha256: sha256(output), summary: "Bounded canonical Git inspection completed", checker: "production.repo-inspect.v1" }], progressFingerprint: sha256({ nodeId: context.node.id, output }) };
     },
+  });
+  registry.register({
+    adapterId: "production.agent-child-run.v1", version: "1.0.0", sourceOwner: "orchestrator graph child-run coordinator + governed task queue", bindingStatus: "production",
+    inputSchema: ChildRunInputSchema.describe("governed coding child-run and independent verifier input"), outputSchema: ChildRunOutputSchema.describe("hash-bound child-run and verifier receipt result"),
+    sideEffectClass: "local_reversible", shadowSafe: true, idempotencyStrategy: "external_operation", authority: "local_reversible", timeoutMs: 30 * 60_000,
+    retryableFailures: ["state_conflict", "timeout"], evidenceProduced: ["child-run-receipt", "verifier-receipt", "child-run-audit-chain"], redactedKeys: ["credential", "token", "secret"],
+    execute: async (input, context) => childRuns
+      ? childRuns.execute(input as never, context)
+      : { outcome: "blocked", output: { status: "dispatcher_unavailable", childRunId: `child_${sha256(context.idempotencyKey).slice(0, 32)}` }, failure: failure("tool_unavailable", "Graph child-run coordinator is unavailable") },
   });
   registry.register({
     adapterId: "production.repo-command.v1", version: "1.0.0", sourceOwner: "orchestrator package scripts", bindingStatus: "production",

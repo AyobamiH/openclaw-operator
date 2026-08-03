@@ -38,9 +38,10 @@ The public repo direction is now explicit.
    - all five deterministic opportunities are zero-write shadow-ready: two text packages, two verified 12-second Reels and one verified 1080x1350 image
    - immutable local artifacts bind exact bytes, renderer and QA receipts to the selected ContentSpec; live media execution refuses a missing hash-bound durable delivery receipt
    - the active zero-write scheduler remains healthy; public upload, provider writes and scheduler/runtime mutation remain disabled and approval-bound
-   - the graph audit verifies definitions, adapters, authority, 19 agent manifests and 20 central task/agent/skill bindings
-   - the runtime verdict remains partial because child-agent execution receipts, durable ToolGate decisions and full graph-portfolio ownership are not implemented
-   - no service, scheduler, Gateway, provider, commit, push, release or deployment state changed in this audit; local zero-write artifact state was added under the dated campaign evidence directory
+   - the graph audit now passes across 8 definitions, 8 adapters, 19 agent manifests and 20 central task/agent/skill bindings
+   - `coding-change@1.2.0` owns governed child/QA-verifier dispatch and schema-v3 hash-bound receipts; legacy coding definitions remain immutable but are excluded from production policy
+   - ToolGate now persists policies, decisions, denials and single-use execution capabilities in SQLite and enforces queue/skill paths across restart and replay
+   - source engineering is complete; production schema migration, graph/ToolGate configuration and service/Gateway reload remain separately approval-gated
 
 0. Phase G is complete for one production Instagram Image schedule.
    - only `instagram-single-image-feed-daily-v1` / `24afbb84-457c-41bb-92c9-24a19725e984` is graph-owned; every other workflow remains legacy-owned

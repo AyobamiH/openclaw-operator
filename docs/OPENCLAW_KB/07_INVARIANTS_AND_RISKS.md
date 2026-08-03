@@ -7,8 +7,8 @@ Last reviewed: 2026-02-28
 1. Privileged task entrypoints require auth/signature and validation.
 2. Unknown task types are rejected.
 3. Queue-dispatched agent executions are traceable to task IDs.
-4. Central policy gates exist for task and skill preflight, even if deeper host
-   isolation is still evolving.
+4. Governed task and skill execution requires a durable single-use ToolGate
+   capability, even though host isolation is a separate control.
 5. State mutations remain durable and bounded.
 6. Operational launch paths should not undermine orchestrator-first governance.
 
@@ -19,8 +19,8 @@ Last reviewed: 2026-02-28
   invalid types).
 - Invariant 3: **Mostly met** for orchestrator-dispatched work, but standalone
   services can still bypass queue provenance.
-- Invariant 4: **Partially met**. ToolGate and SkillAudit exist, but they are
-  not a full host-level policy firewall.
+- Invariant 4: **Met for governed queue and skill paths**. ToolGate is not, and
+  does not claim to be, a host-level policy firewall.
 - Invariant 5: **Partially met**. Local state is bounded, but multiple storage
   surfaces can still drift.
 - Invariant 6: **Partially met**. The orchestrator is the intended primary

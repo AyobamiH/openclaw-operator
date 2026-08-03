@@ -660,44 +660,44 @@ export async function executeSkill(
     };
   }
 
+  let executionCapabilityId: string | null = null;
   if (requestingAgent) {
     const gate = await getToolGate();
-    const permission = await gate.preflightSkillAccess(requestingAgent, skillId, {
+    const inputRecord = typeof input === 'object' && input !== null
+      ? input as Record<string, unknown>
+      : { valueType: typeof input };
+    const hasReadTarget = ['filePath', 'inputPath', 'path'].some((key) => typeof inputRecord[key] === 'string');
+    const hasExplicitWriteTarget = ['outputPath', 'targetPath'].some((key) => typeof inputRecord[key] === 'string');
+    const workspacePatchWillWrite = skillId === 'workspacePatch' && inputRecord.dryRun === false && typeof inputRecord.filePath === 'string';
+    const hasNetworkTarget = ['url', 'uri', 'endpoint'].some((key) => typeof inputRecord[key] === 'string');
+    const permission = gate.authorizeSkillExecution(requestingAgent, skillId, {
+      ...inputRecord,
+      requestedMode: typeof input?.mode === 'string' ? input.mode : undefined,
       mode: 'execute',
-      inputPreview: typeof input === 'object' && input !== null
-        ? Object.keys(input as Record<string, unknown>).slice(0, 10)
-        : typeof input,
+    }, {
+      fileRead: Boolean(registered.definition.permissions.fileRead) && hasReadTarget,
+      fileWrite: Boolean(registered.definition.permissions.fileWrite) && (hasExplicitWriteTarget || workspacePatchWillWrite),
+      network: Boolean(registered.definition.permissions.networkAllowed) && hasNetworkTarget,
     });
 
-    if (!permission.success) {
+    if (!permission.success || !permission.capability) {
       return {
         success: false,
         error: permission.error || 'Tool gate denied skill execution',
       };
     }
-
-    if (
-      registered.definition.permissions.fileRead
-      && typeof input?.filePath === 'string'
-      && input.filePath.trim().length > 0
-    ) {
-      const pathPermission = gate.canReadPath(requestingAgent, input.filePath);
-      if (!pathPermission.allowed) {
-        return {
-          success: false,
-          error: pathPermission.reason || 'Manifest file read boundary denied skill execution',
-        };
-      }
-    }
+    executionCapabilityId = permission.capability.capabilityId;
   }
 
   try {
     const result = await registered.executor(input);
+    if (executionCapabilityId) (await getToolGate()).completeExecutionCapability(executionCapabilityId, result.success === false ? 'failed' : 'consumed');
     return {
       success: result.success !== false,
       data: result,
     };
   } catch (error: any) {
+    if (executionCapabilityId) (await getToolGate()).completeExecutionCapability(executionCapabilityId, 'failed');
     return {
       success: false,
       error: error.message,

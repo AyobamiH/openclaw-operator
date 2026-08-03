@@ -84,6 +84,8 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/graph-runtime-scheduler-transfer-and-phase-g-proof-2026-08-02.md](./operations/graph-runtime-scheduler-transfer-and-phase-g-proof-2026-08-02.md) | One-schedule graph ownership registry, fixed trigger, rollback and natural-cycle Phase G evidence |
 | [operations/instagram-creative-layout-repair-and-quality-gate-2026-08-02.md](./operations/instagram-creative-layout-repair-and-quality-gate-2026-08-02.md) | Graph-owned Instagram semantic truncation incident, shared full-copy layout contract, bounded repair and production quality-gate evidence |
 | [operations/threads-prepared-image-creative-repair-and-recovery-2026-08-02.md](./operations/threads-prepared-image-creative-repair-and-recovery-2026-08-02.md) | Shared Threads prepared-image contract, exact approval binding, missed-slot recovery and Phase G isolation proof |
+| [operations/threads-readiness-instagram-comparison-and-pipeline-repair-2026-08-02.md](./operations/threads-readiness-instagram-comparison-and-pipeline-repair-2026-08-02.md) | Threads/Instagram pipeline comparison, atomic readiness repair, loaded zero-write proof and approved-content boundary |
+| [operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md](./operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md) | deterministic campaign-factory shadow activation, completed governed graph-runtime source contract, and remaining live-activation authority boundary |
 | [operations/graph-native-migration-registry.md](./operations/graph-native-migration-registry.md) | active workflow classification, graph targets, risks and next migration steps |
 
 ## Guides

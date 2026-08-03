@@ -160,6 +160,7 @@ import { PublishingStore } from "./publishing/store.js";
 import { registerPublishingRoutes } from "./publishing/routes.js";
 import { createGraphRuntime } from "./graph/runtime.js";
 import { registerGraphRoutes } from "./graph/routes.js";
+import { verifyGraphChildTaskAuthority } from "./graph/task-authority.js";
 
 /**
  * Security Posture Verification
@@ -10429,6 +10430,7 @@ async function bootstrap() {
         zeroWriteOnly: process.env.OPENCLAW_GRAPH_ZERO_WRITE_ONLY === "true",
         runIdPrefix: process.env.OPENCLAW_GRAPH_RUN_NAMESPACE?.trim() || "gr",
         allowedDefinitions: (process.env.OPENCLAW_GRAPH_ALLOWED_DEFINITIONS ?? "").split(",").map((value) => value.trim()).filter(Boolean),
+        productionLoadPolicy: true,
       })
     : null;
   if (graphRuntime) {
@@ -11183,6 +11185,30 @@ async function bootstrap() {
       });
     }
     return admission;
+  });
+  const graphTaskWaiters = new Map<string, { resolve: (result: { status: "succeeded" | "failed" | "blocked"; outcome: string; output: unknown; evidence: unknown; failureReason?: string }) => void }>();
+  const terminalGraphTaskResult = (idempotencyKey: string) => {
+    const execution = state.taskExecutions.find((item) => item.idempotencyKey === idempotencyKey);
+    if (!execution || !["success", "failed"].includes(execution.status)) return null;
+    return execution.status === "success"
+      ? { status: "succeeded" as const, outcome: "task_success", output: execution.resultSummary ?? {}, evidence: { taskId: execution.taskId, queueAttempts: execution.queueAttempts ?? [] } }
+      : { status: "failed" as const, outcome: "task_failed", output: execution.resultSummary ?? {}, evidence: { taskId: execution.taskId, queueAttempts: execution.queueAttempts ?? [] }, failureReason: execution.lastError ?? "governed child task failed" };
+  };
+  graphRuntime?.attachChildDispatcher((request) => {
+    const existing = terminalGraphTaskResult(request.idempotencyKey);
+    if (existing) return { taskId: state.taskExecutions.find((item) => item.idempotencyKey === request.idempotencyKey)?.taskId ?? request.runId, completion: Promise.resolve(existing) };
+    let resolveCompletion!: (result: { status: "succeeded" | "failed" | "blocked"; outcome: string; output: unknown; evidence: unknown; failureReason?: string }) => void;
+    const completion = new Promise<Parameters<typeof resolveCompletion>[0]>((resolve) => { resolveCompletion = resolve; });
+    graphTaskWaiters.set(request.idempotencyKey, { resolve: resolveCompletion });
+    const task = queue.enqueue(request.taskType, { ...request.payload, idempotencyKey: request.idempotencyKey, __graphParentRunId: request.parentRunId, __graphParentNodeId: request.parentNodeId, __graphReceiptId: request.receiptId, __graphRunId: request.runId, __graphPhase: request.phase });
+    if (task.admission?.admitted === false) {
+      const terminal = terminalGraphTaskResult(request.idempotencyKey);
+      if (terminal) {
+        graphTaskWaiters.delete(request.idempotencyKey);
+        resolveCompletion(terminal);
+      }
+    }
+    return { taskId: task.id, completion };
   });
   const enqueueGovernedBusinessValueCycle = async (args: {
     source: BusinessValueTriggerSource;
@@ -12280,6 +12306,7 @@ async function bootstrap() {
       return;
     }
 
+    let taskExecutionCapabilityId: string | null = null;
     try {
       const executionStartedAt = new Date().toISOString();
       execution.status = "running";
@@ -12366,7 +12393,12 @@ async function bootstrap() {
       syncRepairRecordOnTaskStart(task, idempotencyKey);
       syncIncidentRemediationOnTaskStart(task, idempotencyKey);
 
-      const approval = assertApprovalIfRequired(task, state, config);
+      const graphTaskAuthority = graphRuntime
+        ? verifyGraphChildTaskAuthority(graphRuntime.store, task)
+        : { allowed: false, reason: "graph_runtime_unavailable" };
+      const approval = graphTaskAuthority.allowed
+        ? { allowed: true, reason: graphTaskAuthority.reason }
+        : assertApprovalIfRequired(task, state, config);
       if (!approval.allowed) {
         onApprovalRequested(task.id, task.type);
         execution.status = "pending";
@@ -12396,8 +12428,18 @@ async function bootstrap() {
       }
 
       const handler = resolveTaskHandler(task);
+      if (taskRequirement) {
+        const gate = await getToolGate();
+        const authorization = gate.authorizeTaskExecution(taskRequirement.agentId, task.type, { taskId: task.id, runId: idempotencyKey, taskType: task.type });
+        if (!authorization.success || !authorization.capability) throw new Error(`toolgate denied task execution ${task.type}: ${authorization.error ?? "capability unavailable"}`);
+        taskExecutionCapabilityId = authorization.capability.capabilityId;
+      }
       console.log(`[orchestrator] Processing task: ${task.type}`);
       const message = await handler(task, handlerContext);
+      if (taskExecutionCapabilityId) {
+        (await getToolGate()).completeExecutionCapability(taskExecutionCapabilityId, "consumed");
+        taskExecutionCapabilityId = null;
+      }
       execution.status = "success";
       execution.completedAt = new Date().toISOString();
       execution.lastError = undefined;
@@ -12462,8 +12504,17 @@ async function bootstrap() {
         summary: typeof message === "string" ? message : `${task.type} completed successfully.`,
         evidence: [idempotencyKey],
       });
+      const graphWaiter = graphTaskWaiters.get(idempotencyKey);
+      if (graphWaiter) {
+        graphTaskWaiters.delete(idempotencyKey);
+        graphWaiter.resolve({ status: "succeeded", outcome: "task_success", output: execution.resultSummary ?? { message }, evidence: { taskId: task.id, queueAttempts: execution.queueAttempts ?? [], workflowEvents: state.workflowEvents.filter((event) => event.runId === idempotencyKey).slice(-12) } });
+      }
       console.log(`[orchestrator] ✅ ${task.type}: ${message}`);
     } catch (error) {
+      if (taskExecutionCapabilityId) {
+        try { (await getToolGate()).completeExecutionCapability(taskExecutionCapabilityId, "failed"); } catch (capabilityError) { console.error("[toolgate] failed to close task capability:", capabilityError); }
+        taskExecutionCapabilityId = null;
+      }
       const err = error as Error;
       console.error(`[task] ❌ failed ${task.type}:`, err);
       execution.lastError = err.message;
@@ -12577,6 +12628,13 @@ async function bootstrap() {
         summary: err.message,
         evidence: [idempotencyKey],
       });
+      if (execution.status === "failed") {
+        const graphWaiter = graphTaskWaiters.get(idempotencyKey);
+        if (graphWaiter) {
+          graphTaskWaiters.delete(idempotencyKey);
+          graphWaiter.resolve({ status: "failed", outcome: "task_failed", output: execution.resultSummary ?? {}, evidence: { taskId: task.id, queueAttempts: execution.queueAttempts ?? [], workflowEvents: state.workflowEvents.filter((event) => event.runId === idempotencyKey).slice(-12) }, failureReason: err.message });
+        }
+      }
 
       recordTaskResult(task, "error", err.message);
       if (execution.reviewSessionId && execution.status === "failed") {

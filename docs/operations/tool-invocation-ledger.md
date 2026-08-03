@@ -881,3 +881,43 @@
   media upload, provider canary/publication, mode change, service/Gateway
   reload, push, public release and any further scheduler mutation remain
   separately approval-gated.
+
+## 2026-08-03 — Governed full-graph runtime completion
+
+- Requested task: resolve every verified full-graph runtime finding within
+  current authority, regression-test and document the result, then commit and
+  push; preserve the separate production activation boundary.
+- Workflow lane: bounded coding, repository governance and release handoff.
+- Tools/source: coding-agent `repo-map` first; direct bounded source inspection
+  where the adapter did not expose the required graph/ToolGate detail;
+  `apply_patch`; TypeScript; SQLite; Vitest; repository verification and docs
+  tooling; Git staging/commit/push only under John's explicit approval.
+- Preferred-tool fallback: repository mapping and adapter validation
+  succeeded. The configured coding adapter did not enable deployment-preflight,
+  secret-audit or GitHub-handoff detail, so focused repository-native
+  validation and staged diff inspection supplied the missing evidence without
+  opening secret-bearing files.
+- Changed-state declaration: source, tests and documentation changed. Graph
+  schema v3, deterministic child/verifier receipts, an exact governed
+  production graph portfolio, queue-backed child dispatch and durable ToolGate
+  policy/decision/denial/capability state were added. No live graph database,
+  running service, Gateway, schedule or provider state changed during this
+  engineering phase.
+- Verification: the repeatable full-runtime audit passed for 8 definitions,
+  3 families, 8 adapters, 19 agent manifests and 20 governed bindings. Restart,
+  replay, recovery, approval spoofing and terminal-record tamper tests passed.
+  Repository `npm run verify` passed 95 unit simulations, 35 live middleware
+  integrations, 34 UI tests, builds, documentation checks and both typechecks.
+  The complete orchestrator suite passed 538 non-load tests plus 10/10 load
+  tests against an isolated temporary server.
+- Evidence:
+  `docs/operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md`,
+  `orchestrator/src/graph/child-runs.ts`,
+  `orchestrator/src/graph/task-authority.ts`,
+  `orchestrator/src/toolGateStore.ts`,
+  `orchestrator/test/graph-child-run-receipts.test.ts`, and
+  `orchestrator/test/toolgate-durable.test.ts`.
+- Next safe step: commit and push the verified source under the existing
+  approval. Applying schema v3 and the production graph/config portfolio to the
+  running service still requires an explicit production migration and
+  service/Gateway reload approval.

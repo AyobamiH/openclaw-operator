@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
 
 export const GRAPH_SCHEMA_NAME = "openclaw-graph-kernel";
-export const GRAPH_SCHEMA_VERSION = 2;
-export const GRAPH_MIGRATION_ID = "graph-schema-v2-one-run-live-capability";
+export const GRAPH_SCHEMA_VERSION = 3;
+export const GRAPH_MIGRATION_ID = "graph-schema-v3-child-run-verifier-receipts";
 export const GRAPH_SCHEMA_V1_VERSION = 1;
 export const GRAPH_SCHEMA_V1_MIGRATION_ID = "graph-schema-v1";
+export const GRAPH_SCHEMA_V2_VERSION = 2;
+export const GRAPH_SCHEMA_V2_MIGRATION_ID = "graph-schema-v2-one-run-live-capability";
 
 export type GraphSchemaObjectType = "table" | "index" | "trigger";
 
@@ -19,7 +21,8 @@ export type GraphMigrationFailurePoint =
   | "after_tables"
   | "after_indexes"
   | "before_metadata"
-  | "during_v2_upgrade";
+  | "during_v2_upgrade"
+  | "during_v3_upgrade";
 
 function table(name: string, body: string): GraphSchemaObject {
   return { type: "table", name, sql: `CREATE TABLE ${name} (${body})` };
@@ -247,9 +250,95 @@ export const GRAPH_SCHEMA_V2_OBJECTS: readonly GraphSchemaObject[] = Object.free
   `),
 ]);
 
+export const GRAPH_SCHEMA_V3_OBJECTS: readonly GraphSchemaObject[] = Object.freeze([
+  table("graph_child_run_receipts", `
+    receipt_id TEXT PRIMARY KEY,
+    parent_run_id TEXT NOT NULL,
+    parent_node_id TEXT NOT NULL,
+    parent_attempt_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL UNIQUE,
+    child_run_id TEXT NOT NULL UNIQUE,
+    dispatch_task_id TEXT,
+    child_task_type TEXT NOT NULL,
+    child_agent_id TEXT NOT NULL,
+    authority_json TEXT NOT NULL,
+    input_json TEXT NOT NULL,
+    input_hash TEXT NOT NULL,
+    policy_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('prepared','dispatched','running','succeeded','failed','blocked')),
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    outcome TEXT,
+    output_hash TEXT,
+    evidence_hash TEXT,
+    previous_receipt_hash TEXT,
+    receipt_hash TEXT UNIQUE,
+    failure_reason TEXT,
+    FOREIGN KEY(parent_run_id) REFERENCES graph_runs(run_id)
+  `),
+  table("graph_verifier_receipts", `
+    verifier_receipt_id TEXT PRIMARY KEY,
+    parent_run_id TEXT NOT NULL,
+    child_receipt_id TEXT NOT NULL UNIQUE,
+    verifier_run_id TEXT NOT NULL UNIQUE,
+    dispatch_task_id TEXT,
+    verifier_task_type TEXT NOT NULL,
+    verifier_agent_id TEXT NOT NULL,
+    authority_json TEXT NOT NULL,
+    input_json TEXT NOT NULL,
+    verifier_input_hash TEXT NOT NULL,
+    child_receipt_hash TEXT NOT NULL,
+    policy_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('prepared','dispatched','running','passed','failed','blocked')),
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    completed_at TEXT,
+    outcome TEXT,
+    evidence_hash TEXT,
+    receipt_hash TEXT UNIQUE,
+    failure_reason TEXT,
+    FOREIGN KEY(parent_run_id) REFERENCES graph_runs(run_id),
+    FOREIGN KEY(child_receipt_id) REFERENCES graph_child_run_receipts(receipt_id)
+  `),
+  index("graph_child_receipts_parent_idx", "CREATE INDEX graph_child_receipts_parent_idx ON graph_child_run_receipts(parent_run_id, parent_node_id, created_at)"),
+  index("graph_child_receipts_status_idx", "CREATE INDEX graph_child_receipts_status_idx ON graph_child_run_receipts(status, created_at)"),
+  index("graph_verifier_receipts_parent_idx", "CREATE INDEX graph_verifier_receipts_parent_idx ON graph_verifier_receipts(parent_run_id, created_at)"),
+  index("graph_verifier_receipts_status_idx", "CREATE INDEX graph_verifier_receipts_status_idx ON graph_verifier_receipts(status, created_at)"),
+  trigger("graph_child_receipt_bindings_immutable", `
+    CREATE TRIGGER graph_child_receipt_bindings_immutable
+    BEFORE UPDATE OF receipt_id, parent_run_id, parent_node_id, parent_attempt_id, idempotency_key,
+      child_run_id, child_task_type, child_agent_id, authority_json, input_json, input_hash,
+      policy_hash, created_at
+    ON graph_child_run_receipts
+    BEGIN SELECT RAISE(ABORT, 'child run receipt bindings are immutable'); END
+  `),
+  trigger("graph_child_receipt_terminal_immutable", `
+    CREATE TRIGGER graph_child_receipt_terminal_immutable
+    BEFORE UPDATE ON graph_child_run_receipts
+    WHEN OLD.status IN ('succeeded','failed','blocked')
+    BEGIN SELECT RAISE(ABORT, 'child run terminal receipt is immutable'); END
+  `),
+  trigger("graph_verifier_receipt_bindings_immutable", `
+    CREATE TRIGGER graph_verifier_receipt_bindings_immutable
+    BEFORE UPDATE OF verifier_receipt_id, parent_run_id, child_receipt_id, verifier_run_id,
+      verifier_task_type, verifier_agent_id, authority_json, input_json, verifier_input_hash,
+      child_receipt_hash, policy_hash, created_at
+    ON graph_verifier_receipts
+    BEGIN SELECT RAISE(ABORT, 'verifier receipt bindings are immutable'); END
+  `),
+  trigger("graph_verifier_receipt_terminal_immutable", `
+    CREATE TRIGGER graph_verifier_receipt_terminal_immutable
+    BEFORE UPDATE ON graph_verifier_receipts
+    WHEN OLD.status IN ('passed','failed','blocked')
+    BEGIN SELECT RAISE(ABORT, 'verifier terminal receipt is immutable'); END
+  `),
+]);
+
 export const GRAPH_SCHEMA_OBJECTS: readonly GraphSchemaObject[] = Object.freeze([
   ...GRAPH_SCHEMA_V1_OBJECTS,
   ...GRAPH_SCHEMA_V2_OBJECTS,
+  ...GRAPH_SCHEMA_V3_OBJECTS,
 ]);
 
 export const GRAPH_EXECUTION_STATE_TABLES = Object.freeze([
@@ -264,6 +353,8 @@ export const GRAPH_EXECUTION_STATE_TABLES = Object.freeze([
   "graph_resource_leases",
   "graph_one_run_live_capabilities",
   "graph_live_capability_dispatches",
+  "graph_child_run_receipts",
+  "graph_verifier_receipts",
 ] as const);
 
 export function normalizeGraphSql(sql: string): string {
@@ -287,6 +378,12 @@ export const GRAPH_SCHEMA_V1_MIGRATION_CHECKSUM = checksum(
   GRAPH_SCHEMA_V1_MIGRATION_ID,
   GRAPH_SCHEMA_V1_VERSION,
   GRAPH_SCHEMA_V1_OBJECTS,
+);
+
+export const GRAPH_SCHEMA_V2_MIGRATION_CHECKSUM = checksum(
+  GRAPH_SCHEMA_V2_MIGRATION_ID,
+  GRAPH_SCHEMA_V2_VERSION,
+  [...GRAPH_SCHEMA_V1_OBJECTS, ...GRAPH_SCHEMA_V2_OBJECTS],
 );
 
 export const GRAPH_MIGRATION_CHECKSUM = checksum(

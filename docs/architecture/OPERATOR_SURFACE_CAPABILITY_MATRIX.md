@@ -301,7 +301,7 @@ The backend now exposes a bounded publishing guard:
 | `GET /api/graphs/scheduler-migrations*` | viewer | Summary | Yes | Expose now | Redacted ownership, trigger lineage and event-chain truth; no HTTP mutation surface. |
 | `GET /api/graphs/definitions` | viewer | Optional | Yes | Expose now after deployment | Definitions are immutable inspectable data. |
 | `GET /api/graphs/adapters` | viewer | Optional | Yes | Expose with zero-write runtime | Contracts are code-allowlisted and redact executor functions and secrets. |
-| `GET /api/graphs/runs*` | viewer | Summary | Yes | Expose now after deployment | Run, event and evidence truth; Telegram remains a projection. |
+| `GET /api/graphs/runs*` | viewer | Summary | Yes | Expose now after deployment | Run, event, evidence, child-run and verifier-receipt truth with chain-validity flags; Telegram remains a projection. |
 | `POST /api/graphs/runs` | operator | Curated only | Yes | Expose after adapter proof | Authority envelope is explicit; registration alone grants no side-effect authority. |
 | `POST .../pause`, `resume`, `cancel` | operator | Contextual | Yes | Expose after deployment | Resume/cancel fail closed around approvals and unresolved effects. |
 | `POST .../approvals/:approvalId` | operator | Yes | Yes | Expose after deployment | Decision must repeat the bound action, target and payload hash. |

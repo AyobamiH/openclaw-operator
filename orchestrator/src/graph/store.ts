@@ -6,6 +6,7 @@ import type { GraphApproval } from "./authority.js";
 import { canonicalJson, sha256 } from "./reducer.js";
 import type {
   EvidenceReference,
+  ChildRunReceipt,
   ExternalEffectRecord,
   GraphDefinition,
   GraphEvent,
@@ -15,6 +16,7 @@ import type {
   LiveCapabilityDispatch,
   LiveCapabilityDispatchState,
   OneRunLiveCapability,
+  VerifierReceipt,
 } from "./types.js";
 import {
   GRAPH_MIGRATION_CHECKSUM,
@@ -23,9 +25,10 @@ import {
   GRAPH_SCHEMA_OBJECTS,
   GRAPH_SCHEMA_VERSION,
   GRAPH_SCHEMA_V2_OBJECTS,
+  GRAPH_SCHEMA_V3_OBJECTS,
   type GraphMigrationFailurePoint,
 } from "./migrations.js";
-import { GraphPersistenceError, verifyGraphSchema, verifyGraphSchemaV1, type GraphSchemaVerification } from "./schema-verifier.js";
+import { GraphPersistenceError, verifyGraphSchema, verifyGraphSchemaV1, verifyGraphSchemaV2, type GraphSchemaVerification } from "./schema-verifier.js";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
 type SqliteDatabase = InstanceType<typeof DatabaseSync>;
@@ -155,20 +158,27 @@ export class GraphStore {
       } catch (error) {
         if (!(error instanceof GraphPersistenceError) || error.code !== "incomplete_schema") throw error;
         const metadata = this.database.prepare("SELECT schema_version FROM graph_schema_meta WHERE schema_name=?").get(GRAPH_SCHEMA_NAME) as { schema_version?: number } | undefined;
-        if (Number(metadata?.schema_version) !== 1) throw error;
+        if (![1, 2].includes(Number(metadata?.schema_version))) throw error;
       }
-      verifyGraphSchemaV1(this.database);
+      const observedVersion = Number((this.database.prepare("SELECT schema_version FROM graph_schema_meta WHERE schema_name=?").get(GRAPH_SCHEMA_NAME) as { schema_version?: number } | undefined)?.schema_version);
+      if (observedVersion === 1) verifyGraphSchemaV1(this.database);
+      else if (observedVersion === 2) verifyGraphSchemaV2(this.database);
+      else throw new GraphPersistenceError("unsupported_schema_version", "graph_schema_upgrade_source_not_supported", { observedVersion });
       let transactionStarted = false;
       try {
         this.database.exec("BEGIN IMMEDIATE");
         transactionStarted = true;
-        for (const object of GRAPH_SCHEMA_V2_OBJECTS) this.database.exec(object.sql);
-        if (failurePoint === "during_v2_upgrade") throw new Error("injected_graph_migration_failure:during_v2_upgrade");
+        if (observedVersion === 1) {
+          for (const object of GRAPH_SCHEMA_V2_OBJECTS) this.database.exec(object.sql);
+          if (failurePoint === "during_v2_upgrade") throw new Error("injected_graph_migration_failure:during_v2_upgrade");
+        }
+        for (const object of GRAPH_SCHEMA_V3_OBJECTS) this.database.exec(object.sql);
+        if (failurePoint === "during_v3_upgrade") throw new Error("injected_graph_migration_failure:during_v3_upgrade");
         this.database.prepare(`
           UPDATE graph_schema_meta
           SET schema_version=?, migration_id=?, migration_checksum=?, applied_at=?
-          WHERE schema_name=? AND schema_version=1
-        `).run(GRAPH_SCHEMA_VERSION, GRAPH_MIGRATION_ID, GRAPH_MIGRATION_CHECKSUM, new Date().toISOString(), GRAPH_SCHEMA_NAME);
+          WHERE schema_name=? AND schema_version=?
+        `).run(GRAPH_SCHEMA_VERSION, GRAPH_MIGRATION_ID, GRAPH_MIGRATION_CHECKSUM, new Date().toISOString(), GRAPH_SCHEMA_NAME, observedVersion);
         this.database.exec(`PRAGMA user_version=${GRAPH_SCHEMA_VERSION}`);
         this.database.exec("COMMIT");
         transactionStarted = false;
@@ -717,6 +727,238 @@ export class GraphStore {
   checkpointSnapshot(runId: string, checkpointId: string): GraphRunState | null {
     const row = this.database.prepare("SELECT snapshot_json FROM graph_checkpoints WHERE run_id=? AND checkpoint_id=?").get(runId, checkpointId) as { snapshot_json?: string } | undefined;
     return row?.snapshot_json ? json<GraphRunState>(row.snapshot_json) : null;
+  }
+
+  prepareChildRunReceipt(args: {
+    parentRunId: string;
+    parentNodeId: string;
+    parentAttemptId: string;
+    idempotencyKey: string;
+    childRunId: string;
+    childTaskType: string;
+    childAgentId: string;
+    authority: GraphRunState["authority"];
+    input: Record<string, JsonValue>;
+    policyHash: string;
+    actor?: string;
+  }): ChildRunReceipt {
+    const existing = this.childRunReceiptByIdempotencyKey(args.idempotencyKey);
+    if (existing) {
+      const expected = sha256({ parentRunId: args.parentRunId, parentNodeId: args.parentNodeId, parentAttemptId: args.parentAttemptId, childRunId: args.childRunId, childTaskType: args.childTaskType, childAgentId: args.childAgentId, authority: args.authority, input: redact(args.input), policyHash: args.policyHash });
+      const observed = sha256({ parentRunId: existing.parentRunId, parentNodeId: existing.parentNodeId, parentAttemptId: existing.parentAttemptId, childRunId: existing.childRunId, childTaskType: existing.childTaskType, childAgentId: existing.childAgentId, authority: existing.authority, input: existing.input, policyHash: existing.policyHash });
+      if (expected !== observed) throw new Error("child_run_receipt_idempotency_binding_mismatch");
+      return existing;
+    }
+    const run = this.getRun(args.parentRunId);
+    if (!run) throw new Error(`graph_run_not_found:${args.parentRunId}`);
+    const receiptId = `gcr_${randomUUID()}`;
+    const createdAt = new Date().toISOString();
+    const safeInput = redact(args.input) as Record<string, JsonValue>;
+    const inputHash = sha256(safeInput);
+    this.transaction(() => {
+      this.database.prepare(`
+        INSERT INTO graph_child_run_receipts(
+          receipt_id,parent_run_id,parent_node_id,parent_attempt_id,idempotency_key,child_run_id,
+          child_task_type,child_agent_id,authority_json,input_json,input_hash,policy_hash,status,created_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'prepared', ?)
+      `).run(receiptId, args.parentRunId, args.parentNodeId, args.parentAttemptId, args.idempotencyKey, args.childRunId, args.childTaskType, args.childAgentId, canonicalJson(args.authority), canonicalJson(safeInput), inputHash, args.policyHash, createdAt);
+      this.appendEventUnsafe(run, { type: "child_run_prepared", nodeId: args.parentNodeId, actor: args.actor ?? "graph-child-run-coordinator", payload: { receiptId, childRunId: args.childRunId, childTaskType: args.childTaskType, childAgentId: args.childAgentId, inputHash, policyHash: args.policyHash } });
+    });
+    return this.childRunReceipt(receiptId)!;
+  }
+
+  bindChildRunDispatch(receiptId: string, dispatchTaskId: string, actor = "graph-child-run-coordinator"): ChildRunReceipt {
+    const receipt = this.childRunReceipt(receiptId);
+    if (!receipt) throw new Error("child_run_receipt_not_found");
+    if (receipt.dispatchTaskId && receipt.dispatchTaskId !== dispatchTaskId) throw new Error("child_run_dispatch_binding_mismatch");
+    if (!receipt.dispatchTaskId) {
+      const run = this.getRun(receipt.parentRunId)!;
+      this.transaction(() => {
+        const result = this.database.prepare("UPDATE graph_child_run_receipts SET dispatch_task_id=?, status='dispatched' WHERE receipt_id=? AND status='prepared' AND dispatch_task_id IS NULL").run(dispatchTaskId, receiptId);
+        if (Number(result.changes) !== 1) throw new Error("child_run_receipt_not_prepared");
+        this.appendEventUnsafe(run, { type: "child_run_dispatched", nodeId: receipt.parentNodeId, actor, payload: { receiptId, childRunId: receipt.childRunId, dispatchTaskId } });
+      });
+    }
+    return this.childRunReceipt(receiptId)!;
+  }
+
+  markChildRunRunning(receiptId: string, actor = "graph-child-run-coordinator"): ChildRunReceipt {
+    const receipt = this.childRunReceipt(receiptId);
+    if (!receipt) throw new Error("child_run_receipt_not_found");
+    if (receipt.status === "running") return receipt;
+    const startedAt = new Date().toISOString();
+    const run = this.getRun(receipt.parentRunId)!;
+    this.transaction(() => {
+      const result = this.database.prepare("UPDATE graph_child_run_receipts SET status='running', started_at=? WHERE receipt_id=? AND status='dispatched'").run(startedAt, receiptId);
+      if (Number(result.changes) !== 1) throw new Error("child_run_receipt_not_dispatched");
+      this.appendEventUnsafe(run, { type: "child_run_started", nodeId: receipt.parentNodeId, actor, payload: { receiptId, childRunId: receipt.childRunId } });
+    });
+    return this.childRunReceipt(receiptId)!;
+  }
+
+  completeChildRunReceipt(args: {
+    receiptId: string;
+    status: "succeeded" | "failed" | "blocked";
+    outcome: string;
+    output: unknown;
+    evidence: unknown;
+    failureReason?: string;
+    actor?: string;
+  }): ChildRunReceipt {
+    const receipt = this.childRunReceipt(args.receiptId);
+    if (!receipt) throw new Error("child_run_receipt_not_found");
+    if (["succeeded", "failed", "blocked"].includes(receipt.status)) return receipt;
+    const completedAt = new Date().toISOString();
+    const outputHash = sha256(redact(args.output));
+    const evidenceHash = sha256(redact(args.evidence));
+    const previous = (this.database.prepare("SELECT receipt_hash FROM graph_child_run_receipts WHERE parent_run_id=? AND receipt_hash IS NOT NULL ORDER BY completed_at DESC, receipt_id DESC LIMIT 1").get(receipt.parentRunId) as { receipt_hash?: string } | undefined)?.receipt_hash;
+    const material = { receiptId: receipt.receiptId, parentRunId: receipt.parentRunId, parentNodeId: receipt.parentNodeId, parentAttemptId: receipt.parentAttemptId, idempotencyKey: receipt.idempotencyKey, childRunId: receipt.childRunId, dispatchTaskId: receipt.dispatchTaskId ?? null, childTaskType: receipt.childTaskType, childAgentId: receipt.childAgentId, authority: receipt.authority, inputHash: receipt.inputHash, policyHash: receipt.policyHash, status: args.status, createdAt: receipt.createdAt, startedAt: receipt.startedAt ?? null, completedAt, outcome: args.outcome, outputHash, evidenceHash, previousReceiptHash: previous ?? null, failureReason: args.failureReason ?? null };
+    const receiptHash = sha256(material);
+    const run = this.getRun(receipt.parentRunId)!;
+    this.transaction(() => {
+      const result = this.database.prepare(`UPDATE graph_child_run_receipts SET status=?,completed_at=?,outcome=?,output_hash=?,evidence_hash=?,previous_receipt_hash=?,receipt_hash=?,failure_reason=? WHERE receipt_id=? AND status IN ('prepared','dispatched','running')`).run(args.status, completedAt, args.outcome, outputHash, evidenceHash, previous ?? null, receiptHash, args.failureReason ?? null, receipt.receiptId);
+      if (Number(result.changes) !== 1) throw new Error("child_run_receipt_not_completable");
+      this.appendEventUnsafe(run, { type: "child_run_completed", nodeId: receipt.parentNodeId, actor: args.actor ?? "graph-child-run-coordinator", payload: { receiptId: receipt.receiptId, childRunId: receipt.childRunId, status: args.status, outcome: args.outcome, outputHash, evidenceHash, receiptHash, previousReceiptHash: previous ?? null } });
+    });
+    return this.childRunReceipt(receipt.receiptId)!;
+  }
+
+  prepareVerifierReceipt(args: {
+    parentRunId: string;
+    childReceiptId: string;
+    verifierRunId: string;
+    verifierTaskType: string;
+    verifierAgentId: string;
+    authority: GraphRunState["authority"];
+    input: Record<string, JsonValue>;
+    policyHash: string;
+    actor?: string;
+  }): VerifierReceipt {
+    const existing = this.verifierReceiptForChild(args.childReceiptId);
+    if (existing) return existing;
+    const child = this.childRunReceipt(args.childReceiptId);
+    if (!child?.receiptHash || child.status !== "succeeded") throw new Error("verifier_requires_succeeded_child_receipt");
+    if (child.parentRunId !== args.parentRunId) throw new Error("verifier_parent_run_mismatch");
+    const childReceiptHash = child.receiptHash;
+    const verifierReceiptId = `gvr_${randomUUID()}`;
+    const createdAt = new Date().toISOString();
+    const safeInput = redact(args.input) as Record<string, JsonValue>;
+    const verifierInputHash = sha256(safeInput);
+    const run = this.getRun(args.parentRunId)!;
+    this.transaction(() => {
+      this.database.prepare(`INSERT INTO graph_verifier_receipts(verifier_receipt_id,parent_run_id,child_receipt_id,verifier_run_id,verifier_task_type,verifier_agent_id,authority_json,input_json,verifier_input_hash,child_receipt_hash,policy_hash,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,'prepared',?)`).run(verifierReceiptId, args.parentRunId, args.childReceiptId, args.verifierRunId, args.verifierTaskType, args.verifierAgentId, canonicalJson(args.authority), canonicalJson(safeInput), verifierInputHash, childReceiptHash, args.policyHash, createdAt);
+      this.appendEventUnsafe(run, { type: "verifier_run_prepared", nodeId: child.parentNodeId, actor: args.actor ?? "graph-child-run-coordinator", payload: { verifierReceiptId, childReceiptId: child.receiptId, verifierRunId: args.verifierRunId, verifierInputHash, childReceiptHash, policyHash: args.policyHash } });
+    });
+    return this.verifierReceipt(verifierReceiptId)!;
+  }
+
+  bindVerifierDispatch(verifierReceiptId: string, dispatchTaskId: string, actor = "graph-child-run-coordinator"): VerifierReceipt {
+    const receipt = this.verifierReceipt(verifierReceiptId);
+    if (!receipt) throw new Error("verifier_receipt_not_found");
+    if (receipt.dispatchTaskId && receipt.dispatchTaskId !== dispatchTaskId) throw new Error("verifier_dispatch_binding_mismatch");
+    if (!receipt.dispatchTaskId) {
+      const child = this.childRunReceipt(receipt.childReceiptId)!;
+      const run = this.getRun(receipt.parentRunId)!;
+      this.transaction(() => {
+        const result = this.database.prepare("UPDATE graph_verifier_receipts SET dispatch_task_id=?,status='dispatched' WHERE verifier_receipt_id=? AND status='prepared' AND dispatch_task_id IS NULL").run(dispatchTaskId, verifierReceiptId);
+        if (Number(result.changes) !== 1) throw new Error("verifier_receipt_not_prepared");
+        this.appendEventUnsafe(run, { type: "verifier_run_dispatched", nodeId: child.parentNodeId, actor, payload: { verifierReceiptId, verifierRunId: receipt.verifierRunId, dispatchTaskId } });
+      });
+    }
+    return this.verifierReceipt(verifierReceiptId)!;
+  }
+
+  markVerifierRunning(verifierReceiptId: string, actor = "graph-child-run-coordinator"): VerifierReceipt {
+    const receipt = this.verifierReceipt(verifierReceiptId);
+    if (!receipt) throw new Error("verifier_receipt_not_found");
+    if (receipt.status === "running") return receipt;
+    const startedAt = new Date().toISOString();
+    const child = this.childRunReceipt(receipt.childReceiptId)!;
+    const run = this.getRun(receipt.parentRunId)!;
+    this.transaction(() => {
+      const result = this.database.prepare("UPDATE graph_verifier_receipts SET status='running',started_at=? WHERE verifier_receipt_id=? AND status='dispatched'").run(startedAt, verifierReceiptId);
+      if (Number(result.changes) !== 1) throw new Error("verifier_receipt_not_dispatched");
+      this.appendEventUnsafe(run, { type: "verifier_run_started", nodeId: child.parentNodeId, actor, payload: { verifierReceiptId, verifierRunId: receipt.verifierRunId } });
+    });
+    return this.verifierReceipt(verifierReceiptId)!;
+  }
+
+  completeVerifierReceipt(args: { verifierReceiptId: string; status: "passed" | "failed" | "blocked"; outcome: string; evidence: unknown; failureReason?: string; actor?: string }): VerifierReceipt {
+    const receipt = this.verifierReceipt(args.verifierReceiptId);
+    if (!receipt) throw new Error("verifier_receipt_not_found");
+    if (["passed", "failed", "blocked"].includes(receipt.status)) return receipt;
+    const completedAt = new Date().toISOString();
+    const evidenceHash = sha256(redact(args.evidence));
+    const material = { verifierReceiptId: receipt.verifierReceiptId, parentRunId: receipt.parentRunId, childReceiptId: receipt.childReceiptId, verifierRunId: receipt.verifierRunId, dispatchTaskId: receipt.dispatchTaskId ?? null, verifierTaskType: receipt.verifierTaskType, verifierAgentId: receipt.verifierAgentId, authority: receipt.authority, verifierInputHash: receipt.verifierInputHash, childReceiptHash: receipt.childReceiptHash, policyHash: receipt.policyHash, status: args.status, createdAt: receipt.createdAt, startedAt: receipt.startedAt ?? null, completedAt, outcome: args.outcome, evidenceHash, failureReason: args.failureReason ?? null };
+    const receiptHash = sha256(material);
+    const child = this.childRunReceipt(receipt.childReceiptId)!;
+    const run = this.getRun(receipt.parentRunId)!;
+    this.transaction(() => {
+      const result = this.database.prepare("UPDATE graph_verifier_receipts SET status=?,completed_at=?,outcome=?,evidence_hash=?,receipt_hash=?,failure_reason=? WHERE verifier_receipt_id=? AND status IN ('prepared','dispatched','running')").run(args.status, completedAt, args.outcome, evidenceHash, receiptHash, args.failureReason ?? null, receipt.verifierReceiptId);
+      if (Number(result.changes) !== 1) throw new Error("verifier_receipt_not_completable");
+      this.appendEventUnsafe(run, { type: "verifier_run_completed", nodeId: child.parentNodeId, actor: args.actor ?? "graph-child-run-coordinator", payload: { verifierReceiptId: receipt.verifierReceiptId, childReceiptId: receipt.childReceiptId, verifierRunId: receipt.verifierRunId, status: args.status, outcome: args.outcome, evidenceHash, receiptHash } });
+    });
+    return this.verifierReceipt(receipt.verifierReceiptId)!;
+  }
+
+  childRunReceipt(receiptId: string): ChildRunReceipt | null {
+    const row = this.database.prepare("SELECT * FROM graph_child_run_receipts WHERE receipt_id=?").get(receiptId) as Record<string, unknown> | undefined;
+    return row ? this.mapChildRunReceipt(row) : null;
+  }
+
+  childRunReceiptByIdempotencyKey(key: string): ChildRunReceipt | null {
+    const row = this.database.prepare("SELECT * FROM graph_child_run_receipts WHERE idempotency_key=?").get(key) as Record<string, unknown> | undefined;
+    return row ? this.mapChildRunReceipt(row) : null;
+  }
+
+  childRunReceipts(parentRunId?: string): ChildRunReceipt[] {
+    const rows = parentRunId
+      ? this.database.prepare("SELECT * FROM graph_child_run_receipts WHERE parent_run_id=? ORDER BY created_at,receipt_id").all(parentRunId)
+      : this.database.prepare("SELECT * FROM graph_child_run_receipts ORDER BY created_at,receipt_id").all();
+    return (rows as Record<string, unknown>[]).map((row) => this.mapChildRunReceipt(row));
+  }
+
+  verifierReceipt(verifierReceiptId: string): VerifierReceipt | null {
+    const row = this.database.prepare("SELECT * FROM graph_verifier_receipts WHERE verifier_receipt_id=?").get(verifierReceiptId) as Record<string, unknown> | undefined;
+    return row ? this.mapVerifierReceipt(row) : null;
+  }
+
+  verifierReceiptForChild(childReceiptId: string): VerifierReceipt | null {
+    const row = this.database.prepare("SELECT * FROM graph_verifier_receipts WHERE child_receipt_id=?").get(childReceiptId) as Record<string, unknown> | undefined;
+    return row ? this.mapVerifierReceipt(row) : null;
+  }
+
+  verifierReceipts(parentRunId?: string): VerifierReceipt[] {
+    const rows = parentRunId
+      ? this.database.prepare("SELECT * FROM graph_verifier_receipts WHERE parent_run_id=? ORDER BY created_at,verifier_receipt_id").all(parentRunId)
+      : this.database.prepare("SELECT * FROM graph_verifier_receipts ORDER BY created_at,verifier_receipt_id").all();
+    return (rows as Record<string, unknown>[]).map((row) => this.mapVerifierReceipt(row));
+  }
+
+  verifyChildRunReceiptChain(parentRunId: string): boolean {
+    let previous: string | null = null;
+    const receipts = this.childRunReceipts(parentRunId).filter((receipt) => receipt.receiptHash).sort((left, right) => `${left.completedAt}:${left.receiptId}`.localeCompare(`${right.completedAt}:${right.receiptId}`));
+    for (const receipt of receipts) {
+      if ((receipt.previousReceiptHash ?? null) !== previous) return false;
+      const material = { receiptId: receipt.receiptId, parentRunId: receipt.parentRunId, parentNodeId: receipt.parentNodeId, parentAttemptId: receipt.parentAttemptId, idempotencyKey: receipt.idempotencyKey, childRunId: receipt.childRunId, dispatchTaskId: receipt.dispatchTaskId ?? null, childTaskType: receipt.childTaskType, childAgentId: receipt.childAgentId, authority: receipt.authority, inputHash: receipt.inputHash, policyHash: receipt.policyHash, status: receipt.status, createdAt: receipt.createdAt, startedAt: receipt.startedAt ?? null, completedAt: receipt.completedAt, outcome: receipt.outcome, outputHash: receipt.outputHash, evidenceHash: receipt.evidenceHash, previousReceiptHash: receipt.previousReceiptHash ?? null, failureReason: receipt.failureReason ?? null };
+      if (sha256(material) !== receipt.receiptHash) return false;
+      previous = receipt.receiptHash!;
+    }
+    for (const verifier of this.verifierReceipts(parentRunId).filter((receipt) => receipt.receiptHash)) {
+      const child = this.childRunReceipt(verifier.childReceiptId);
+      if (!child?.receiptHash || child.receiptHash !== verifier.childReceiptHash) return false;
+      const material = { verifierReceiptId: verifier.verifierReceiptId, parentRunId: verifier.parentRunId, childReceiptId: verifier.childReceiptId, verifierRunId: verifier.verifierRunId, dispatchTaskId: verifier.dispatchTaskId ?? null, verifierTaskType: verifier.verifierTaskType, verifierAgentId: verifier.verifierAgentId, authority: verifier.authority, verifierInputHash: verifier.verifierInputHash, childReceiptHash: verifier.childReceiptHash, policyHash: verifier.policyHash, status: verifier.status, createdAt: verifier.createdAt, startedAt: verifier.startedAt ?? null, completedAt: verifier.completedAt, outcome: verifier.outcome, evidenceHash: verifier.evidenceHash, failureReason: verifier.failureReason ?? null };
+      if (sha256(material) !== verifier.receiptHash) return false;
+    }
+    return this.verifyEventChain(parentRunId);
+  }
+
+  private mapChildRunReceipt(row: Record<string, unknown>): ChildRunReceipt {
+    return { receiptId: String(row.receipt_id), parentRunId: String(row.parent_run_id), parentNodeId: String(row.parent_node_id), parentAttemptId: String(row.parent_attempt_id), idempotencyKey: String(row.idempotency_key), childRunId: String(row.child_run_id), dispatchTaskId: row.dispatch_task_id === null ? undefined : String(row.dispatch_task_id), childTaskType: String(row.child_task_type), childAgentId: String(row.child_agent_id), authority: json<GraphRunState["authority"]>(String(row.authority_json)), input: json<Record<string, JsonValue>>(String(row.input_json)), inputHash: String(row.input_hash), policyHash: String(row.policy_hash), status: String(row.status) as ChildRunReceipt["status"], createdAt: String(row.created_at), startedAt: row.started_at === null ? undefined : String(row.started_at), completedAt: row.completed_at === null ? undefined : String(row.completed_at), outcome: row.outcome === null ? undefined : String(row.outcome), outputHash: row.output_hash === null ? undefined : String(row.output_hash), evidenceHash: row.evidence_hash === null ? undefined : String(row.evidence_hash), previousReceiptHash: row.previous_receipt_hash === null ? undefined : String(row.previous_receipt_hash), receiptHash: row.receipt_hash === null ? undefined : String(row.receipt_hash), failureReason: row.failure_reason === null ? undefined : String(row.failure_reason) };
+  }
+
+  private mapVerifierReceipt(row: Record<string, unknown>): VerifierReceipt {
+    return { verifierReceiptId: String(row.verifier_receipt_id), parentRunId: String(row.parent_run_id), childReceiptId: String(row.child_receipt_id), verifierRunId: String(row.verifier_run_id), dispatchTaskId: row.dispatch_task_id === null ? undefined : String(row.dispatch_task_id), verifierTaskType: String(row.verifier_task_type), verifierAgentId: String(row.verifier_agent_id), authority: json<GraphRunState["authority"]>(String(row.authority_json)), input: json<Record<string, JsonValue>>(String(row.input_json)), verifierInputHash: String(row.verifier_input_hash), childReceiptHash: String(row.child_receipt_hash), policyHash: String(row.policy_hash), status: String(row.status) as VerifierReceipt["status"], createdAt: String(row.created_at), startedAt: row.started_at === null ? undefined : String(row.started_at), completedAt: row.completed_at === null ? undefined : String(row.completed_at), outcome: row.outcome === null ? undefined : String(row.outcome), evidenceHash: row.evidence_hash === null ? undefined : String(row.evidence_hash), receiptHash: row.receipt_hash === null ? undefined : String(row.receipt_hash), failureReason: row.failure_reason === null ? undefined : String(row.failure_reason) };
   }
 
   schemaVersion(): number {

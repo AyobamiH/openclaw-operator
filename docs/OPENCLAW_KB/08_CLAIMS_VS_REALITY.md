@@ -12,11 +12,12 @@ Last reviewed: 2026-02-28
 ## Claim: ToolGate Exists in Runtime
 
 - Claim source: current runtime design
-- Runtime evidence: `orchestrator/src/toolGate.ts` exists and is used by
-  `taskHandlers.ts` and `skills/index.ts`
-- Verdict: **Implemented, but partial in scope**
+- Runtime evidence: `orchestrator/src/toolGate.ts` and `toolGateStore.ts`
+  persist policy/decision/denial/capability state; central task execution and
+  `skills/index.ts` require single-use execution capabilities
+- Verdict: **Implemented for governed queue and skill execution**
 
-It is a real authorization layer. It is not yet the same thing as universal
+It is a durable authorization layer. It intentionally does not claim universal
 host-level execution isolation.
 
 ## Claim: Skill Audit Runs During Skill Registration
@@ -64,7 +65,7 @@ host-level execution isolation.
 ## Claim: Runtime Controls Are Fully Closed
 
 - Claim source: safe-autonomy ambition
-- Runtime evidence: task allowlisting and gate preflight improved, but process
-  isolation, environment filtering, and deployment-surface consolidation remain
-  incomplete
+- Runtime evidence: governed queue and skill authorization is durable and
+  fail-closed, while host process isolation and deployment-surface
+  consolidation remain separate incomplete controls
 - Verdict: **Directionally stronger, not fully closed**

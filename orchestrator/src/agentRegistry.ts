@@ -24,7 +24,7 @@ export interface AgentConfig {
     tier: 'cheap' | 'balanced' | 'heavy' | 'strategic';
   };
   permissions?: {
-    skills?: Record<string, { allowed: boolean }>;
+    skills?: Record<string, { allowed: boolean; maxCalls?: number; rateLimit?: string; reason?: string }>;
     fileSystem?: {
       readPaths?: string[];
       writePaths?: string[];
@@ -32,6 +32,7 @@ export interface AgentConfig {
     network?: {
       allowed?: boolean;
       allowedDomains?: string[];
+      reason?: string;
     };
   };
   constraints?: {

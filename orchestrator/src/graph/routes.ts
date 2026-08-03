@@ -92,7 +92,18 @@ export function registerGraphRoutes(app: Express, runtime: GraphRuntime): void {
     if (!parsed.success) return res.status(400).json({ error: "validation_error" });
     const run = runtime.store.getRun(parsed.data.runId);
     const capability = run ? runtime.store.oneRunLiveCapabilityForRun(run.runId) : null;
-    return run ? res.json({ run, approvals: runtime.store.approvals(run.runId), liveCapability: capability, liveCapabilityDispatches: capability ? runtime.store.liveCapabilityDispatches(capability.capabilityId) : [], externalEffects: runtime.store.externalEffects(run.runId), eventChainValid: runtime.store.verifyEventChain(run.runId), telegramSummary: formatTelegramGraphSummary(run) }) : res.status(404).json({ error: "graph_run_not_found" });
+    return run ? res.json({
+      run,
+      approvals: runtime.store.approvals(run.runId),
+      liveCapability: capability,
+      liveCapabilityDispatches: capability ? runtime.store.liveCapabilityDispatches(capability.capabilityId) : [],
+      externalEffects: runtime.store.externalEffects(run.runId),
+      childRunReceipts: runtime.store.childRunReceipts(run.runId),
+      verifierReceipts: runtime.store.verifierReceipts(run.runId),
+      eventChainValid: runtime.store.verifyEventChain(run.runId),
+      childRunReceiptChainValid: runtime.store.verifyChildRunReceiptChain(run.runId),
+      telegramSummary: formatTelegramGraphSummary(run),
+    }) : res.status(404).json({ error: "graph_run_not_found" });
   });
   app.get("/api/graphs/runs/:runId/events", authLimiter, requireBearerToken, viewerReadLimiter, requireRole("viewer"), auditProtectedAction("graphs.events.read"), (req, res) => res.json({ items: runtime.store.events(String(req.params.runId)), chainValid: runtime.store.verifyEventChain(String(req.params.runId)) }));
   app.get("/api/graphs/runs/:runId/evidence", authLimiter, requireBearerToken, viewerReadLimiter, requireRole("viewer"), auditProtectedAction("graphs.evidence.read"), (req, res) => res.json({ items: runtime.store.evidence(String(req.params.runId)) }));

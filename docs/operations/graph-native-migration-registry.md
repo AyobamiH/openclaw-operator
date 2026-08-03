@@ -1,7 +1,7 @@
 ---
 title: "Graph-Native Workflow Migration Registry"
 status: "active"
-updated: "2026-08-01"
+updated: "2026-08-03"
 ---
 
 # Graph-Native Workflow Migration Registry
@@ -11,7 +11,7 @@ Statuses: `graph_native`, `graph_wrapped_legacy`,
 
 | Workflow | Owner / active path | Trigger | Side effect | Persistence / retry / verification | Graph target | Status | Risk / next step |
 |---|---|---|---|---|---|---|---|
-| Coding and repository change | Operator task handlers and coding sessions | authenticated task/manual | local reversible; commit/push separately gated | task run ledger; task retry; test/Git evidence varies | `coding-change@1.1.0` | `graph_wrapped_legacy` with production Git/command adapters | Medium. Shadow-bound validation is ready; extract the build-refactor implementation transaction before routing live changes. |
+| Coding and repository change | Governed graph child dispatcher into the Operator task queue | authenticated graph/manual | local reversible; commit/push separately gated | schema-v3 parent/child/verifier receipts; task queue ledger; hash-chain replay/tamper proof | `coding-change@1.2.0` | `graph_native` source contract; production activation approval-gated | Low/medium. Engineering and restart/replay proof pass. Apply the production schema/config and reload only under a separate approved activation plan. |
 | Deterministic Instagram image publication | root `scripts/instagram-publisher-outbox-runner.mjs`; cron `24af…e984` | cron | external public | SQLite outbox; no blind retry; provider readback | `deterministic-social-publication@1.1.0` | `legacy_approved_for_temporary_use`; loaded graph zero-write equivalent | High. Loaded Instagram and rejection/ambiguity samples pass; Phase F must name and bound the first live workflow before any provider write. |
 | Deterministic Threads image rotation | root `scripts/threads-outbox-runner.mjs`; cron `083e…66f7` | cron | external public | durable outbox; ambiguous reconciliation; provider readback | `deterministic-social-publication@1.1.0` | `legacy_approved_for_temporary_use`; loaded graph zero-write equivalent | High. Loaded Threads proof passes; preserve legacy ownership until an independently approved Phase F. |
 | Deterministic Threads early text rotation | root `scripts/threads-outbox-runner.mjs`; cron `68b1…8106` | cron | external public | same shared outbox and readback | `deterministic-social-publication@1.0.0` | `legacy_approved_for_temporary_use` | High. Same migration lane; preserve schedule and quota ownership. |

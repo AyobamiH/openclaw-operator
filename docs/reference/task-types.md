@@ -309,7 +309,11 @@ durable graph completion.
 - `legacy_approved_for_temporary_use`: the current task path remains active
   while graph equivalence is proved.
 
-The initial graph targets are `coding-change@1.0.0`,
-`deterministic-social-publication@1.0.0`, and
-`research-to-action@1.0.0`. Existing task types are not silently rerouted by
-source registration; production cutover remains separately approved.
+The exact supported production portfolio is `coding-change@1.2.0`,
+`deterministic-social-publication@1.1.0`,
+`deterministic-social-publication@2.0.0`, and
+`research-to-action@1.1.0`. `coding-change@1.2.0` routes implementation and
+repair through governed `build-refactor` child tasks and independent
+`qa-verification` receipts. Existing task types are not silently rerouted by
+source registration; production migration and service cutover remain
+separately approved.

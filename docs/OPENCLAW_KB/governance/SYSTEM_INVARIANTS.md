@@ -1,6 +1,6 @@
 # System Invariants (Safe Autonomy Guardrails)
 
-Last updated: 2026-02-24
+Last updated: 2026-08-03
 
 These are non-negotiable controls required for safe scale.
 
@@ -17,4 +17,11 @@ These are non-negotiable controls required for safe scale.
 
 ## Current Status
 - Invariants 1-5: mostly enforced.
-- Invariants 6-10: partially enforced; governance hardening required.
+- Invariant 6 is durably enforced on the governed queue and skill-dispatch
+  paths, including graph child runs, with restart-safe single-use capabilities
+  and denial records.
+- Invariants 7-10 remain scope-dependent: role and graph authority is enforced
+  on governed paths, destructive approval is explicit, but host containment,
+  universal standalone-process mediation, mission-wide TTL policy and every
+  cross-workspace execution surface remain separate controls or incomplete
+  coverage.

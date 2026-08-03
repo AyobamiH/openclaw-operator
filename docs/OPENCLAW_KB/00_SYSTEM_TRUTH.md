@@ -1,6 +1,6 @@
 # OpenClaw Runtime Truth (Current)
 
-Last reviewed: 2026-03-02
+Last reviewed: 2026-08-03
 Scope: Current runtime architecture and governance controls verified from the
 active codebase.
 
@@ -55,30 +55,34 @@ Verified:
 - Bearer token, webhook HMAC, request validation, and rate limiting remain part
   of the orchestrator middleware stack.
 - Bearer token comparison now uses a constant-time byte comparison path.
-- `orchestrator/src/toolGate.ts` now exists and is used as a real preflight
-  authorization layer.
+- `orchestrator/src/toolGate.ts` and `toolGateStore.ts` form a durable
+  authorization layer. Policies, decisions, denials and single-use execution
+  capabilities persist in an owner-only SQLite store with a tamper-evident
+  decision chain.
 - `orchestrator/src/skillAudit.ts` now exists as a protected governance
   surface, but active runtime should still describe it as a partial or deferred
   integration layer unless a specific call path is proven.
-- `taskHandlers.ts` performs tool-gate preflight checks before spawned-agent
-  tasks run.
+- The central queue authorizes immediately before task-handler dispatch, and
+  the governed skill path authorizes immediately before executor dispatch.
+  Capabilities close as consumed or failed, so restart and replay cannot reuse
+  an execution grant.
 - `openclawdbot` now fails closed for signed bootstrap content when the Redis
   signing secret is missing, and internal mutating route groups are explicitly
   context-gated.
 
 Current limitation:
 
-- ToolGate currently enforces allowlist checks and records invocation intent
-  through explicit preflight calls (`preflightSkillAccess()`; legacy
-  `executeSkill()` remains a compatibility alias), but it is not a full
-  host-level sandbox. Child processes now run with an allowlisted
-  environment, but they still do not have host-level sandboxing.
-- Manifest skill allowlists are partially enforced in runtime. Manifest
-  `permissions.fileSystem.readPaths` are now partially enforced on the current
-  file-based skill execution path when a skill call includes `input.filePath`.
-  Manifest `permissions.network`, `permissions.fileSystem.writePaths`, and full
-  manifest boundary coverage still should not be described as fully
-  runtime-enforced.
+- ToolGate enforces task, agent and skill allowlists; skill call ceilings;
+  declared network-domain restrictions; and concrete read/write path policy
+  on the governed queue and skill execution paths. Graph child runs enter the
+  same queue, and approval reuse requires an exact active, unexpired,
+  production-graph receipt. Alternate adapter metadata cannot manufacture that
+  authority.
+- ToolGate is not a host-level filesystem, network or process sandbox. Child
+  processes run with an allowlisted environment but still rely on the runtime
+  authorization boundary plus the operating environment for containment.
+  Code paths outside the governed queue/skill dispatch surface must not be
+  described as ToolGate-contained.
 - Generated/imported skills now have a narrow governed intake path in
   `skills/index.ts`. They do not become executable on the normal skill path
   unless that explicit intake path stages them and then explicitly approves
@@ -88,10 +92,11 @@ Current limitation:
   bootstrap; metadata-only governed skills still require re-registration after
   restart before they can execute again.
 
-## 6) Intentional But Partial Governance
+## 6) Intentional Boundaries And Partial Governance
 
-- ToolGate is `partial runtime`: active preflight authorization and logging,
-  not a universal execution boundary or skill executor.
+- ToolGate is complete for its declared governed queue/skill authorization
+  contract, including durable enforcement, recovery and replay denial. It is
+  intentionally not a universal host sandbox.
 - SkillAudit is `partial runtime`: a real governance surface with a coherent
   bootstrap contract, and the skill registry now initializes lazily on the
   first direct `executeSkill()` call. It still is not a universal enforcement

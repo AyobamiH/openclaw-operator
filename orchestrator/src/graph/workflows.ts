@@ -182,9 +182,16 @@ export function researchToActionGraph(): GraphDefinition {
 export function representativeGraphDefinitions(): GraphDefinition[] {
   return [
     codingChangeGraph(), socialPublicationGraph(), researchToActionGraph(),
-    boundCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(),
+    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(),
   ];
 }
+
+export const PRODUCTION_GRAPH_DEFINITION_IDENTITIES = Object.freeze([
+  "coding-change@1.2.0",
+  "deterministic-social-publication@1.1.0",
+  "deterministic-social-publication@2.0.0",
+  "research-to-action@1.1.0",
+] as const);
 
 function bindNode(definition: GraphDefinition, nodeId: string, handler: string, options: { localReversible?: boolean; mutation?: string } = {}): void {
   const node = definition.nodes.find((candidate) => candidate.id === nodeId);
@@ -206,6 +213,20 @@ export function boundCodingChangeGraph(): GraphDefinition {
   definition.migrationCompatibility.compatibleFromVersions = ["1.0.0"];
   for (const id of ["repo_truth", "dirty_state", "diff_review"]) bindNode(definition, id, "production.repo-inspect.v1");
   for (const id of ["typecheck", "test", "lint", "build"]) bindNode(definition, id, "production.repo-command.v1", { localReversible: true });
+  return definition;
+}
+
+export function governedCodingChangeGraph(): GraphDefinition {
+  const definition = structuredClone(boundCodingChangeGraph());
+  definition.version = "1.2.0";
+  definition.description = "Production coding graph with governed build-refactor child runs, independent QA verifier receipts, bounded repository commands and complete parent audit-chain continuity.";
+  definition.migrationCompatibility.compatibleFromVersions = ["1.1.0"];
+  definition.authorityRequirements.approvalsRequiredAtOrAbove = "local_reversible";
+  for (const id of ["implement", "repair"]) bindNode(definition, id, "production.agent-child-run.v1", { localReversible: true });
+  definition.evidenceRequirements.push(
+    { assertionId: "coding-child-run-receipted", claim: "Implementation work completed through a durable governed child run", method: "child-run-receipt", requiredEvidenceKinds: ["child-run-receipt"] },
+    { assertionId: "coding-verifier-closed", claim: "An independent QA verifier closed the child run against the parent chain", method: "verifier-receipt", requiredEvidenceKinds: ["verifier-receipt", "child-run-audit-chain"] },
+  );
   return definition;
 }
 

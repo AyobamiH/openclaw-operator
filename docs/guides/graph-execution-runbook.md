@@ -68,7 +68,16 @@ Interfaces:
 - `POST /api/graphs/runs/:runId/step`
 - `POST /api/graphs/runs/:runId/execute`
 
-Run detail includes a Telegram-friendly summary, but SQLite remains truth.
+Run detail includes a Telegram-friendly summary plus `childRunReceipts`,
+`verifierReceipts`, `eventChainValid` and `childRunReceiptChainValid`. SQLite
+remains truth. A terminal receipt is immutable and replay returns its stored
+outcome without another child dispatch.
+
+For `coding-change@1.2.0`, implementation and repair require an exact graph
+approval at `local_reversible`. The task queue may reuse that decision only
+when the task resolves to the active parent run, prepared receipt, child task
+identity and unexpired granted approval. Caller-supplied `__graph*` fields are
+not authority by themselves.
 
 ## Pause, resume and cancel
 
@@ -183,9 +192,14 @@ semantic comparisons and all event chains pass with zero effects. It never
 calls a provider mutation.
 
 Use the reviewed `systemd/orchestrator-graph-zero-write-canary.conf` only under
-separate deployment, database and restart approvals. It registers only
-`deterministic-social-publication@1.1.0`, prefixes runs `grzwcanary_`, and sets
-the executor-level zero-write barrier. Legacy scheduling remains authoritative.
+separate deployment, database and restart approvals. It declares exactly
+`coding-change@1.2.0`, `deterministic-social-publication@1.1.0`,
+`deterministic-social-publication@2.0.0`, and
+`research-to-action@1.1.0`, prefixes runs `grzwcanary_`, and sets the
+executor-level zero-write barrier. Experimental and unsupported definitions
+fail the production load policy. This source declaration is not active until
+the separately approved production config/database migration and service
+reload. Legacy scheduling remains authoritative until an explicit transfer.
 
 Database initialization is a separate guarded command:
 
@@ -201,9 +215,11 @@ mutation when `--expect-absent` finds an existing target. Temporary fixtures
 require the explicit `--test-only-allow-unsafe-path` test flag and an explicit
 `--state-root`.
 
-Schema version 2 is one atomic `BEGIN IMMEDIATE` migration. Existing exact
-version-1 databases upgrade transactionally; a failed upgrade rolls back to
-the verified version-1 state. The migration creates no run, approval,
+Schema version 3 is one atomic `BEGIN IMMEDIATE` migration. Existing exact
+version-1 or version-2 databases upgrade transactionally; a failed upgrade
+rolls back to the previously verified state. Version 3 adds immutable
+`graph_child_run_receipts` and `graph_verifier_receipts`, their indexes and
+terminal-mutation triggers. The migration creates no run, approval,
 capability, dispatch or effect authority. The initializer
 returns structured JSON containing creation/re-entry status, schema and user
 versions, migration ID/checksum, integrity and foreign-key results, object

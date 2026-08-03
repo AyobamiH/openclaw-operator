@@ -20,7 +20,9 @@ Last updated: 2026-03-02
   exactly-once durable replay guarantee.
 - ToolGate is not full execution containment.
 - SkillAudit is still not a universal enforcement layer across every runtime execution path.
-- Manifest `permissions.network` and `permissions.fileSystem` are not fully enforced in runtime.
+- Manifest network and filesystem boundaries are enforced on governed skill
+  calls with concrete targets; direct standalone processes remain outside that
+  host-containment claim.
 - No full host/process sandbox guarantee exists yet.
 - Self-generated skill governance is not complete end to end.
 - Governed skill durability is partial: approved governed skills with

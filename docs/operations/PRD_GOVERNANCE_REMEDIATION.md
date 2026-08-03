@@ -16,7 +16,9 @@ change context only.
 ### Gap 1: Missing Runtime ToolGate
 **Claim**: Deny-by-default permission enforcement at skill execution
 **Reality**: `toolGate.ts` absent from orchestrator runtime
-**Historical note**: This claim is no longer current. `workspace/orchestrator/src/toolGate.ts` now exists in runtime, but it should still be described as a partial runtime governance surface rather than full containment.
+**Historical note**: This claim is no longer current. `orchestrator/src/toolGate.ts`
+and `toolGateStore.ts` now provide durable authorization for governed queue and
+skill execution paths. This remains distinct from host-level containment.
 **Impact**: No runtime skill access control; relies only on agent-side validation
 **Fix**: 
 - Create `orchestrator/src/skills/toolGate.ts` (80-120 LOC)

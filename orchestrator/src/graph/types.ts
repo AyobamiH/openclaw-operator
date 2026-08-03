@@ -322,6 +322,59 @@ export interface GraphCheckpoint {
   createdAt: string;
 }
 
+export type ChildRunReceiptStatus = "prepared" | "dispatched" | "running" | "succeeded" | "failed" | "blocked";
+
+export interface ChildRunReceipt {
+  receiptId: string;
+  parentRunId: string;
+  parentNodeId: string;
+  parentAttemptId: string;
+  idempotencyKey: string;
+  childRunId: string;
+  dispatchTaskId?: string;
+  childTaskType: string;
+  childAgentId: string;
+  authority: AuthorityEnvelope;
+  input: Record<string, JsonValue>;
+  inputHash: string;
+  policyHash: string;
+  status: ChildRunReceiptStatus;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  outcome?: string;
+  outputHash?: string;
+  evidenceHash?: string;
+  previousReceiptHash?: string;
+  receiptHash?: string;
+  failureReason?: string;
+}
+
+export type VerifierReceiptStatus = "prepared" | "dispatched" | "running" | "passed" | "failed" | "blocked";
+
+export interface VerifierReceipt {
+  verifierReceiptId: string;
+  parentRunId: string;
+  childReceiptId: string;
+  verifierRunId: string;
+  dispatchTaskId?: string;
+  verifierTaskType: string;
+  verifierAgentId: string;
+  authority: AuthorityEnvelope;
+  input: Record<string, JsonValue>;
+  verifierInputHash: string;
+  childReceiptHash: string;
+  policyHash: string;
+  status: VerifierReceiptStatus;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  outcome?: string;
+  evidenceHash?: string;
+  receiptHash?: string;
+  failureReason?: string;
+}
+
 export interface GraphRunState {
   runId: string;
   graphId: string;

@@ -31,17 +31,19 @@ Verified:
   governed skill trust split from `OrchestratorState.governedSkillState`,
   including pending-review versus approved state and restart-safe versus
   metadata-only durability.
-- `skills/index.ts` now uses ToolGate preflight (`preflightSkillAccess()`; the
-  legacy `executeSkill()` name remains a compatibility alias) when a requesting
-  agent is provided.
-- `taskHandlers.ts` also performs ToolGate preflight before spawned-agent tasks
-  are executed.
+- `skills/index.ts` obtains a durable single-use ToolGate execution capability
+  immediately before each governed skill call and closes it as consumed or
+  failed. Concrete read, write and network targets are checked against the
+  agent manifest at execution time.
+- central queue execution obtains the equivalent task capability before a
+  handler runs. Graph child tasks use the same queue path and may reuse graph
+  approval only through a validated active receipt and unexpired exact graph
+  approval.
 
-This means the skill layer now has a real ToolGate authorization hook, while
-SkillAudit now has a real bootstrap-backed runtime path for the skill registry,
-and a narrow governed intake scaffold with partial restart-safe durability for
-non-built-in skills, but it still remains partial in scope rather than a
-universal enforcement layer.
+ToolGate policies, decisions, denials and capability consumption are persisted
+in an owner-only SQLite database with an immutable decision hash chain. This
+is durable authorization for governed queue and skill paths, while SkillAudit
+continues to own bootstrap and reviewed skill intake.
 
 ## What The Audit Gate Actually Covers
 
@@ -59,10 +61,9 @@ before the staged skill becomes executable.
 
 ## Remaining Runtime Limits
 
-- ToolGate authorization is real, but it still acts as a preflight permission
-  check and audit log, not a full filesystem/network/process sandbox.
-- Some risky behaviors still depend on executor implementation rather than a
-  universal host-level policy layer.
+- ToolGate is not a full filesystem/network/process sandbox. Host containment
+  remains a separate system boundary and is reported as unsupported rather
+  than implied by manifest policy.
 - Child-process tasks in `taskHandlers.ts` do not force every action through the
   skill registry; some execution remains agent-process based rather than
   skill-gateway based.
@@ -71,16 +72,15 @@ before the staged skill becomes executable.
 
 - `sourceFetch` safety depends on its executor and declared bounds, not a global
   egress firewall.
-- `documentParser` now gets a real manifest-backed read-path check on the
-  current `input.filePath` execution path, but `workspacePatch` and broader
-  file/network constraints remain only partially enforced.
+- `documentParser`, `workspacePatch` and `sourceFetch` now receive concrete
+  manifest-backed read/write/network checks on the normal skill path.
 - `testRunner` still represents command execution and therefore deserves tighter
   scrutiny than read-only skills.
 
 ## Governance Actions
 
-1. Keep `preflightSkillAccess()` (and the legacy `executeSkill()` compatibility
-   alias) as the canonical ToolGate preflight layer for direct skill calls.
+1. Keep preflight as inspection only; `authorizeSkillExecution()` and the
+   single-use capability lifecycle are the canonical execution boundary.
 2. Keep both the explicit/manual `initializeSkills()` path and the lazy
    `executeSkill()` bootstrap path coherent; they are now the trusted registry
    bootstrap surfaces.
@@ -90,7 +90,7 @@ before the staged skill becomes executable.
 4. Keep `OrchestratorState.governedSkillState` as the current narrow durable
    governed-skill store; restart-safe execution should only be assumed for
    approved governed skills with a rehydratable executor binding.
-5. Add stronger process-level enforcement for file, network, and environment
-   boundaries.
+5. Treat stronger host/process sandboxing as a separate deployment/security
+   control, not a ToolGate capability claim.
 6. Continue treating skill metadata as necessary but not sufficient for runtime
    safety.
