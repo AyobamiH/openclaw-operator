@@ -29,7 +29,7 @@
     "network": { "allowed": false }
   },
   "constraints": {
-    "timeoutSec": 600,
+    "timeout": 600000,
     "maxRetries": 0,
     "requiresReview": true
   }

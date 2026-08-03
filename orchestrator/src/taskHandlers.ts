@@ -90,9 +90,11 @@ export const ALLOWED_TASK_TYPES = [
 
 export type AllowedTaskType = (typeof ALLOWED_TASK_TYPES)[number];
 
-const SPAWNED_AGENT_PERMISSION_REQUIREMENTS: Partial<
-  Record<AllowedTaskType, { agentId: string; skillId: string }>
+export const TASK_AGENT_SKILL_REQUIREMENTS: Readonly<
+  Record<string, { agentId: string; skillId: string }>
 > = {
+  "drift-repair": { agentId: "doc-specialist", skillId: "documentParser" },
+  "reddit-response": { agentId: "reddit-helper", skillId: "documentParser" },
   "security-audit": { agentId: "security-agent", skillId: "documentParser" },
   "summarize-content": {
     agentId: "summarization-agent",
@@ -2205,7 +2207,7 @@ async function assertToolGatePermission(
   context: TaskHandlerContext,
   taskType: AllowedTaskType,
 ) {
-  const requirement = SPAWNED_AGENT_PERMISSION_REQUIREMENTS[taskType];
+  const requirement = TASK_AGENT_SKILL_REQUIREMENTS[taskType];
   if (!requirement) return;
 
   const gate = await getToolGate();

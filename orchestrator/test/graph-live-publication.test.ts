@@ -47,6 +47,7 @@ function projection() {
     localDate: "2026-08-01", slot: "23:00", candidateId: "candidate-1", campaignId: "campaign-1", sequenceId: "sequence-1", policyVersion: "1.0.0",
     caption: "Evidence first.", payloadSha256: sha256("Evidence first."), mediaPath: "/safe/frozen.mp4", mediaSha256: "a".repeat(64), mediaSizeBytes: 1234,
     mimeType: "video/mp4", contentSpecSha256: "b".repeat(64), materialContentSha256: "c".repeat(64), storyboardSha256: "d".repeat(64), creativeFingerprint: "e".repeat(64), rendererVersion: "0.10.2",
+    layoutVerification: null, layoutVerificationSha256: null,
     claim: { status: "prepared" }, providerResultId: null, permalink: null, status: "render_validated", verification: null,
     generatedMediaUploadCalls: 0, instagramPublishCalls: 0, browserRelayCalls: 0,
   });
@@ -76,6 +77,44 @@ describe("immutable live-capable publication graph", () => {
     expect(frozenEnvelopeHash(first)).toBe(frozenEnvelopeHash(second));
     const changed = buildFrozenPublicationEnvelope(context, liveInput(), { ...projection(), mediaSha256: "f".repeat(64) });
     expect(() => assertEnvelopeUnchanged(first, changed)).toThrow("publication_envelope_immutable_violation");
+  });
+
+  it("cannot freeze or approve an image envelope before exact layout verification", async () => {
+    const value = await runtime();
+    const definition = value.registry.get("deterministic-social-publication", "2.0.0");
+    const imageInput = {
+      ...liveInput(),
+      jobId: "24afbb84-457c-41bb-92c9-24a19725e984" as const,
+      kind: "image" as const,
+    };
+    const run = value.engine.start({ graphId: definition.graphId, version: definition.version, objective: "Freeze one layout-verified image", input: imageInput, authority: { maximum: "external_public", grantedBy: "john" } });
+    const context = { definition, node: definition.nodes.find((node) => node.id === "acquire_durable_candidate_claim")!, run, attemptId: "image-fixture", attemptNumber: 1, idempotencyKey: "image-fixture", effectPayloadHash: sha256({ fixture: "image" }), signal: new AbortController().signal } satisfies NodeExecutionContext;
+    const missing = PublicationProjectionSchema.parse({
+      ...projection(),
+      kind: "image",
+      jobId: imageInput.jobId,
+      publicationType: "FEED",
+      mimeType: "image/png",
+    });
+    expect(() => buildFrozenPublicationEnvelope(context, imageInput, missing)).toThrow(
+      "publication_envelope_image_layout_verification_missing",
+    );
+    const layoutVerification = {
+      schema: "tailwagging-image-layout-verification.v1",
+      status: "passed",
+      finalMediaSha256: missing.mediaSha256,
+      sourceTextSha256: "f".repeat(64),
+      renderedTextSha256: "f".repeat(64),
+    };
+    const verified = PublicationProjectionSchema.parse({
+      ...missing,
+      layoutVerification,
+      layoutVerificationSha256: sha256(layoutVerification),
+    });
+    const envelope = buildFrozenPublicationEnvelope(context, imageInput, verified);
+    expect(envelope.layoutVerificationSha256).toBe(sha256(layoutVerification));
+    expect(envelope.verificationAssertions).toContain("layout-semantic-completeness");
+    expect(envelope.verificationAssertions).toContain("layout-geometric-validity");
   });
 });
 

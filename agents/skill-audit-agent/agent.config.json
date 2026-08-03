@@ -20,5 +20,5 @@
     },
     "network": { "allowed": false }
   },
-  "constraints": { "timeoutSec": 300, "maxRetries": 1 }
+  "constraints": { "timeout": 300000, "maxRetries": 1 }
 }

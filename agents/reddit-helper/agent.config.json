@@ -30,6 +30,10 @@
       "allowed": false
     }
   },
+  "constraints": {
+    "timeout": 120000,
+    "maxRetries": 1
+  },
   "redditAuth": {
     "clientId": "${REDDIT_CLIENT_ID}",
     "clientSecret": "${REDDIT_CLIENT_SECRET}",

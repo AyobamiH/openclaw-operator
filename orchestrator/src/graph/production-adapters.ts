@@ -78,6 +78,10 @@ function projectionFromValidation(value: Record<string, unknown>, input: LivePub
     mimeType: input.kind === "reel" ? "video/mp4" : "image/png", contentSpecSha256: value.contentSpecSha256 ?? null,
     materialContentSha256: value.materialContentSha256 ?? null, storyboardSha256: value.storyboardSha256 ?? null,
     creativeFingerprint: value.creativeFingerprint ?? null, rendererVersion: value.rendererVersion ?? null,
+    layoutVerification: value.layoutVerification ?? null,
+    layoutVerificationSha256: value.layoutVerification
+      ? sha256(value.layoutVerification)
+      : null,
     claim: { ...graphAuthorization(context, input), status: "preview" }, providerResultId: null, permalink: null, status: "previewed", verification: null,
     generatedMediaUploadCalls: 0, instagramPublishCalls: 0, browserRelayCalls: 0,
   });

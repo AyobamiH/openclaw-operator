@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-08-02`
+Last updated: `2026-08-03`
 
 ## Current Headline
 
@@ -34,6 +34,21 @@ The public repo direction is now explicit.
 
 ## Recently Finished
 
+0. Campaign Content Factory and full-graph multi-agent truth audits are now repeatable.
+   - all five deterministic opportunities are zero-write shadow-ready: two text packages, two verified 12-second Reels and one verified 1080x1350 image
+   - immutable local artifacts bind exact bytes, renderer and QA receipts to the selected ContentSpec; live media execution refuses a missing hash-bound durable delivery receipt
+   - the active zero-write scheduler remains healthy; public upload, provider writes and scheduler/runtime mutation remain disabled and approval-bound
+   - the graph audit verifies definitions, adapters, authority, 19 agent manifests and 20 central task/agent/skill bindings
+   - the runtime verdict remains partial because child-agent execution receipts, durable ToolGate decisions and full graph-portfolio ownership are not implemented
+   - no service, scheduler, Gateway, provider, commit, push, release or deployment state changed in this audit; local zero-write artifact state was added under the dated campaign evidence directory
+
+0. Phase G is complete for one production Instagram Image schedule.
+   - only `instagram-single-image-feed-daily-v1` / `24afbb84-457c-41bb-92c9-24a19725e984` is graph-owned; every other workflow remains legacy-owned
+   - the second natural graph cycle published and officially verified exactly one object under one consumed payload-bound capability
+   - the repaired creative passed the canonical full-copy layout contract in persisted evidence and original-resolution visual inspection
+   - graph and scheduler chains, local outbox, provider readback, restart recovery, zero-write policy and exact rollback readiness all pass
+   - the first truncated natural object remains preserved as scheduler-success / quality-failure incident evidence
+
 0. Payload-bound one-run graph live capability and Phase F are complete.
    - global `OPENCLAW_GRAPH_ZERO_WRITE_ONLY=true` remains the production invariant
    - schema v2 persists immutable run/envelope authority and two ordered one-use dispatch reservations
@@ -42,7 +57,7 @@ The public repo direction is now explicit.
    - crash/restart and database replay do not restore consumed authority
    - controlled production load completed with zero-write preserved; exactly one fresh capability produced exactly one verified Instagram publication and is permanently consumed
    - official readback, duplicate proof, claim finalisation, event-chain validation and local reconciliation passed; scheduler ownership is unchanged
-   - scheduler transfer remains Phase G and was not executed
+   - the separately approved Phase G transfer later completed for exactly one production schedule; this Phase F item remains the one-run prerequisite proof
 
 0. The deterministic self-identification publishing engine is specification-conformant locally.
    - the versioned registry, primary self-identification rule, campaign/strategy compatibility, immutable `strategyId`, Tax Lien coverage, deterministic five-slot diagnostic, and seven-day sequential portfolio replay are implemented
@@ -50,7 +65,8 @@ The public repo direction is now explicit.
    - operator routes expose evidence and local reservation only; there is no provider-write API route
    - the immutable production-shadow runner is active for five product opportunities; 10 terminal slots, 83 audit events, seven consecutive natural hardened-runtime cycles and zero provider writes are verified
    - both Instagram and Threads identities are API-ready; exact-path shadow proof, restart recovery and rollback are complete
-   - provider-writing activation remains correctly blocked pending one exact dated canary approval plus an explicitly approved Relay 0.10.2 installation/Gateway reload
+   - the campaign release candidate is frozen at operator `b88f13b`, connector `545ba8a`, and pinned runtime `20260801-972c41b65241a407`; later Instagram layout work is a separate stream and is excluded from the candidate
+   - Relay 0.10.3 is installed and loaded from its separately approved lifecycle change; provider-writing activation remains correctly blocked pending one exact dated payload-bound canary approval
    - the separately graph-owned Instagram Image schedule remains external to and untouched by this campaign
    - GitHub workflows use the Node 24 action-runtime generation and both repos enforce that contract in local/CI verification
 

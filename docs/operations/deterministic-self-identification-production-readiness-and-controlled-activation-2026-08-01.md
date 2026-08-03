@@ -11,6 +11,14 @@ Provider writes during investigation and hardening: 0
 Browser Relay calls: 0  
 LLM allocation or publication decisions: 0
 
+> Release-freeze update, 2026-08-02: this report records the proven campaign
+> checkpoint. Connector `0.10.2` remains historical evidence, but it has been
+> superseded as an installation target by the independently governed Instagram
+> layout stream. Any future installation approval must bind an exact clean
+> `0.10.3` artifact. The campaign-only immutable candidate and separation proof
+> are recorded in the workspace operations report
+> `deterministic-self-identification-campaign-release-candidate-freeze-2026-08-02.md`.
+
 ## 1. Production readiness report
 
 | Gate | Evidence | Status |
@@ -23,10 +31,10 @@ LLM allocation or publication decisions: 0
 | Audit, metrics and attribution definitions | Hash chain valid; 4 metric definitions and 1 attribution definition loaded | PASS, live metric proof awaits canary |
 | Rollback and restart recovery | Rollback test passes; pre-dispatch reservation recovery verified; live stranded reservation recovered from backup with zero writes | PASS |
 | Shadow execution | 10 terminal product slots: 6 `shadow_verified`, 4 policy-correct `skipped_policy`; 83 valid audit events; zero in-flight rows | PASS |
-| Connector installation | Active connector is healthy but loaded telemetry still reports `0.10.0`; the `0.10.2` identity/convergence repair is verified locally and awaits an explicitly approved installation/reload | APPROVAL BOUNDARY |
+| Connector installation | Active connector is healthy but loaded telemetry still reports `0.10.0`; `0.10.2` remains verified checkpoint evidence but is no longer an installation target. Activation now requires an exact clean `0.10.3` artifact and explicitly approved installation/reload | APPROVAL BOUNDARY |
 | Production runner and scheduler ownership | Shadow job `6fd37958-b450-400e-8c06-a781670f3a03` exclusively owns five product opportunities; four legacy jobs unchanged | PASS in shadow |
 | Provider readiness | Instagram and Threads owner identities both authenticated and API-ready on 2026-08-02 | PASS |
-| Documentation and release artefacts | Canonical reports, rollback evidence and exact release inputs exist; connector `0.10.2` is clean-release verified and pushed at `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3` | PASS |
+| Documentation and release artefacts | Canonical reports, rollback evidence and exact release inputs exist; the campaign is frozen independently at operator `b88f13b`, connector checkpoint `545ba8a` and runtime `20260801-972c41b65241a407`. Connector `0.10.2` is evidence only; the separate installation prerequisite is clean `0.10.3` | PASS |
 
 ## 2. Production hardening report
 
@@ -76,8 +84,10 @@ tarball and clean install share content identity
 The clean install contains 92 files, no compiler, a valid
 manifest/configuration schema, a 24-file runtime module graph and 27 verified
 prepared assets. Loaded production telemetry remains `0.10.0`; the verified
-`0.10.2` tarball has not been installed or loaded without explicit lifecycle
-approval.
+`0.10.2` tarball was not installed and is now retained only as historical
+checkpoint evidence. The separately governed Instagram layout stream advances
+the future install target to exact clean `0.10.3`; installation and lifecycle
+approval remain separate.
 
 ## 5. Reuse-policy report
 
@@ -160,7 +170,7 @@ Legacy Threads and Instagram schedulers continue independently and converge only
   to `origin/main` after the protected-branch pre-push contract passed.
 - Immutable shadow runtime input hash: `972c41b65241a407fdc8ee593541c5c4f782f52345081b6868551f9cd0889e16`.
 - Connector source: clean commit `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3`, pushed to `origin/main`; GitHub CI passed.
-- Connector artefact: version `0.10.2`, SHA-256 `bd2051222b27919c126d72b1876a5e1e3bd2e208cca4d7f95358f1bb929e4a5d`, 92 files, exact source/tar/install byte convergence.
+- Connector checkpoint artefact: version `0.10.2`, SHA-256 `bd2051222b27919c126d72b1876a5e1e3bd2e208cca4d7f95358f1bb929e4a5d`, 92 files, exact source/tar/install byte convergence. It is historical evidence only; the future installation target is exact clean `0.10.3` under a separate approval.
 - Operator protected-branch verification: `verify:main` passed build,
   documentation, 95 unit, 35 integration and 34 UI tests plus typecheck and
   the production documentation build before handoff.
@@ -173,8 +183,9 @@ Legacy Threads and Instagram schedulers continue independently and converge only
 ## 12. Remaining risks
 
 1. The loaded connector still reports stale `0.10.0` telemetry. The verified
-   `0.10.2` package closes this defect but installation and Gateway reload are
-   explicit operator-authority boundaries.
+   `0.10.2` package proves the campaign checkpoint but is superseded as an
+   installation target. An exact clean `0.10.3` package plus Gateway reload
+   remain explicit operator-authority boundaries.
 2. No exact dated canary approval target or provider-writing authority is
    recorded.
 3. Campaign live metrics/readback/attribution cannot be proved until one exact
@@ -186,6 +197,7 @@ Legacy Threads and Instagram schedulers continue independently and converge only
 
 ## 13. Verdict
 
-**ENGINEERING COMPLETE; PRODUCTION SHADOW ACTIVE. Provider-writing activation
-remains NO GO pending the exact canary approval and the separately approved
-connector installation/Gateway reload.**
+**ENGINEERING COMPLETE; CAMPAIGN RELEASE CANDIDATE FROZEN; PRODUCTION SHADOW
+ACTIVE. Provider-writing activation remains NO GO pending the exact canary
+approval and the separately approved exact clean connector `0.10.3`
+installation/Gateway reload.**

@@ -59,6 +59,8 @@ function projection(now: Date) {
     storyboardSha256: "d".repeat(64),
     creativeFingerprint: "e".repeat(64),
     rendererVersion: "0.10.2",
+    layoutVerification: null,
+    layoutVerificationSha256: null,
     claim: null,
     providerResultId: null,
     permalink: null,

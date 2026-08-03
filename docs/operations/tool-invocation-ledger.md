@@ -773,3 +773,67 @@
   `545ba8af943c390ad5c055a4c9ba222eb2a5e7a3` was pushed to `origin/main`.
   Operator workflow/runtime-audit changes are included in the final protected
   branch handoff. Production runtime and campaign authority remain unchanged.
+
+## 2026-08-03 — Campaign factory and full-graph multi-agent audit
+
+- Requested task: complete and activate the Campaign Content Factory end to
+  end and complete the full-graph multi-agent runtime audit.
+- Tools/source: coding-lane `repo-map`, project validation, route, API,
+  deployment, environment and secret evidence tools were attempted first. The
+  configured adapter supplied repository metadata only, so narrow `rg`, Git,
+  source/config inspection and local tests supplied the documented fallback.
+  Two bounded read-only workers independently inventoried campaign and graph
+  truth. Semantic memory search later failed at its provider boundary, so the
+  named current reports and today/yesterday daily notes were used under the
+  memory fallback policy. OpenClaw cron `get`/`runs` supplied read-only active
+  shadow evidence. No secret-bearing file or credential value was read.
+- Changed-state declaration: added deterministic campaign-factory and full
+  graph audit commands/tests; consolidated the task/agent/skill binding map;
+  normalized agent timeouts; made the system-monitor task aliases explicit;
+  added ToolGate capability truth; and updated canonical docs. No install,
+  service/Gateway restart, scheduler change, migration, provider write,
+  commit, push, release or deployment occurred.
+- Verification: orchestrator typecheck, focused campaign/audit/ToolGate/graph
+  tests and `git diff --check` passed. The factory audit reported 5 content
+  packages, 2 shadow-ready Threads text opportunities, 3 Instagram media
+  blockers and zero writes. The graph audit reported 7 definitions, 3
+  families, 7 adapters, 19 valid manifests and 20 valid governed bindings,
+  with an honest partial verdict for absent child-run receipts, volatile
+  ToolGate decisions, legacy coding nodes and limited production graph load.
+- Evidence:
+  `docs/operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md`.
+- Next safe step: implement and verify an immutable Instagram media artifact
+  plus delivery contract and a durable orchestrator-owned child-agent dispatch
+  receipt path. Any activation beyond zero-write shadow remains separately
+  approval-bound.
+
+## 2026-08-03 — Campaign factory immutable media completion
+
+- Requested task: complete and activate the Campaign Content Factory end to
+  end while preserving approval gates.
+- Tools/source: the prepared offline local-media-renderer and its pinned
+  HyperFrames, browser, FFmpeg and FFprobe executables; core source inspection,
+  `apply_patch`, TypeScript, Vitest, FFmpeg midpoint extraction and
+  original-resolution visual inspection. HyperFrames/media workflow guidance
+  required immutable local media, final QA and no render-to-publish shortcut.
+- Changed-state declaration: added the portable media compiler, immutable
+  artifact and durable-delivery contracts, a local-render command, audit
+  artifact loading and live-runner refusal for unbound media. Generated two
+  verified Reels and one verified image under the dated artifact root. The
+  superseded visual attempt remains preserved. No upload, provider write,
+  scheduler/Gateway/service mutation, install, migration, commit, push,
+  release or deployment occurred.
+- Verification: prepared-renderer preflight passed with outbound HTTP blocked,
+  hosted generation and installation commands unavailable. All five
+  opportunities are shadow-ready; media blockers are zero; three Instagram
+  opportunities remain durable-delivery-blocked. Typecheck and focused media
+  tests passed. Exact render receipts report zero external generation, upload
+  and provider calls.
+- Evidence:
+  `artifacts/business-value/marketing/2026-08-03/campaign-content-factory/`
+  and
+  `docs/operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md`.
+- Next safe step: obtain explicit approval for the exact generated-media
+  delivery uploads and separately for the scheduler/runtime activation plus a
+  dated one-run provider canary. The full-graph audit remains `partial` for the
+  documented runtime gaps; the audit itself is complete.

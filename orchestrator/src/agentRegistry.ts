@@ -16,6 +16,8 @@ export interface AgentConfig {
   name: string;
   description: string;
   version: string;
+  orchestratorTask?: string;
+  orchestratorTasks?: string[];
   model: {
     primary: string;
     fallback: string;

@@ -46,7 +46,7 @@
     "maxFilesPerTask": 20,
     "requiresReview": true,
     "dryRunRequired": true,
-    "timeoutSec": 300,
+    "timeout": 300000,
     "maxRetries": 1
   },
   "escalation": {

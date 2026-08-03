@@ -45,7 +45,7 @@
     }
   },
   "constraints": {
-    "timeoutSec": 60,
+    "timeout": 60000,
     "maxRetries": 1
   }
 }

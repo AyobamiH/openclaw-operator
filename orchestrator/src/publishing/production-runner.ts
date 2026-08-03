@@ -7,6 +7,10 @@ import {
   slotKey,
 } from "./engine.js";
 import {
+  renderedCandidateWithDelivery,
+  type CampaignMediaDelivery,
+} from "./media-artifact.js";
+import {
   gatewayToolInvoker,
   OpenClawOfficialApiWorkerClient,
   type ProductionToolInvoker,
@@ -30,6 +34,7 @@ export async function runProductionOpportunity(input: {
   toolInvoker?: ProductionToolInvoker;
   openclawBin?: string;
   workspace?: string;
+  mediaDelivery?: CampaignMediaDelivery | null;
 }): Promise<Record<string, unknown>> {
   const registry = await loadRegistryBundle(resolve(input.registryPath));
   const integration = await loadProductionIntegration(
@@ -181,7 +186,16 @@ export async function runProductionOpportunity(input: {
     if (!contentSpec || !publicationId) {
       throw new Error("Reserved production opportunity is missing immutable state");
     }
-    const rendered = deterministicRenderedCandidate(contentSpec);
+    if (
+      mode !== "shadow" &&
+      contentSpec.format !== "text" &&
+      !input.mediaDelivery
+    ) {
+      throw new Error("Canary/live media publication requires an immutable hash-bound durable delivery receipt");
+    }
+    const rendered = input.mediaDelivery
+      ? renderedCandidateWithDelivery(contentSpec, input.mediaDelivery)
+      : deterministicRenderedCandidate(contentSpec);
     if (mode === "shadow") {
       const readiness = await worker.readiness();
       if (!readiness.ready) {

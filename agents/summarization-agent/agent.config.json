@@ -36,7 +36,7 @@
   "constraints": {
     "maxSummaryLength": 2000,
     "minCompressionRatio": 0.1,
-    "timeoutSec": 60,
+    "timeout": 60000,
     "maxRetries": 2
   },
   "escalation": {

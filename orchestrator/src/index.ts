@@ -22,6 +22,7 @@ import {
 } from "./state.js";
 import {
   ALLOWED_TASK_TYPES,
+  TASK_AGENT_SKILL_REQUIREMENTS,
   consumeReviewQueueItemForApprovalDecision,
   isTaskFailureRetryable,
   resolveTaskHandler,
@@ -1424,75 +1425,6 @@ const AGENT_CAPABILITY_RUNTIME_SIGNAL_KEYS: Partial<Record<string, string[]>> = 
   "code-index-agent": ["codeIndex"],
   "test-intelligence-agent": ["testIntelligence"],
   "compliance-agent": ["compliance"],
-};
-
-const TASK_AGENT_SKILL_REQUIREMENTS: Record<
-  string,
-  { agentId: string; skillId: string }
-> = {
-  "security-audit": { agentId: "security-agent", skillId: "documentParser" },
-  "summarize-content": {
-    agentId: "summarization-agent",
-    skillId: "documentParser",
-  },
-  "system-monitor": {
-    agentId: "system-monitor-agent",
-    skillId: "runtimeStateReader",
-  },
-  "build-refactor": {
-    agentId: "build-refactor-agent",
-    skillId: "workspacePatch",
-  },
-  "content-generate": { agentId: "content-agent", skillId: "documentParser" },
-  "integration-workflow": {
-    agentId: "integration-agent",
-    skillId: "documentParser",
-  },
-  "normalize-data": {
-    agentId: "normalization-agent",
-    skillId: "normalizer",
-  },
-  "market-research": {
-    agentId: "market-research-agent",
-    skillId: "sourceFetch",
-  },
-  "data-extraction": {
-    agentId: "data-extraction-agent",
-    skillId: "documentParser",
-  },
-  "qa-verification": {
-    agentId: "qa-verification-agent",
-    skillId: "testRunner",
-  },
-  "skill-audit": { agentId: "skill-audit-agent", skillId: "documentParser" },
-  "control-plane-brief": {
-    agentId: "operations-analyst-agent",
-    skillId: "runtimeStateReader",
-  },
-  "incident-triage": {
-    agentId: "system-monitor-agent",
-    skillId: "runtimeStateReader",
-  },
-  "release-readiness": {
-    agentId: "release-manager-agent",
-    skillId: "runtimeStateReader",
-  },
-  "deployment-ops": {
-    agentId: "deployment-ops-agent",
-    skillId: "runtimeStateReader",
-  },
-  "code-index": {
-    agentId: "code-index-agent",
-    skillId: "runtimeStateReader",
-  },
-  "test-intelligence": {
-    agentId: "test-intelligence-agent",
-    skillId: "runtimeStateReader",
-  },
-  "compliance-review": {
-    agentId: "compliance-agent",
-    skillId: "runtimeStateReader",
-  },
 };
 
 const TASK_IMPACT_SURFACES: Record<string, string[]> = {

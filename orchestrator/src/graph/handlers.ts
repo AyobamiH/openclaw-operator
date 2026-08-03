@@ -19,6 +19,10 @@ export class LegacyTaskAdapterRegistry {
     this.tasks.set(taskId, handler);
   }
 
+  list(): string[] {
+    return [...this.tasks.keys()].sort();
+  }
+
   executor(): NodeExecutor {
     return async (context) => {
       const taskId = context.run.input.legacyTaskId;

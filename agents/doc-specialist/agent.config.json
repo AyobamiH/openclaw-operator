@@ -16,6 +16,10 @@
       }
     }
   },
+  "constraints": {
+    "timeout": 120000,
+    "maxRetries": 1
+  },
   "docsPath": "../../../../openclaw-docs",
   "cookbookPath": "../../../../openai-cookbook",
   "stateFile": "../../orchestrator/data/orchestrator-state.json",

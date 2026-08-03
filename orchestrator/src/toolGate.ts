@@ -49,6 +49,22 @@ export class ToolGate {
     console.log('[ToolGate] Initialized');
   }
 
+  capabilities(): {
+    executionMode: "preflight_only";
+    auditPersistence: "process_memory";
+    hostContainment: false;
+    enforcedPolicies: string[];
+    declaredButNotEnforced: string[];
+  } {
+    return {
+      executionMode: "preflight_only",
+      auditPersistence: "process_memory",
+      hostContainment: false,
+      enforcedPolicies: ["agent-exists", "task-assignment", "skill-allowlist", "read-path-allowlist"],
+      declaredButNotEnforced: ["skill-max-calls", "network-domain-allowlist", "write-path-allowlist"],
+    };
+  }
+
   /**
    * Check if an agent can call a skill
    */
@@ -96,8 +112,12 @@ export class ToolGate {
       };
     }
 
-    const configuredTask = (agent as { orchestratorTask?: string }).orchestratorTask;
-    if (configuredTask && configuredTask !== taskType) {
+    const configuredTasks = agent.orchestratorTasks?.length
+      ? agent.orchestratorTasks
+      : agent.orchestratorTask
+        ? [agent.orchestratorTask]
+        : [];
+    if (configuredTasks.length > 0 && !configuredTasks.includes(taskType)) {
       return {
         allowed: false,
         reason: `Agent ${agentId} not assigned to task ${taskType}`,

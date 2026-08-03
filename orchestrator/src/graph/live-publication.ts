@@ -45,6 +45,8 @@ export const PublicationProjectionSchema = z.object({
   storyboardSha256: z.string().nullable(),
   creativeFingerprint: z.string().nullable(),
   rendererVersion: z.string().nullable(),
+  layoutVerification: z.record(z.unknown()).nullable(),
+  layoutVerificationSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
   claim: z.record(z.unknown()).nullable(),
   providerResultId: z.string().nullable(),
   permalink: z.string().nullable(),
@@ -80,6 +82,8 @@ export type FrozenPublicationEnvelope = {
   mediaSha256: string;
   mediaSizeBytes: number;
   mimeType: string;
+  layoutVerification: Record<string, unknown> | null;
+  layoutVerificationSha256: string | null;
   providerTarget: string;
   idempotencyKey: string;
   authorityClass: "external_public";
@@ -173,6 +177,14 @@ export function buildFrozenPublicationEnvelope(
   }
   if (projection.representedAccountId !== input.expectedAccountId) throw new Error("publication_envelope_account_mismatch");
   if (projection.jobId !== input.jobId || projection.kind !== input.kind) throw new Error("publication_envelope_candidate_scope_mismatch");
+  if (
+    input.kind === "image" &&
+    (projection.layoutVerification?.status !== "passed" ||
+      !projection.layoutVerificationSha256 ||
+      projection.layoutVerification?.finalMediaSha256 !== projection.mediaSha256)
+  ) {
+    throw new Error("publication_envelope_image_layout_verification_missing");
+  }
   const providerTarget = `instagram:${input.expectedAccountId}`;
   const core = {
     graphId: "deterministic-social-publication" as const,
@@ -196,6 +208,8 @@ export function buildFrozenPublicationEnvelope(
     mediaSha256: projection.mediaSha256!,
     mediaSizeBytes: projection.mediaSizeBytes!,
     mimeType: projection.mimeType,
+    layoutVerification: projection.layoutVerification,
+    layoutVerificationSha256: projection.layoutVerificationSha256,
     providerTarget,
     idempotencyKey: sha256({ providerTarget, candidateId: projection.candidateId, payloadSha256: projection.payloadSha256, mediaSha256: projection.mediaSha256 }),
     authorityClass: "external_public" as const,
@@ -210,6 +224,9 @@ export function buildFrozenPublicationEnvelope(
       "local-state-committed",
       "candidate-claim-finalised",
       "event-chain-valid",
+      ...(input.kind === "image"
+        ? ["layout-semantic-completeness", "layout-geometric-validity"]
+        : []),
     ],
     compensationPolicy: "reconcile_first_delete_only_wrong_account_materially_incorrect_or_duplicate",
     preparationLineage: {

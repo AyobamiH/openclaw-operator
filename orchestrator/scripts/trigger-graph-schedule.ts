@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "n
 import { dirname, join } from "node:path";
 import { readApiCredentialReference } from "../src/auth/credential-reference.js";
 import { frozenEnvelopeHash } from "../src/graph/live-publication.js";
+import { sha256 as canonicalSha256 } from "../src/graph/reducer.js";
 import {
   GraphSchedulerStore,
   PHASE_G_ACCOUNT_ID,
@@ -60,6 +61,18 @@ function inspect(detail: any): any {
   const media = readFileSync(envelope.mediaPath);
   const mediaHash = createHash("sha256").update(media).digest("hex");
   if (payloadHash !== envelope.payloadSha256 || mediaHash !== envelope.mediaSha256 || media.byteLength !== envelope.mediaSizeBytes) throw new Error("graph_scheduler_frozen_bytes_mismatch");
+  const layoutVerificationHash = envelope.layoutVerification
+    ? canonicalSha256(envelope.layoutVerification)
+    : null;
+  if (
+    envelope.publicationType === "FEED" &&
+    (envelope.layoutVerification?.status !== "passed" ||
+      envelope.layoutVerification?.semanticCompleteness !== true ||
+      envelope.layoutVerification?.boundingBoxesValid !== true ||
+      envelope.layoutVerification?.sourceTextSha256 !== envelope.layoutVerification?.renderedTextSha256 ||
+      envelope.layoutVerification?.finalMediaSha256 !== mediaHash ||
+      layoutVerificationHash !== envelope.layoutVerificationSha256)
+  ) throw new Error("graph_scheduler_layout_verification_mismatch");
   if (envelope.provider !== PHASE_G_PROVIDER || envelope.accountId !== PHASE_G_ACCOUNT_ID || envelope.slotId !== resolveNaturalSlot(new Date(envelope.europeLondonTimestamp)).slotId) throw new Error("graph_scheduler_provider_or_slot_binding_mismatch");
   const approval = detail.approvals?.find((item: any) => item.approvalId === envelope.approvalId);
   return { run, live, envelope, approval, capability: detail.liveCapability, effects: detail.externalEffects ?? [], eventChainValid: detail.eventChainValid === true, envelopeHash, payloadHash, mediaHash };

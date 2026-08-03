@@ -1,6 +1,7 @@
 {
   "id": "system-monitor-agent",
   "orchestratorTask": "system-monitor",
+  "orchestratorTasks": ["system-monitor", "incident-triage"],
   "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/system-monitor-agent-service.json",
   "name": "System Monitor & Observability Agent",
@@ -40,5 +41,5 @@
     },
     "network": { "allowed": false }
   },
-  "constraints": { "timeoutSec": 30, "maxRetries": 0 }
+  "constraints": { "timeout": 30000, "maxRetries": 0 }
 }
