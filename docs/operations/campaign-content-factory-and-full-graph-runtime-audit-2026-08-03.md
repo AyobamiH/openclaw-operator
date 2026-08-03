@@ -17,8 +17,11 @@ provider-writing live path remains deliberately unactivated.
 - Campaign factory live verdict: `blocked at approval and durable delivery`.
 - Full-graph multi-agent runtime verdict: `partial`.
 - Provider writes performed by this mission: `0`.
-- Scheduler, service, Gateway, connector installation and runtime mode changes:
-  `0`.
+- Approved scheduler changes: `1` payload/description update on the existing
+  zero-write shadow job; its schedule, enabled state and delivery mode are
+  unchanged.
+- Service, Gateway, connector installation and provider-writing runtime mode
+  changes: `0`.
 
 These verdicts deliberately reject two previous overclaims: a caption without
 an immutable image/reel artifact is not an Instagram content package, and a
@@ -100,11 +103,45 @@ attempt is preserved under
 `campaign-content-factory-superseded-internal-id/`; the compiler now uses the
 current versioned storyboard contract and a public campaign label.
 
-The already-installed production-shadow scheduler remains enabled at
+The production-shadow scheduler remains enabled at
 `0 5,7,11,15,17 * * *` in `Europe/London`. Its natural `05:00` run on
 `2026-08-03` completed `shadow_verified`, passed shared Threads account
 admission, validated the audit chain, and recorded zero external writes and
-zero LLM calls. This mission did not alter or force that schedule.
+zero LLM calls. The later approved activation changed only the command payload,
+description and command timeouts; it did not alter or force the schedule.
+
+## Approved Zero-Write Shadow Activation
+
+John approved the prepared next steps on `2026-08-03`: freeze the verified
+diff, create a local release commit and pinned runtime, and update shadow cron
+`6fd37958-b450-400e-8c06-a781670f3a03` to execute the factory render/audit
+path. The approved activation completed as follows:
+
+- local release commit:
+  `b50ee5542c92b59657e7e8b435f2111c776a2e5b`;
+- immutable runtime:
+  `~/.openclaw/runtime/deterministic-self-identification-publishing-engine/b50ee5542c92b59657e7e8b435f2111c776a2e5b`;
+- pinned command:
+  `dist/publishing/campaign-factory-shadow-cycle-cli.js`;
+- pinned HyperFrames renderer:
+  `renderer/bin/local-media-renderer.mjs`, SHA-256
+  `4622fabd95f7edfb1224258172d48f6ada7240d92f191bfb5c8b9679c4485cef`;
+- job schedule/enabled/delivery:
+  unchanged at `0 5,7,11,15,17 * * *`, `Europe/London`, enabled and
+  delivery-none;
+- next natural pinned-runtime opportunity after activation: `2026-08-03
+  11:00 BST`;
+- force runs, uploads, provider writes, service/Gateway reloads, migrations,
+  pushes and public releases: `0`.
+
+Before the scheduler update, the exact pinned command replayed the already
+terminal `self-id-0700` slot. It re-hashed and reused all three immutable media
+artifacts, audited all five packages `ready`, suppressed provider dispatch and
+reported `externalWrites: 0`. The first scheduler API update attempt was
+rejected before dispatch because that validator could not represent an
+existing command payload. The installed `openclaw cron edit --command-argv`
+path then applied the one approved mutation, and independent cron readback
+confirmed the exact payload and stable adjacent schedule/delivery fields.
 
 ## Full-Graph Multi-Agent Audit Evidence
 
@@ -144,6 +181,10 @@ The focused verification passed:
 - full graph runtime audit contract test;
 - production graph adapter tests;
 - ToolGate runtime tests;
+- scheduler-safe factory shadow-cycle idempotency test and exact pinned-runtime
+  replay;
+- repository `npm run verify`: 95 unit simulations, 35 live middleware
+  integrations, 34 Operator UI tests, builds, docs checks and both typechecks;
 - `git diff --check`.
 
 Independent read-only workers also passed 189 focused publishing/content tests
@@ -156,8 +197,9 @@ the existing generated-media delivery worker to upload each exact artifact and
 return a durable public URL plus matching SHA-256 receipt. The source contract
 for that binding is implemented and canary/live execution now refuses media
 publication without it. Uploading, changing the active scheduler/runtime
-command, issuing an exact one-run capability and making the provider write are
-external state changes and remain separate approval boundaries.
+mode away from shadow, issuing an exact one-run capability and making the
+provider write are external state changes and remain separate approval
+boundaries. The zero-write render/audit scheduler activation is complete.
 
 The multi-agent runtime cannot receive a terminal verdict until an
 orchestrator-owned dispatcher creates real child tasks/runs, persists the
@@ -165,6 +207,6 @@ source and target receipts, survives restart/replay, and closes through an
 independent verifier. ToolGate persistence/enforcement and graph portfolio
 ownership must also be resolved.
 
-Any connector install, Gateway/service reload, scheduler mutation, migration,
-provider write, commit, push, release or deployment still requires separate
-explicit approval.
+Any connector install, Gateway/service reload, further scheduler mutation,
+migration, provider write, further commit, push, release or deployment still
+requires separate explicit approval.

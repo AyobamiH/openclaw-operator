@@ -65,7 +65,7 @@ The public repo direction is now explicit.
    - operator routes expose evidence and local reservation only; there is no provider-write API route
    - the immutable production-shadow runner is active for five product opportunities; 10 terminal slots, 83 audit events, seven consecutive natural hardened-runtime cycles and zero provider writes are verified
    - both Instagram and Threads identities are API-ready; exact-path shadow proof, restart recovery and rollback are complete
-   - the campaign release candidate is frozen at operator `b88f13b`, connector `545ba8a`, and pinned runtime `20260801-972c41b65241a407`; later Instagram layout work is a separate stream and is excluded from the candidate
+   - the zero-write Campaign Content Factory release is frozen at operator `b50ee55`, connector `545ba8a`, and pinned runtime `b50ee5542c92b59657e7e8b435f2111c776a2e5b`; shadow cron `6fd37958-b450-400e-8c06-a781670f3a03` now runs the idempotent render/audit plus production-shadow path without changing its schedule, enabled state or delivery mode
    - Relay 0.10.3 is installed and loaded from its separately approved lifecycle change; provider-writing activation remains correctly blocked pending one exact dated payload-bound canary approval
    - the separately graph-owned Instagram Image schedule remains external to and untouched by this campaign
    - GitHub workflows use the Node 24 action-runtime generation and both repos enforce that contract in local/CI verification

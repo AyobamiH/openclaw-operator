@@ -837,3 +837,47 @@
   delivery uploads and separately for the scheduler/runtime activation plus a
   dated one-run provider canary. The full-graph audit remains `partial` for the
   documented runtime gaps; the audit itself is complete.
+
+## 2026-08-03 — Approved Campaign Content Factory zero-write activation
+
+- Requested task: execute the previously prepared next steps after John's
+  explicit approval: freeze the verified Campaign Content Factory/full-graph
+  audit diff, create the local release commit and pinned runtime, and repoint
+  only shadow cron `6fd37958-b450-400e-8c06-a781670f3a03` to the factory
+  render/audit path.
+- Workflow lane: approved local release plus reversible zero-write scheduler
+  activation.
+- Tools/source: `approval-bounded-openclaw-change`, bounded-project,
+  coding-audit-routing and tool-ledger skills; coding-agent `repo-map`,
+  `deployment-preflight` and `secret-audit`; core Git, TypeScript, Vitest,
+  runtime hash/readback commands, OpenClaw cron reads, and installed
+  `openclaw cron edit --command-argv`.
+- Preferred-tool fallback: the coding deployment and secret audits were not
+  enabled by the repo adapter, so bounded local verification supplied the
+  missing evidence without reading secret values. The first OpenClaw cron API
+  update was rejected before dispatch because its update validator required an
+  agent payload and could not represent the existing command job. Live job
+  readback proved unchanged state, then the installed CLI's documented command
+  payload editor applied the approved mutation once.
+- Changed-state declaration: true. Local release commit
+  `b50ee5542c92b59657e7e8b435f2111c776a2e5b` was created without push; pinned
+  runtime
+  `~/.openclaw/runtime/deterministic-self-identification-publishing-engine/b50ee5542c92b59657e7e8b435f2111c776a2e5b`
+  was installed; the named shadow job's payload, description and command
+  timeouts changed. Its cron expression, timezone, enabled state, delivery
+  mode, database path and shadow integration mode did not change.
+- Verification: repository `npm run verify` passed builds, documentation,
+  95 unit simulations, 35 live middleware integrations, 34 UI tests and both
+  typechecks. Focused factory tests passed 5/5. Exact source and runtime hashes
+  matched. The pinned command replayed the terminal 07:00 opportunity with all
+  five packages `ready`, provider dispatch suppressed and zero external
+  writes. Post-update cron readback matched the exact command and retained the
+  next natural opportunity at `2026-08-03 11:00 BST`; no force run occurred.
+- Evidence:
+  `docs/operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md`,
+  pinned-runtime `PROVENANCE.json`, and dated campaign artifacts under
+  `artifacts/business-value/marketing/2026-08-03/campaign-content-factory/`.
+- Next safe step: observe the first natural pinned-runtime shadow cycle. Public
+  media upload, provider canary/publication, mode change, service/Gateway
+  reload, push, public release and any further scheduler mutation remain
+  separately approval-gated.
