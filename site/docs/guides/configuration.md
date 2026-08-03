@@ -242,13 +242,21 @@ opens its database nor exposes graph routes.
 - `OPENCLAW_GRAPH_ZERO_WRITE_ONLY=true` is mandatory for the current loaded
   runtime and blocks external mutation nodes inside the executor.
 - `OPENCLAW_GRAPH_ALLOWED_DEFINITIONS` is a comma-separated exact
-  `graphId@version` allowlist; the zero-write canary uses only
-  `deterministic-social-publication@1.1.0`.
+  `graphId@version` allowlist. The governed production portfolio is
+  `coding-change@1.2.0`, `deterministic-social-publication@1.1.0`,
+  `deterministic-social-publication@2.0.0` and
+  `research-to-action@1.1.0`; experimental and legacy compatibility
+  definitions remain excluded.
 - `OPENCLAW_GRAPH_RUN_NAMESPACE` controls the bounded run-ID prefix; the canary
   uses `grzwcanary`.
 - `OPENCLAW_GRAPH_DATABASE_PATH` may override the default
   `$OPENCLAW_OPERATOR_STATE_DIR/database/graph-runs.sqlite` only under an
   approved deployment.
+- `OPENCLAW_TOOLGATE_DATABASE_PATH` selects the owner-only durable ToolGate
+  SQLite authority. Production should bind it explicitly to
+  `$OPENCLAW_OPERATOR_STATE_DIR/database/toolgate.sqlite`; service startup
+  opens it, re-registers immutable policy hashes, and fails if the decision
+  hash chain is invalid.
 
 Do not combine database initialization, service restart, canary execution or
 scheduler cutover into one approval.
