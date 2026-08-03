@@ -25,7 +25,7 @@ describe("production publishing integration", () => {
     const registry = await loadRegistryBundle(registryPath);
     const integration = await loadProductionIntegration(integrationPath, registry);
     expect(integration.mode).toBe("shadow");
-    expect(integration.schedulerLatenessToleranceMinutes).toBe(5);
+    expect(integration.schedulerLatenessToleranceMinutes).toBe(10);
     expect(integration.opportunities.map((item) => item.localTime).sort()).toEqual([
       "05:00",
       "07:00",
@@ -58,11 +58,18 @@ describe("production publishing integration", () => {
     expect(resolution.opportunity.id).toBe("self-id-1500");
     expect(resolution.scheduledFor.toISOString()).toBe("2026-07-30T14:00:00.000Z");
     expect(resolution.latenessMs).toBe(209_450);
+    const delayedNaturalResolution = resolveProductionOpportunity(
+      integration,
+      "auto",
+      new Date("2026-07-30T15:06:31+01:00"),
+    );
+    expect(delayedNaturalResolution.opportunity.id).toBe("self-id-1500");
+    expect(delayedNaturalResolution.latenessMs).toBe(391_000);
     expect(() => resolveProductionOpportunity(
       integration,
       "auto",
-      new Date("2026-07-30T15:06:00+01:00"),
-    )).toThrow(/within the 5-minute scheduler tolerance/);
+      new Date("2026-07-30T15:10:01+01:00"),
+    )).toThrow(/within the 10-minute scheduler tolerance/);
   });
 
   it("rejects a scheduler time that does not match the explicit opportunity", async () => {

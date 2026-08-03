@@ -247,3 +247,15 @@ server it failed at `fetch`. One verifier case exceeded the global 60-second
 timeout only under full-suite contention and passed in isolation in 23.79
 seconds. No running service, database, Gateway, scheduler or provider state
 was changed by this follow-up.
+
+The first natural pinned factory cycle started at `11:06:31 BST`, 391 seconds
+after its immutable 11:00 opportunity. Media reverification and the five-item
+factory audit completed, but the five-minute integration tolerance then
+rejected opportunity admission. The cycle therefore failed closed with zero
+uploads and zero provider writes; it is not accepted as the conditional canary
+proof. Source configuration now permits at most ten minutes of scheduler
+lateness—the validator's existing hard maximum—and tests prove that the
+observed 391-second delay canonicalises to the immutable slot while 601 seconds
+still fails closed. Installing that source/config revision and repointing the
+cron payload remain runtime/scheduler lifecycle changes, so the running pinned
+job was not mutated by this source repair.

@@ -954,3 +954,16 @@
   only the canonical deterministic Instagram worker for the exact approved
   canary if the delivery receipt and all hashes bind. Production graph
   deployment/migration/reload remains a separate lifecycle authority boundary.
+
+### Natural 11:00 follow-up
+
+- Result: the natural job started at `11:06:31 BST` and failed closed because
+  391 seconds exceeded the pinned five-minute scheduler tolerance. Uploads and
+  provider writes remained zero; the canary precondition was not satisfied.
+- Repair: the source integration tolerance is now ten minutes, the validator's
+  existing maximum. Tests accept the observed bounded delay and reject 601
+  seconds. No installed runtime or cron payload was changed.
+- Boundary: installing the repaired pinned runtime and repointing the live cron
+  command are explicit runtime/scheduler lifecycle actions. Until that occurs
+  and a later natural cycle passes, the exact one-provider canary remains
+  fail-closed.

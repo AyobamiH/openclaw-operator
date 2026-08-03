@@ -1390,6 +1390,12 @@ delivered bytes and upload receipt. Non-text canary/live execution fails
 closed when this receipt is missing or any binding differs. This CLI import
 does not add an HTTP upload or provider-write route.
 
+Opportunity resolution measures scheduler lateness to the millisecond against
+the configured bounded tolerance. The production integration currently allows
+ten minutes, matching the validator's hard maximum: a delayed start within
+that window canonicalises to the immutable opportunity timestamp, while any
+later start fails before provider dispatch.
+
 ## Durable Graph Execution API
 
 The graph route family is bearer-protected and role-checked. It is the new

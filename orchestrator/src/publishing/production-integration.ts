@@ -228,12 +228,16 @@ export function resolveProductionOpportunity(
     .map((candidate) => {
       const [hour, minute] = candidate.localTime.split(":").map(Number);
       const latenessMinutes = observedMinute - (hour * 60 + minute);
-      return { candidate, latenessMinutes };
+      const latenessMs =
+        latenessMinutes * 60_000 +
+        observed.second * 1_000 +
+        observedAt.getMilliseconds();
+      return { candidate, latenessMinutes, latenessMs };
     })
     .filter(
-      ({ latenessMinutes }) =>
+      ({ latenessMinutes, latenessMs }) =>
         latenessMinutes >= 0 &&
-        latenessMinutes <= integration.schedulerLatenessToleranceMinutes,
+        latenessMs <= integration.schedulerLatenessToleranceMinutes * 60_000,
     );
   if (candidates.length !== 1) {
     throw new Error(
@@ -241,10 +245,7 @@ export function resolveProductionOpportunity(
     );
   }
   const selected = candidates[0];
-  const latenessMs =
-    selected.latenessMinutes * 60_000 +
-    observed.second * 1_000 +
-    observedAt.getMilliseconds();
+  const latenessMs = selected.latenessMs;
   return {
     opportunity: selected.candidate,
     scheduledFor: new Date(observedAt.getTime() - latenessMs),
