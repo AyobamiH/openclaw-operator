@@ -203,7 +203,9 @@ export function initializeGraphDatabase(options: InitializeGraphDatabaseOptions)
     return mapOpenError(error);
   }
   try {
-    const verification = store.schemaVerification({ requireEmptyExecutionState: true });
+    const verification = store.schemaVerification({
+      requireEmptyExecutionState: targetBefore === null,
+    });
     store.checkpointAndSecure();
     const file = statSync(databasePath);
     const mode = file.mode & 0o777;

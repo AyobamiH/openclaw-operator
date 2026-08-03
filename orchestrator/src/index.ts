@@ -10440,6 +10440,15 @@ async function bootstrap() {
     console.log("[orchestrator] graph runtime disabled; graph persistence and routes were not initialized");
   }
 
+  const durableToolGate = await getToolGate();
+  const durableToolGateCapabilities = durableToolGate.capabilities();
+  if (!durableToolGateCapabilities.decisionChainValid) {
+    throw new Error("toolgate_durable_decision_chain_invalid");
+  }
+  console.log(
+    `[orchestrator] durable ToolGate initialized at startup (${durableToolGateCapabilities.auditPersistence})`,
+  );
+
   console.log("[orchestrator] config loaded", config);
   if (fastStartMode) {
     console.warn(

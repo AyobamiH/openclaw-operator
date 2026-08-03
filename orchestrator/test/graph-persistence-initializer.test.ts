@@ -24,6 +24,9 @@ import {
   GRAPH_SCHEMA_V1_MIGRATION_CHECKSUM,
   GRAPH_SCHEMA_V1_MIGRATION_ID,
   GRAPH_SCHEMA_V1_OBJECTS,
+  GRAPH_SCHEMA_V2_MIGRATION_CHECKSUM,
+  GRAPH_SCHEMA_V2_MIGRATION_ID,
+  GRAPH_SCHEMA_V2_OBJECTS,
   GRAPH_SCHEMA_VERSION,
   type GraphMigrationFailurePoint,
 } from "../src/graph/migrations.js";
@@ -163,6 +166,42 @@ describe("graph initializer successful and repeatable behavior", () => {
       }
     } finally {
       database.close();
+    }
+  });
+
+  it("upgrades a non-empty version-2 database and reports preserved execution state", async () => {
+    const value = await fixture();
+    mkdirSync(dirname(value.databasePath), { recursive: true, mode: 0o700 });
+    const database = raw(value.databasePath);
+    for (const object of [...GRAPH_SCHEMA_V1_OBJECTS, ...GRAPH_SCHEMA_V2_OBJECTS]) {
+      database.exec(object.sql);
+    }
+    database.prepare("INSERT INTO graph_schema_meta(schema_name, schema_version, migration_id, migration_checksum, applied_at) VALUES (?, 2, ?, ?, ?)")
+      .run(GRAPH_SCHEMA_NAME, GRAPH_SCHEMA_V2_MIGRATION_ID, GRAPH_SCHEMA_V2_MIGRATION_CHECKSUM, new Date().toISOString());
+    database.prepare("INSERT INTO graph_definitions(graph_id, graph_version, definition_json, definition_hash, registered_at) VALUES (?, ?, ?, ?, ?)")
+      .run("preserved-definition", "1.0.0", "{}", "a".repeat(64), new Date().toISOString());
+    database.exec("PRAGMA user_version=2");
+    database.close();
+
+    const result = initializeFixture(value, false);
+    expect(result).toMatchObject({
+      status: "already_initialised",
+      schemaVersion: 3,
+      userVersion: 3,
+      created: false,
+      alreadyInitialised: true,
+    });
+    expect(result.executionRows).toBe(1);
+
+    const migrated = raw(value.databasePath);
+    try {
+      expect(migrated.prepare("SELECT graph_id FROM graph_definitions").get()).toEqual({
+        graph_id: "preserved-definition",
+      });
+      expect(graphObjects(migrated).map((object) => object.name)).toContain("graph_child_run_receipts");
+      expect(graphObjects(migrated).map((object) => object.name)).toContain("graph_verifier_receipts");
+    } finally {
+      migrated.close();
     }
   });
 

@@ -967,3 +967,30 @@
   command are explicit runtime/scheduler lifecycle actions. Until that occurs
   and a later natural cycle passes, the exact one-provider canary remains
   fail-closed.
+
+## 2026-08-03 — Approved schema-v3 and durable ToolGate activation
+
+- Requested task: install exact Factory revision `11a8067`, preserve its
+  schedule and shadow ownership, back up and migrate the production graph
+  database, load the governed production portfolio, initialize durable
+  ToolGate at service startup, reload the services and retain rollback.
+- Workflow lane: approved runtime installation, database migration,
+  configuration and service lifecycle change.
+- Tools/source: coding-agent repository map, migration review and deployment
+  preflight first; core SQLite, systemd, repository tests and focused source
+  inspection where the configured coding adapter reported partial coverage.
+- Changed-state declaration: the production graph database advanced from v2
+  to v3 after a verified owner-only backup. The Factory cron command paths now
+  select immutable runtime `11a8067`; schedule, timezone, enablement, delivery
+  and shadow mode did not change. The service drop-in now selects the exact
+  four-definition portfolio plus explicit graph and ToolGate database paths.
+- Migration finding: the v3 transaction succeeded and preserved execution
+  state, but the initializer then emitted a false failure because it applied
+  the empty-new-database assertion to an existing database. The assertion is
+  now conditional on database creation and a non-empty v2 regression fixture
+  proves preservation and receipt-table creation.
+- Safety: a consistent graph v2 backup, ToolGate backup and prior drop-in are
+  retained under the state-root backup directory. No diagnostic provider
+  write, upload, canary consumption, post deletion or repost occurred.
+- Evidence: the dated graph/factory audit, schema initializer test, service
+  read-backs and the owner-only rollback packet.

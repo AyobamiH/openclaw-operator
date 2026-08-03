@@ -226,6 +226,29 @@ Any connector install, Gateway/service reload, further scheduler mutation,
 production migration, provider write beyond the approved exact canary, release
 or deployment still requires separate explicit approval.
 
+## Approved production activation follow-up
+
+John separately approved the lifecycle boundary on 2026-08-03. The existing
+Factory cron was repointed to the immutable `11a8067` runtime without changing
+its schedule, timezone, enabled state, delivery-none setting or shadow mode.
+No diagnostic execution or provider write was authorised.
+
+The non-empty production graph database exposed a reporting defect in the
+initializer: `GraphStore` completed its transactionally safe v2-to-v3 upgrade,
+then the CLI incorrectly applied the new-database-only empty-state assertion.
+The initializer now requires empty execution state only when it creates a new
+database. A regression fixture upgrades a non-empty v2 database, preserves its
+definition row and verifies both receipt tables. Re-entry reports the migrated
+schema, integrity, foreign-key status and preserved execution-row count.
+
+The production portfolio remains zero-write and contains exactly
+`coding-change@1.2.0`, `deterministic-social-publication@1.1.0`,
+`deterministic-social-publication@2.0.0` and
+`research-to-action@1.1.0`. ToolGate is explicitly bound to the owner-only
+production SQLite path and is initialized during service startup; startup
+fails if its durable decision hash chain is invalid. Database and configuration
+rollback copies were retained before activation.
+
 ## 2026-08-03 Operational Follow-Up
 
 The repeatable full-graph audit was rerun after source completion and returned
