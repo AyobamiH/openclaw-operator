@@ -146,7 +146,9 @@ asserts zero provider effects.
   approval in the 2026-08-04 resume instruction.
 - Changed state: `true`. Source, installed portfolio, six cron payload owners,
   persistence reporting and the approved local plugin version changed. No
-  provider write, reply, duplicate, deletion or repost occurred.
+  diagnostic provider write, reply, duplicate, deletion or repost was caused
+  by the migration. The pre-existing Instagram graph schedule ran normally
+  under its preserved authority and remained outside the transferred scope.
 - Evidence: this registry, the protected test output, the graph and scheduler
   SQLite receipt chains, and rollback directory
   `~/.openclaw/state/openclaw-operator/backups/20260804-remaining-graph-cutover.ar7Pqd/`.
