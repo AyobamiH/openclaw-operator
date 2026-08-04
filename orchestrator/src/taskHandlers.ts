@@ -46,6 +46,7 @@ import {
   releaseDocRepairLock,
 } from "./coordination/runtime-coordination.js";
 import { runBusinessValueCycle } from "./business/valueLoop.js";
+import { buildContinuousMarketingDigest } from "./business/continuousMarketingDigest.js";
 import { recordBusinessValueCycleOutcome } from "./business/operations.js";
 import type { BusinessValueTriggerSource } from "./business/types.js";
 import { runAutonomousController } from "./autonomy/controller.js";
@@ -4176,6 +4177,17 @@ const sendDigestHandler: TaskHandler = async (task, context) => {
     config.digestDir ?? join(process.cwd(), "..", "logs", "digests");
 
   try {
+    if (task.payload.mode === "continuous-marketing") {
+      for (const key of ["observedAt", "sourceRoot", "missionPath", "outputRoot"] as const) if (typeof task.payload[key] !== "string" || !String(task.payload[key]).trim()) throw new Error(`continuous-marketing digest requires ${key}`);
+      const digest = await buildContinuousMarketingDigest({ observedAt: String(task.payload.observedAt), sourceRoot: String(task.payload.sourceRoot), missionPath: String(task.payload.missionPath), outputRoot: String(task.payload.outputRoot) });
+      const notifierConfig = buildNotifierConfig(config);
+      if (notifierConfig) await sendNotification(notifierConfig, { title: "Daily growth evidence — last 24h", summary: digest.summary, count: digest.verifiedLinks.length, digest: { evidenceFiles: digest.evidenceFiles, blockers: digest.blockers.length, approvals: digest.approvals.length }, url: digest.outputPath }, logger);
+      else logger.log(`[send-digest] ${digest.summary}`);
+      context.state.lastDigestNotificationAt = new Date().toISOString();
+      await context.saveState();
+      recordTaskExecutionResultSummary(context, task, { success: true, continuousMarketingDigest: digest });
+      return `continuous marketing digest sent (${digest.verifiedLinks.length} verified social objects)`;
+    }
     const files = await readdir(digestDir);
     const digests = files
       .filter((f) => f.startsWith("digest-") && f.endsWith(".json"))

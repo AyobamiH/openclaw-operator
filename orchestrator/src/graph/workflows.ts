@@ -182,7 +182,7 @@ export function researchToActionGraph(): GraphDefinition {
 export function representativeGraphDefinitions(): GraphDefinition[] {
   return [
     codingChangeGraph(), socialPublicationGraph(), researchToActionGraph(),
-    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(), digestDeliveryGraph(), threadsPublicationGraph(), metaReplyMonitorGraph(),
+    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(), digestDeliveryGraph(), threadsReadinessGraph(), threadsPublicationGraph(), metaReplyMonitorGraph(),
   ];
 }
 
@@ -193,6 +193,7 @@ export const PRODUCTION_GRAPH_DEFINITION_IDENTITIES = Object.freeze([
   "research-to-action@1.1.0",
   "governed-task-execution@1.0.0",
   "digest-delivery@1.0.0",
+  "threads-readiness@1.0.0",
   "threads-publication@1.0.0",
   "meta-reply-monitor@1.0.0",
 ] as const);
@@ -433,10 +434,40 @@ export function digestDeliveryGraph(): GraphDefinition {
     ],
     replaces: ["send-digest-direct-cron", "send-digest-task-queue-owner"],
   });
-  definition.authorityRequirements.approvalsRequiredAtOrAbove = "external_public";
+  definition.authorityRequirements.approvalsRequiredAtOrAbove = "external_reversible";
   definition.inputSchema = { type: "object", required: ["lane", "taskType", "agentId", "payload"], properties: { lane: { const: "digest" }, taskType: { const: "send-digest" }, agentId: { const: "operations-analyst-agent" }, payload: { type: "object" } }, additionalProperties: true };
   definition.concurrency = { maxRuns: 1, resourceKeys: ["digest-delivery"], leaseMs: 5 * 60_000, priority: 90 };
   definition.loopBudgets.externalRequestBudget = 1;
+  return definition;
+}
+
+export function threadsReadinessGraph(): GraphDefinition {
+  const stages = ["schedule_ingress", "prepare_next_opportunity", "verify_zero_write_receipt", "complete"];
+  const nodes = stages.map((id) => node({
+    id,
+    type: id === "complete" ? "terminal" : id === "prepare_next_opportunity" ? "tool" : id === "verify_zero_write_receipt" ? "verification" : "checkpoint",
+    handler: id === "prepare_next_opportunity" ? "production.threads-readiness-prepare.v1" : id === "verify_zero_write_receipt" ? "graph.evidence-gate" : id === "complete" ? "graph.terminal" : "graph.pass",
+    purpose: `Graph-owned Threads readiness stage: ${id.replaceAll("_", " ")}`,
+    mutations: id === "prepare_next_opportunity" ? ["threadsReadiness"] : [],
+    evidence: id === "prepare_next_opportunity" ? ["threads-readiness-receipt", "zero-provider-writes"] : [],
+    authority: id === "prepare_next_opportunity" ? "local_persistent" : "read_only",
+    sideEffect: id === "prepare_next_opportunity" ? "local_persistent" : "read_only",
+    retry: id === "prepare_next_opportunity",
+    maxAttempts: id === "prepare_next_opportunity" ? 2 : 1,
+  }));
+  const prepare = nodes.find((item) => item.id === "prepare_next_opportunity")!;
+  prepare.requiredCapabilities = [prepare.handler];
+  prepare.idempotencyStrategy = "run_node_payload";
+  const edges = stages.slice(0, -1).map((id, index) => edge(id, stages[index + 1]!));
+  for (const candidate of nodes.filter((item) => item.type !== "terminal")) edges.push(edge(candidate.id, "complete", "failed_terminal", { priority: -100 }));
+  const definition = base({
+    graphId: "threads-readiness", description: "Graph-owned injected-clock preparation of the next Threads opportunity with durable zero-write evidence.",
+    nodes, edges, entry: "schedule_ingress", terminal: "complete", authority: "local_persistent",
+    evidence: [{ assertionId: "threads-readiness-zero-write", claim: "The next opportunity was prepared without a provider mutation", method: "readiness-receipt", requiredEvidenceKinds: ["threads-readiness-receipt", "zero-provider-writes"] }],
+    replaces: ["threads-readiness-preparer-scheduler-owner"],
+  });
+  definition.inputSchema = { type: "object", required: ["provider", "accountKey", "jobId", "observedAt", "shadowMode", "maximumProviderMutations"], properties: { provider: { const: "threads" }, accountKey: { const: "threads:owner" }, jobId: { const: "abb3e214-0ff6-4813-a18d-6d8ffb9080ad" }, observedAt: { type: "string" }, shadowMode: { const: true }, maximumProviderMutations: { const: 0 } }, additionalProperties: false };
+  definition.concurrency = { maxRuns: 1, resourceKeys: ["publication:threads-readiness"], leaseMs: 15 * 60_000, priority: 95 };
   return definition;
 }
 

@@ -65,6 +65,12 @@ const MetaReplyGraphInputSchema = z.object({
   provider: z.literal("meta"), accountKey: z.literal("meta:owner"), jobId: z.literal("4de811aa-f213-4cc3-b1aa-6c2cffb6a847"),
   observedAt: z.string().datetime({ offset: true }), shadowMode: z.boolean(), maximumProviderMutations: z.literal(1),
 }).strict();
+const ThreadsReadinessInputSchema = z.object({
+  provider: z.literal("threads"), accountKey: z.literal("threads:owner"),
+  jobId: z.literal("abb3e214-0ff6-4813-a18d-6d8ffb9080ad"),
+  observedAt: z.string().datetime({ offset: true }), shadowMode: z.literal(true), maximumProviderMutations: z.literal(0),
+}).strict();
+const ThreadsReadinessOutputSchema = z.object({ outcome: z.literal("complete"), preparationHorizonHours: z.number().int().positive(), repairAttemptsMaximum: z.number().int().nonnegative(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0), opportunity: z.record(z.unknown()), runnerSummary: z.string() }).strict();
 const SocialPreparationOutputSchema = z.object({
   status: z.string(), action: z.enum(["publish", "reply", "skip", "shadow"]), outboxId: z.string().nullable(), payloadHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
   targetId: z.string().nullable(), approvalId: z.string().nullable(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0),
@@ -81,6 +87,9 @@ type MetaReplyRunnerModule = {
   executePreparedReply(runId: string, options?: Record<string, unknown>): Promise<{ entry: Record<string, any> }>;
   reconcileReceiptOnly(runId: string): Promise<{ entry: Record<string, any> }>;
 };
+type ThreadsReadinessModule = {
+  prepareNextThreadsOpportunity(now: Date): Record<string, unknown>;
+};
 async function loadWorkspaceModule<T>(configured: string | undefined, fallback: string, symbols: string[]): Promise<T> {
   const path = resolve(configured || fallback);
   if (!existsSync(path)) throw new Error(`canonical_social_runner_missing:${path}`);
@@ -90,6 +99,7 @@ async function loadWorkspaceModule<T>(configured: string | undefined, fallback: 
 }
 const loadThreadsRunner = () => loadWorkspaceModule<ThreadsRunnerModule>(process.env.OPENCLAW_THREADS_RUNNER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/threads-outbox-runner.mjs", ["runOpportunity", "reconcileOutboxEntry"]);
 const loadMetaReplyRunner = () => loadWorkspaceModule<MetaReplyRunnerModule>(process.env.OPENCLAW_META_REPLY_RUNNER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/meta-reply-monitor-outbox-runner.mjs", ["runMonitor", "executePreparedReply", "reconcileReceiptOnly"]);
+const loadThreadsReadiness = () => loadWorkspaceModule<ThreadsReadinessModule>(process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/threads-readiness-preparer.mjs", ["prepareNextThreadsOpportunity"]);
 
 function socialDispatchGate(graphStore: GraphStore, context: NodeExecutionContext) {
   if (!context.liveCapability) throw new Error("social_live_capability_missing");
@@ -193,7 +203,12 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
     retryableFailures: ["state_conflict", "timeout", "network_transient"], evidenceProduced: ["child-run-receipt", "verifier-receipt", "child-run-audit-chain"], redactedKeys: ["credential", "token", "secret"],
     execute: async (input, context) => {
       if (!childRuns) return { outcome: "blocked", output: { status: "dispatcher_unavailable", lane: "digest" }, failure: failure("tool_unavailable", "Graph child-run coordinator is unavailable") };
+      if (!graphStore) return { outcome: "blocked", output: { status: "graph_store_unavailable", lane: "digest" }, failure: failure("tool_unavailable", "Graph store is unavailable") };
+      const dispatchGate = socialDispatchGate(graphStore, context);
+      await dispatchGate.reserve("notification_effect", "production.digest-delivery.v1");
       const result = await childRuns.executeGovernedTask(input as never, context);
+      const dispatchState = result.outcome === "succeeded" ? "succeeded" : result.outcome === "failed_repairable" ? "confirmed_absent" : "ambiguous";
+      await dispatchGate.complete("notification_effect", dispatchState, { providerOperationId: (result.output as { childRunId?: unknown } | undefined)?.childRunId, outcome: result.outcome });
       return {
         ...result,
         externalEffect: {
@@ -400,6 +415,21 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
         { kind: "claim-finalised", uri: `graph://${context.run.runId}/publication/claim`, sha256: sha256((readback as { claim?: unknown }).claim), summary: "Durable candidate claim is verified and finalised", checker: "production.instagram-publication-readback.v2" },
       ];
       return { outcome: "succeeded", output: output as unknown as Record<string, JsonValue>, patches: [{ op: "set", path: "publicationLive.readback", value: output as unknown as JsonValue }], evidence, progressFingerprint: sha256(output) };
+    },
+  });
+  registry.register({
+    adapterId: "production.threads-readiness-prepare.v1", version: "1.0.0", sourceOwner: "scripts/threads-readiness-preparer.mjs exact zero-write preparation stage", bindingStatus: "production",
+    inputSchema: ThreadsReadinessInputSchema, outputSchema: ThreadsReadinessOutputSchema,
+    sideEffectClass: "local_persistent", shadowSafe: true, idempotencyStrategy: "run_node_payload", authority: "local_persistent", timeoutMs: 15 * 60_000,
+    retryableFailures: ["state_conflict", "timeout"], evidenceProduced: ["threads-readiness-receipt", "zero-provider-writes"], redactedKeys: ["credential", "token", "secret"],
+    execute: async (inputValue, context) => {
+      const input = ThreadsReadinessInputSchema.parse(inputValue);
+      const runner = await loadThreadsReadiness();
+      const output = ThreadsReadinessOutputSchema.parse(runner.prepareNextThreadsOpportunity(new Date(input.observedAt)));
+      return { outcome: "succeeded", output: output as unknown as Record<string, JsonValue>, patches: [{ op: "set", path: "threadsReadiness", value: output as unknown as JsonValue }], evidence: [
+        { kind: "threads-readiness-receipt", uri: `graph://${context.run.runId}/threads/readiness`, sha256: sha256(output), summary: "The next Threads opportunity was prepared under injected-clock zero-write rules", checker: "production.threads-readiness-prepare.v1" },
+        { kind: "zero-provider-writes", uri: `graph://${context.run.runId}/threads/readiness-writes`, sha256: sha256({ providerWrites: 0 }), summary: "Readiness preparation performed zero provider writes", checker: "production.threads-readiness-prepare.v1" },
+      ], progressFingerprint: sha256(output) };
     },
   });
   registry.register({

@@ -1,0 +1,130 @@
+import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { readApiCredentialReference } from "../src/auth/credential-reference.js";
+import { GraphSchedulerStore, resolveGraphSchedulerDatabasePath } from "../src/graph/scheduler-store.js";
+import { governedSchedulerPortfolioEntry } from "../src/graph/scheduler-portfolio.js";
+
+const BASE_URL = "http://127.0.0.1:3312";
+const CREDENTIAL_FILE = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/credentials/orchestrator.env";
+const EVIDENCE_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers";
+
+type HttpRequest = (route: string, init?: RequestInit) => Promise<any>;
+
+function fieldMatches(field: string, value: number): boolean {
+  if (field === "*") return true;
+  if (/^\*\/\d+$/.test(field)) return value % Number(field.slice(2)) === 0;
+  return field.split(",").some((part) => Number(part) === value);
+}
+
+function localParts(date: Date, timezone: string): { date: string; hour: number; minute: number } {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date).filter((item) => item.type !== "literal").map((item) => [item.type, item.value]));
+  return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), minute: Number(parts.minute) };
+}
+
+export function resolveNaturalSlot(args: { now: Date; cronExpression: string; timezone: string; scheduleId: string; provider: string; latenessToleranceMinutes: number }): { slotId: string; scheduledFor: string } {
+  const [minuteField, hourField, dayField, monthField, weekdayField] = args.cronExpression.trim().split(/\s+/);
+  if (!minuteField || !hourField || dayField !== "*" || monthField !== "*" || weekdayField !== "*") throw new Error("graph_scheduler_cron_expression_not_supported");
+  const rounded = new Date(args.now); rounded.setSeconds(0, 0);
+  for (let offset = 0; offset <= args.latenessToleranceMinutes; offset += 1) {
+    const candidate = new Date(rounded.getTime() - offset * 60_000);
+    const local = localParts(candidate, args.timezone);
+    if (!fieldMatches(minuteField, local.minute) || !fieldMatches(hourField, local.hour)) continue;
+    const time = `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}`;
+    return { slotId: `${args.provider}:${local.date}:${time}:${args.scheduleId}`, scheduledFor: candidate.toISOString() };
+  }
+  throw new Error("graph_scheduler_trigger_outside_natural_slot_window");
+}
+
+export function resolveInputTemplate(value: unknown, slot: { slotId: string; scheduledFor: string }): unknown {
+  if (value === "$scheduledAt") return slot.scheduledFor;
+  if (value === "$slotId") return slot.slotId;
+  if (Array.isArray(value)) return value.map((item) => resolveInputTemplate(item, slot));
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, nested]) => [key, resolveInputTemplate(nested, slot)]));
+  return value;
+}
+
+async function defaultRequest(route: string, init?: RequestInit): Promise<any> {
+  const token = readApiCredentialReference(CREDENTIAL_FILE, { requiredRole: "admin" });
+  const response = await fetch(`${BASE_URL}${route}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers } });
+  let body: any = null;
+  try { body = await response.json(); } catch { /* HTTP status remains authoritative */ }
+  if (!response.ok) throw new Error(`graph_scheduler_http_${response.status}:${body?.error ?? "unknown"}`);
+  return body;
+}
+
+export async function executeGovernedSchedule(args: { migrationId: string; now?: Date; schedulerPath?: string; request?: HttpRequest }): Promise<Record<string, unknown>> {
+  const portfolio = governedSchedulerPortfolioEntry(args.migrationId);
+  const request = args.request ?? defaultRequest;
+  const store = new GraphSchedulerStore(args.schedulerPath ?? resolveGraphSchedulerDatabasePath());
+  let triggerId: string | undefined;
+  let runId: string | undefined;
+  try {
+    const health = await request("/api/graphs/health");
+    if (health?.status !== "healthy" || health?.zeroWriteOnly !== true) throw new Error("graph_scheduler_runtime_health_gate_failed");
+    const migration = store.migration(args.migrationId);
+    if (!migration || migration.status !== "graph_owned" || migration.graphDefinitionHash !== portfolio.declaration.graphDefinitionHash) throw new Error("graph_scheduler_migration_not_active_or_exact");
+    const slot = resolveNaturalSlot({ now: args.now ?? new Date(), cronExpression: migration.cronExpression, timezone: migration.timezone, scheduleId: migration.scheduleId, provider: migration.provider, latenessToleranceMinutes: portfolio.latenessToleranceMinutes });
+    const reservation = store.reserveTrigger(args.migrationId, slot.slotId, slot.scheduledFor, `graph-scheduler:${args.migrationId}`);
+    triggerId = reservation.trigger.triggerId;
+    if (!reservation.created) {
+      if (reservation.trigger.status === "completed") return { outcome: "duplicate_suppressed", trigger: reservation.trigger, providerWrites: 0 };
+      if (["reserved", "preparing", "executing", "ambiguous"].includes(reservation.trigger.status)) return { outcome: "concurrent_or_ambiguous_trigger_suppressed", trigger: reservation.trigger, providerWrites: 0 };
+      runId = reservation.trigger.graphRunId;
+    }
+    store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, runId ? { graphRunId: runId } : {});
+    let detail: any;
+    if (!runId) {
+      const created = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
+        graphId: migration.graphId, version: migration.graphVersion, objective: `Graph-owned scheduled workflow ${slot.slotId}`,
+        correlationId: triggerId, input: resolveInputTemplate(portfolio.input, slot), authority: portfolio.authority,
+      }) });
+      runId = String(created.run.runId);
+      detail = await request(`/api/graphs/runs/${runId}`);
+      store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.[0]?.approvalId });
+    } else detail = await request(`/api/graphs/runs/${runId}`);
+
+    if (detail.run?.status === "waiting_for_approval") {
+      const approval = detail.approvals?.find((item: any) => item.status === "pending");
+      if (!approval || portfolio.approvalPolicy === "none") throw new Error("graph_scheduler_unexpected_approval_boundary");
+      if (portfolio.approvalPolicy === "prepared_payload_only" && !detail.run?.data?.socialEffect?.approvalId) throw new Error("graph_scheduler_exact_prepared_payload_approval_missing");
+      const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
+      await request(`/api/graphs/runs/${runId}/approvals/${approval.approvalId}`, { method: "POST", body: JSON.stringify({ decision: "granted", action: approval.action, target: approval.target, payloadHash: approval.payloadHash, expiresAt, note: portfolio.approvalPolicy === "prepared_payload_only" ? `Bound to existing exact prepared payload approval ${String(detail.run.data.socialEffect.approvalId)}` : `Standing exact schedule authority ${args.migrationId}` }) });
+      await request(`/api/graphs/runs/${runId}/live-capabilities`, { method: "POST", body: JSON.stringify({ approvalId: approval.approvalId, expiresAt }) });
+      detail = await request(`/api/graphs/runs/${runId}`);
+    }
+
+    store.updateTrigger(triggerId, "executing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail.liveCapability?.capabilityId });
+    if (["waiting_for_approval", "blocked", "paused"].includes(String(detail.run?.status))) await request(`/api/graphs/runs/${runId}/resume`, { method: "POST" });
+    if (!['completed','failed','cancelled'].includes(String(detail.run?.status))) await request(`/api/graphs/runs/${runId}/execute`, { method: "POST" });
+    detail = await request(`/api/graphs/runs/${runId}`);
+    const effects = (detail.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+    if (detail.run?.status !== "completed" || detail.eventChainValid !== true || detail.childRunReceiptChainValid !== true || effects.length > portfolio.maximumExternalWrites) throw new Error("graph_scheduler_completion_contract_failed");
+    if (portfolio.maximumExternalWrites === 1 && effects.length === 1 && detail.liveCapability?.status !== "consumed") throw new Error("graph_scheduler_live_capability_not_consumed");
+    const effect = effects[0];
+    const completed = store.updateTrigger(triggerId, "completed", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail.liveCapability?.capabilityId, providerObjectId: effect?.providerOperationId, permalink: detail.run?.data?.socialEffect?.result?.permalink });
+    return { outcome: "completed", migrationId: args.migrationId, graph: `${migration.graphId}@${migration.graphVersion}`, definitionHash: migration.graphDefinitionHash, trigger: completed, providerWrites: effects.length, eventChainValid: true, childReceiptChainValid: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (triggerId) {
+      try {
+        const detail = runId ? await request(`/api/graphs/runs/${runId}`) : null;
+        const ambiguous = detail?.liveCapability?.status === "consumed" || detail?.externalEffects?.some((item: any) => ["request_sent", "provider_accepted", "ambiguous"].includes(item.state));
+        store.updateTrigger(triggerId, ambiguous ? "ambiguous" : "failed_safe", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail?.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail?.liveCapability?.capabilityId, failureReason: message });
+      } catch { /* primary failure remains authoritative */ }
+    }
+    throw error;
+  } finally { store.close(); }
+}
+
+async function main(): Promise<void> {
+  if (process.argv.length !== 4 || process.argv[2] !== "--migration-id" || !process.argv[3]) throw new Error("graph_scheduler_trigger_requires_exact_migration_reference");
+  const result = await executeGovernedSchedule({ migrationId: process.argv[3] });
+  const trigger = result.trigger as Record<string, unknown>;
+  mkdirSync(EVIDENCE_ROOT, { recursive: true, mode: 0o700 });
+  const evidencePath = join(EVIDENCE_ROOT, `${String(trigger.triggerId)}.json`);
+  if (!existsSync(evidencePath)) { writeFileSync(evidencePath, `${JSON.stringify({ recordedAt: new Date().toISOString(), ...result }, null, 2)}\n`, { mode: 0o600, flag: "wx" }); chmodSync(evidencePath, 0o600); }
+  process.stdout.write(`Graph-owned ${String(result.migrationId ?? process.argv[3])} ${String(result.outcome)}\nTrigger: ${String(trigger.triggerId)}\nRun: ${String(trigger.graphRunId ?? "none")}\nProvider writes: ${String(result.providerWrites ?? 0)}; Browser Relay calls: 0\n`);
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) await main();

@@ -69,6 +69,20 @@ pass without a provider call. Scheduler ownership is intentionally unchanged
 until the generic migration registry, rollback snapshot and atomic cron
 repoint complete.
 
+The fourth source increment adds `threads-readiness@1.0.0`, an immutable
+six-job scheduler portfolio and the generic governed graph trigger. The
+portfolio binds the readiness, two Threads, Meta reply, Factory shadow and
+daily digest schedule identities to exact graph versions and definition
+hashes. Cron admission uses injected-clock-tested Europe/London matching,
+durable slot deduplication and a hash-chained migration ledger. The trigger
+accepts only a portfolio migration identifier; graph, provider, account,
+payload and authority bindings are immutable registry data. The digest worker
+now has a deterministic evidence-only Continuous Marketing mode, and its one
+notification is enclosed by the same single-use capability/dispatch ledger as
+the social effects. These are source and rollback prerequisites; the rows
+above become `graph_native` only after the backed-up installed runtime and cron
+registry are atomically transferred and health-verified.
+
 ## Persistence activation status
 
 The owner-only production graph database is schema v3 and retains the pre-v3

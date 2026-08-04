@@ -498,7 +498,7 @@ export class GraphStore {
       }
       this.appendEventUnsafe(run, {
         type: "one_run_live_capability_prepared",
-        nodeId: capability.operationType === "production.instagram-publication-live.v2" ? "publish_provider_object" : "perform_exact_effect",
+        nodeId: this.liveCapabilityNodeId(capability.operationType),
         actor,
         payload: {
           capabilityId: capability.capabilityId,
@@ -541,11 +541,11 @@ export class GraphStore {
 
   expireOneRunLiveCapabilities(now = new Date(), actor = "graph-runtime-expiry"): OneRunLiveCapability[] {
     const expiring = (this.database.prepare(`
-      SELECT capability_id, graph_run_id
+      SELECT capability_id, graph_run_id, operation_type
       FROM graph_one_run_live_capabilities
       WHERE status IN ('prepared','active') AND expires_at<=?
       ORDER BY expires_at
-    `).all(now.toISOString()) as Array<{ capability_id: string; graph_run_id: string }>);
+    `).all(now.toISOString()) as Array<{ capability_id: string; graph_run_id: string; operation_type: string }>);
     if (expiring.length === 0) return [];
     this.transaction(() => {
       for (const row of expiring) {
@@ -559,7 +559,7 @@ export class GraphStore {
         if (run) {
           this.appendEventUnsafe(run, {
             type: "one_run_live_capability_expired",
-            nodeId: "publish_provider_object",
+            nodeId: this.liveCapabilityNodeId(row.operation_type),
             actor,
             payload: { capabilityId: row.capability_id, expiredAt: now.toISOString() },
           });
@@ -600,7 +600,7 @@ export class GraphStore {
       if (Date.parse(capability.notBefore) > now.getTime()) throw new Error("one_run_live_capability_not_yet_valid");
       if (Date.parse(capability.expiresAt) <= now.getTime()) throw new Error("one_run_live_capability_expired");
       const run = this.getRun(capability.graphRunId);
-      const capabilityNodeId = capability.operationType === "production.instagram-publication-live.v2" ? "publish_provider_object" : "perform_exact_effect";
+      const capabilityNodeId = this.liveCapabilityNodeId(capability.operationType);
       if (!run || run.graphId !== capability.graphId || run.graphVersion !== capability.graphVersion || run.currentNodeId !== capabilityNodeId) {
         throw new Error("one_run_live_capability_run_binding_invalid");
       }
@@ -627,7 +627,7 @@ export class GraphStore {
       if (Number(used.count) >= capability.maximumMutatingDispatches) throw new Error("one_run_live_capability_mutation_budget_exhausted");
       const reservedAt = now.toISOString();
       this.database.prepare("UPDATE graph_live_capability_dispatches SET dispatch_count=dispatch_count+1, state='reserved', reserved_at=? WHERE dispatch_id=? AND state='prepared' AND dispatch_count<maximum_dispatch_count").run(reservedAt, String(dispatch.dispatch_id));
-      const consumes = args.stepId === "instagram_publish" || args.stepId === "provider_effect";
+      const consumes = args.stepId === "instagram_publish" || args.stepId === "provider_effect" || args.stepId === "notification_effect";
       this.database.prepare("UPDATE graph_one_run_live_capabilities SET status=?, consumed_at=CASE WHEN ? THEN ? ELSE consumed_at END WHERE capability_id=? AND status IN ('prepared','active')")
         .run(consumes ? "consumed" : "active", consumes ? 1 : 0, reservedAt, capability.capabilityId);
       this.database.prepare("UPDATE graph_external_effects SET state='request_sent', last_observed_at=? WHERE effect_id=?").run(reservedAt, args.effectId);
@@ -661,7 +661,7 @@ export class GraphStore {
         this.database.prepare("UPDATE graph_one_run_live_capabilities SET status='blocked', failure_reason=? WHERE capability_id=? AND status IN ('prepared','active')")
           .run(args.failureReason ?? args.state, args.capabilityId);
       }
-      this.appendEventUnsafe(run, { type: "live_capability_dispatch_completed", nodeId: capability.operationType === "production.instagram-publication-live.v2" ? "publish_provider_object" : "perform_exact_effect", actor: args.actor, payload: { capabilityId: args.capabilityId, stepId: args.stepId, state: args.state, providerOperationId: args.providerOperationId ?? null } });
+      this.appendEventUnsafe(run, { type: "live_capability_dispatch_completed", nodeId: this.liveCapabilityNodeId(capability.operationType), actor: args.actor, payload: { capabilityId: args.capabilityId, stepId: args.stepId, state: args.state, providerOperationId: args.providerOperationId ?? null } });
       return this.liveCapabilityDispatches(args.capabilityId).find((item) => item.stepId === args.stepId)!;
     });
   }
@@ -675,9 +675,15 @@ export class GraphStore {
     this.transaction(() => {
       const result = this.database.prepare("UPDATE graph_one_run_live_capabilities SET status='revoked', revoked_at=?, failure_reason=? WHERE capability_id=? AND status IN ('prepared','active')").run(revokedAt, reason, capabilityId);
       if (Number(result.changes) !== 1) throw new Error(`one_run_live_capability_not_revocable:${capability.status}`);
-      this.appendEventUnsafe(run, { type: "one_run_live_capability_revoked", nodeId: "publish_provider_object", actor, payload: { capabilityId, reason } });
+      this.appendEventUnsafe(run, { type: "one_run_live_capability_revoked", nodeId: this.liveCapabilityNodeId(capability.operationType), actor, payload: { capabilityId, reason } });
     });
     return this.oneRunLiveCapability(capabilityId)!;
+  }
+
+  private liveCapabilityNodeId(operationType: string): string {
+    if (operationType === "production.instagram-publication-live.v2") return "publish_provider_object";
+    if (operationType === "production.digest-delivery.v1") return "deliver_notification";
+    return "perform_exact_effect";
   }
 
   private mapOneRunLiveCapability(row: Record<string, unknown>): OneRunLiveCapability {

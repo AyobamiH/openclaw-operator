@@ -45,6 +45,20 @@ export type GraphSchedulerMigration = {
   failureReason?: string;
 };
 
+export type GraphSchedulerMigrationDeclaration = {
+  migrationId: string;
+  scheduleId: string;
+  declarationKey: string;
+  graphId: string;
+  graphVersion: string;
+  graphDefinitionHash: string;
+  graphNamespace: string;
+  provider: string;
+  accountId: string;
+  cronExpression: string;
+  timezone: string;
+};
+
 export type GraphSchedulerTrigger = {
   triggerId: string;
   migrationId: string;
@@ -225,22 +239,41 @@ export class GraphSchedulerStore {
   }
 
   prepareMigration(args: { legacyJob: Record<string, unknown>; graphJob: Record<string, unknown>; actor: string; now?: Date }): GraphSchedulerMigration {
+    return this.prepareBoundedMigration({
+      ...args,
+      declaration: {
+        migrationId: PHASE_G_MIGRATION_ID, scheduleId: PHASE_G_SCHEDULE_ID, declarationKey: PHASE_G_DECLARATION_KEY,
+        graphId: PHASE_G_GRAPH_ID, graphVersion: PHASE_G_GRAPH_VERSION, graphDefinitionHash: PHASE_G_GRAPH_DEFINITION_HASH,
+        graphNamespace: PHASE_G_GRAPH_NAMESPACE, provider: PHASE_G_PROVIDER, accountId: PHASE_G_ACCOUNT_ID,
+        cronExpression: "0 5,7,9,11,13 * * *", timezone: "Europe/London",
+      },
+      triggerScriptBasename: "trigger-graph-schedule.ts",
+    });
+  }
+
+  prepareBoundedMigration(args: { legacyJob: Record<string, unknown>; graphJob: Record<string, unknown>; declaration: GraphSchedulerMigrationDeclaration; actor: string; now?: Date; triggerScriptBasename?: string }): GraphSchedulerMigration {
     const legacy = args.legacyJob;
     const graph = args.graphJob;
-    if (legacy.id !== PHASE_G_SCHEDULE_ID || legacy.declarationKey !== PHASE_G_DECLARATION_KEY) throw new Error("graph_scheduler_legacy_job_binding_mismatch");
+    const declaration = args.declaration;
+    for (const [field, value] of Object.entries(declaration)) {
+      if (typeof value !== "string" || !value.trim() || (field !== "cronExpression" && value.includes("*"))) throw new Error(`graph_scheduler_declaration_invalid:${field}`);
+    }
+    if (!/^[a-f0-9]{64}$/.test(declaration.graphDefinitionHash)) throw new Error("graph_scheduler_definition_hash_invalid");
+    if (legacy.id !== declaration.scheduleId || legacy.declarationKey !== declaration.declarationKey) throw new Error("graph_scheduler_legacy_job_binding_mismatch");
     const legacySchedule = legacy.schedule as Record<string, unknown> | undefined;
-    if (legacySchedule?.expr !== "0 5,7,9,11,13 * * *" || legacySchedule?.tz !== "Europe/London") throw new Error("graph_scheduler_legacy_schedule_mismatch");
+    if (legacySchedule?.kind !== "cron" || legacySchedule?.expr !== declaration.cronExpression || legacySchedule?.tz !== declaration.timezone) throw new Error("graph_scheduler_legacy_schedule_mismatch");
     const graphPayload = graph.payload as Record<string, unknown> | undefined;
     const argv = graphPayload?.argv;
-    if (graph.id !== PHASE_G_SCHEDULE_ID || graph.declarationKey !== PHASE_G_DECLARATION_KEY || !Array.isArray(argv) || argv.at(-1) !== PHASE_G_MIGRATION_ID || !String(argv.at(-2)).endsWith("--migration-id")) throw new Error("graph_scheduler_graph_job_binding_mismatch");
-    if (String(argv[1]) !== "--import" || String(argv[2]) !== "tsx" || !String(argv[3]).endsWith("/orchestrator/scripts/trigger-graph-schedule.ts")) throw new Error("graph_scheduler_trigger_command_not_allowlisted");
+    const trigger = graph.graphTrigger as Record<string, unknown> | undefined;
+    if (graph.id !== declaration.scheduleId || graph.declarationKey !== declaration.declarationKey || !Array.isArray(argv) || argv.at(-1) !== declaration.migrationId || String(argv.at(-2)) !== "--migration-id") throw new Error("graph_scheduler_graph_job_binding_mismatch");
+    const triggerScriptBasename = args.triggerScriptBasename ?? "trigger-governed-graph-schedule.ts";
+    if (String(argv[1]) !== "--import" || String(argv[2]) !== "tsx" || !String(argv[3]).endsWith(`/orchestrator/scripts/${triggerScriptBasename}`)) throw new Error("graph_scheduler_trigger_command_not_allowlisted");
+    const phaseGCompatibility = triggerScriptBasename === "trigger-graph-schedule.ts" && declaration.migrationId === PHASE_G_MIGRATION_ID;
+    if (!phaseGCompatibility && (!trigger || trigger.graphId !== declaration.graphId || trigger.graphVersion !== declaration.graphVersion || trigger.definitionHash !== declaration.graphDefinitionHash || !trigger.input || typeof trigger.input !== "object" || !trigger.authority || typeof trigger.authority !== "object")) throw new Error("graph_scheduler_graph_trigger_contract_mismatch");
     const now = args.now ?? new Date();
     const record: GraphSchedulerMigration = {
-      migrationId: PHASE_G_MIGRATION_ID, scheduleId: PHASE_G_SCHEDULE_ID, declarationKey: PHASE_G_DECLARATION_KEY,
-      status: "prepared", graphId: PHASE_G_GRAPH_ID, graphVersion: PHASE_G_GRAPH_VERSION,
-      graphDefinitionHash: PHASE_G_GRAPH_DEFINITION_HASH, graphNamespace: PHASE_G_GRAPH_NAMESPACE,
-      provider: PHASE_G_PROVIDER, accountId: PHASE_G_ACCOUNT_ID,
-      cronExpression: "0 5,7,9,11,13 * * *", timezone: "Europe/London",
+      ...declaration,
+      status: "prepared",
       legacyJobDigest: graphSchedulerDigest(legacy), legacyJob: legacy,
       graphJobDigest: graphSchedulerDigest(graph), graphJob: graph,
       preparedAt: now.toISOString(), updatedAt: now.toISOString(), actor: args.actor,

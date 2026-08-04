@@ -10,6 +10,7 @@ export const LIVE_CAPABILITY_AWARE_HANDLER = "production.instagram-publication-l
 export const SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS = Object.freeze([
   "production.threads-publication-live.v1",
   "production.meta-reply-live.v1",
+  "production.digest-delivery.v1",
 ] as const);
 export const LIVE_CAPABILITY_GRAPH_ID = "deterministic-social-publication";
 export const LIVE_CAPABILITY_GRAPH_VERSION = "2.0.0";
@@ -38,6 +39,20 @@ type SocialEffectState = {
 
 function isSocialHandler(value: string): value is (typeof SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS)[number] {
   return SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS.includes(value as (typeof SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS)[number]);
+}
+
+function expectedDigestCapabilityBindings(args: { run: GraphRunState; approval: GraphApproval; definitionHash: string }) {
+  const target = String((args.run.data as Record<string, unknown>).target ?? "digest-delivery:deliver_notification");
+  const ingressId = String(args.run.input.ingressId ?? args.run.correlationId ?? args.run.runId);
+  const idempotencyKey = sha256({ runId: args.run.runId, nodeId: "deliver_notification", target, payloadHash: args.approval.payloadHash, operationType: "production.digest-delivery.v1" });
+  const envelopeHash = sha256({ graphId: args.run.graphId, graphVersion: args.run.graphVersion, runId: args.run.runId, input: args.run.input, definitionHash: args.definitionHash });
+  return {
+    graphId: args.run.graphId, graphVersion: args.run.graphVersion, graphDefinitionHash: args.definitionHash, graphRunId: args.run.runId,
+    claimId: `digest:${args.run.runId}`, approvalId: args.approval.approvalId, provider: "telegram", accountId: "configured-notification-channel",
+    operationType: "production.digest-delivery.v1", candidateId: ingressId, campaignId: "continuous-marketing-end-of-day-digest-v1",
+    sequenceId: ingressId, slotId: ingressId, payloadHash: args.approval.payloadHash, mediaHash: undefined, envelopeHash,
+    idempotencyKeyFingerprint: sha256(idempotencyKey), maximumMutatingDispatches: 1, maximumSuccessfulPublications: 1,
+  };
 }
 
 function expectedSocialCapabilityBindings(args: { run: GraphRunState; approval: GraphApproval; nodeHandler: string; definitionHash: string }) {
@@ -136,7 +151,9 @@ export function validateOneRunLiveCapabilityForMutation(args: {
   if (isSocialHandler(args.nodeHandler)) {
     const definition = args.store.definitionRecord(args.run.graphId, args.run.graphVersion);
     if (!definition) throw new Error("one_run_live_capability_definition_missing");
-    const expected = expectedSocialCapabilityBindings({ run: args.run, approval: args.approval, nodeHandler: args.nodeHandler, definitionHash: definition.definitionHash });
+    const expected = args.nodeHandler === "production.digest-delivery.v1"
+      ? expectedDigestCapabilityBindings({ run: args.run, approval: args.approval, definitionHash: definition.definitionHash })
+      : expectedSocialCapabilityBindings({ run: args.run, approval: args.approval, nodeHandler: args.nodeHandler, definitionHash: definition.definitionHash });
     for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
       if ((capability[key] ?? null) !== (expected[key] ?? null)) throw new Error(`one_run_live_capability_binding_mismatch:${key}`);
     }
@@ -172,29 +189,33 @@ export function issueOneRunLiveCapability(args: {
   const now = args.now ?? new Date();
   const run = args.store.getRun(args.runId);
   if (!run) throw new Error(`graph_run_not_found:${args.runId}`);
-  if (["threads-publication", "meta-reply-monitor"].includes(run.graphId) && run.graphVersion === "1.0.0") {
-    if (run.currentNodeId !== "perform_exact_effect" || !["waiting_for_approval", "running", "blocked"].includes(run.status)) throw new Error("one_run_live_capability_run_not_at_mutation_boundary");
+  if (["threads-publication", "meta-reply-monitor", "digest-delivery"].includes(run.graphId) && run.graphVersion === "1.0.0") {
+    const nodeId = run.graphId === "digest-delivery" ? "deliver_notification" : "perform_exact_effect";
+    if (run.currentNodeId !== nodeId || !["waiting_for_approval", "running", "blocked"].includes(run.status)) throw new Error("one_run_live_capability_run_not_at_mutation_boundary");
     if (run.input.shadowMode === true) throw new Error("one_run_live_capability_shadow_run_forbidden");
     const definition = args.store.definitionRecord(run.graphId, run.graphVersion);
     if (!definition) throw new Error("one_run_live_capability_definition_missing");
     const approval = args.store.approvals(run.runId).find((item) => item.approvalId === args.approvalId);
     if (!approval || approval.status !== "granted" || Date.parse(approval.expiresAt) <= now.getTime()) throw new Error("one_run_live_capability_approval_not_granted");
-    const nodeHandler = run.graphId === "threads-publication" ? "production.threads-publication-live.v1" : "production.meta-reply-live.v1";
-    const expectedTarget = String((run.data as Record<string, unknown>).target ?? `${run.graphId}:perform_exact_effect`);
+    const nodeHandler = run.graphId === "threads-publication" ? "production.threads-publication-live.v1" : run.graphId === "meta-reply-monitor" ? "production.meta-reply-live.v1" : "production.digest-delivery.v1";
+    const expectedTarget = String((run.data as Record<string, unknown>).target ?? `${run.graphId}:${nodeId}`);
     const recomputedApprovalPayloadHash = buildApprovalPayloadHash({ objective: run.objective, input: run.input, data: run.data });
-    if (approval.nodeId !== "perform_exact_effect" || approval.action !== nodeHandler || approval.target !== expectedTarget || approval.payloadHash !== recomputedApprovalPayloadHash) throw new Error("one_run_live_capability_approval_envelope_mismatch");
+    if (approval.nodeId !== nodeId || approval.action !== nodeHandler || approval.target !== expectedTarget || approval.payloadHash !== recomputedApprovalPayloadHash) throw new Error("one_run_live_capability_approval_envelope_mismatch");
     if (args.store.externalEffects(run.runId).length !== 0) throw new Error("one_run_live_capability_effect_already_exists");
     const notBefore = args.notBefore ?? now.toISOString();
     const expiry = Date.parse(args.expiresAt);
     if (!Number.isFinite(expiry) || expiry <= Math.max(now.getTime(), Date.parse(notBefore)) || expiry - now.getTime() > 30 * 60_000 || expiry > Date.parse(approval.expiresAt)) throw new Error("one_run_live_capability_expiry_invalid");
-    const bindings = expectedSocialCapabilityBindings({ run, approval, nodeHandler, definitionHash: definition.definitionHash });
+    const bindings = run.graphId === "digest-delivery"
+      ? expectedDigestCapabilityBindings({ run, approval, definitionHash: definition.definitionHash })
+      : expectedSocialCapabilityBindings({ run, approval, nodeHandler, definitionHash: definition.definitionHash });
     for (const [field, value] of Object.entries(bindings)) if (value !== undefined) nonWildcard(String(value), field);
     const capabilityId = `glc_${sha256({ bindings, issuedAt: now.toISOString(), issuedBy: args.issuedBy, nonce: randomUUID() }).slice(0, 32)}`;
     const capability: OneRunLiveCapability = { capabilityId, status: "prepared", ...bindings, issuedAt: now.toISOString(), notBefore, expiresAt: args.expiresAt, issuedBy: nonWildcard(args.issuedBy, "issuedBy") };
     const requiresDeliveryUpload = run.graphId === "threads-publication" && String(run.input.jobId) === "083e3560-40fd-4487-9d78-674f64866ef7";
+    const providerStepId = run.graphId === "digest-delivery" ? "notification_effect" : "provider_effect";
     const dispatches: LiveCapabilityDispatch[] = [
       ...(requiresDeliveryUpload ? [{ dispatchId: `glcd_${sha256({ capabilityId, stepId: "delivery_upload" }).slice(0, 32)}`, capabilityId, stepIndex: 0, stepId: "delivery_upload", expectedOperation: "generated_media_delivery_upload", maximumDispatchCount: 1 as const, dispatchCount: 0, state: "prepared" as const }] : []),
-      { dispatchId: `glcd_${sha256({ capabilityId, stepId: "provider_effect" }).slice(0, 32)}`, capabilityId, stepIndex: requiresDeliveryUpload ? 1 : 0, stepId: "provider_effect", expectedOperation: nodeHandler, ...(requiresDeliveryUpload ? { predecessorStepId: "delivery_upload" } : {}), maximumDispatchCount: 1, dispatchCount: 0, state: "prepared" },
+      { dispatchId: `glcd_${sha256({ capabilityId, stepId: providerStepId }).slice(0, 32)}`, capabilityId, stepIndex: requiresDeliveryUpload ? 1 : 0, stepId: providerStepId, expectedOperation: nodeHandler, ...(requiresDeliveryUpload ? { predecessorStepId: "delivery_upload" } : {}), maximumDispatchCount: 1, dispatchCount: 0, state: "prepared" },
     ];
     return args.store.issueOneRunLiveCapability(capability, dispatches, args.issuedBy);
   }

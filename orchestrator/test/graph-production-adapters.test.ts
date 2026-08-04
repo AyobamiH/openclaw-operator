@@ -120,6 +120,7 @@ describe("production adapter registry", () => {
       "production.threads-publication-live.v1",
       "production.threads-publication-prepare.v1",
       "production.threads-publication-readback.v1",
+      "production.threads-readiness-prepare.v1",
     ]);
     expect(() => runtime.adapters.resolve("production.unregistered.v1")).toThrow("production_adapter_not_registered");
     const unknown = singleAdapterGraph("production.unregistered.v1");
@@ -179,6 +180,25 @@ describe("production adapter registry", () => {
     expect(runtime.store.oneRunLiveCapability(capability.capabilityId)?.status).toBe("consumed");
     expect(runtime.store.liveCapabilityDispatches(capability.capabilityId)).toMatchObject([{ stepId: "provider_effect", dispatchCount: 1, state: "succeeded", providerOperationId: "provider-one" }]);
     expect(runtime.store.externalEffects(run.runId)).toMatchObject([{ state: "effect_verified", providerOperationId: "provider-one" }]);
+  });
+
+  it("requires and consumes one exact capability around a graph-owned digest notification", async () => {
+    const runtime = await testRuntime();
+    runtime.attachChildDispatcher((request) => ({ taskId: `task-${request.runId}`, completion: Promise.resolve({ status: "succeeded", outcome: "fixture_complete", output: { phase: request.phase }, evidence: { phase: request.phase } }) }));
+    const run = runtime.engine.start({ graphId: "digest-delivery", version: "1.0.0", objective: "Exact digest capability fixture", input: { lane: "digest", taskType: "send-digest", agentId: "operations-analyst-agent", ingressId: "digest-slot-one", shadowMode: false, payload: { mode: "fixture" } }, authority: { maximum: "external_reversible", grantedBy: "fixture" } });
+    const waiting = await runtime.engine.runUntilSettled(run.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    expect(waiting.currentNodeId).toBe("deliver_notification");
+    const approval = runtime.store.approvals(run.runId)[0]!;
+    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
+    runtime.engine.decideApproval(run.runId, approval.approvalId, "granted", "fixture", expiresAt);
+    const capability = issueOneRunLiveCapability({ store: runtime.store, runId: run.runId, approvalId: approval.approvalId, issuedBy: "fixture", expiresAt, globalZeroWrite: true });
+    runtime.engine.resume(run.runId, "fixture");
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(runtime.store.oneRunLiveCapability(capability.capabilityId)?.status).toBe("consumed");
+    expect(runtime.store.liveCapabilityDispatches(capability.capabilityId)).toMatchObject([{ stepId: "notification_effect", dispatchCount: 1, state: "succeeded" }]);
+    expect(runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
   });
 
   it("fails closed when a registered production adapter violates its output schema", async () => {
