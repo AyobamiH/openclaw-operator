@@ -116,7 +116,7 @@ describe("graph scheduler migration registry", () => {
     reopened.close();
   });
 
-  it("recovers one failed-safe zero-write Factory slot from its durable checkpoint", async () => {
+  it("recovers one failed-safe zero-write Factory slot as a new immutable graph attempt", async () => {
     const binding = governedJobs("campaign-content-factory-shadow-v1");
     const value = await fixture();
     value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
@@ -126,14 +126,13 @@ describe("graph scheduler migration registry", () => {
     value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-factory-recovery", failureReason: "renderer_contract_failed" });
     value.store.close();
 
-    let retried = false;
-    let executed = false;
+    let recoveryInput: any;
     const completedDetail = () => ({
-      run: { runId: "run-factory-recovery", status: executed ? "completed" : retried ? "running" : "failed", checkpoints: [{ checkpointId: "checkpoint-before-dispatch", reason: "after_reconcile_prior_attempt" }] },
+      run: { runId: "run-factory-recovered", status: "completed" },
       approvals: [],
       liveCapability: null,
       externalEffects: [],
-      childRunReceipts: executed ? [{ receiptId: "receipt-factory-recovery", status: "succeeded", outcome: "completed_unique_opportunity", receiptHash: "e".repeat(64) }] : [],
+      childRunReceipts: [{ receiptId: "receipt-factory-recovery", status: "succeeded", outcome: "completed_unique_opportunity", receiptHash: "e".repeat(64) }],
       eventChainValid: true,
       childRunReceiptChainValid: true,
     });
@@ -143,17 +142,21 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs/run-factory-recovery/checkpoints/checkpoint-before-dispatch/retry" && init?.method === "POST") { retried = true; return { run: { status: "running" } }; }
-        if (route === "/api/graphs/runs/run-factory-recovery/execute" && init?.method === "POST") { executed = true; return { run: { status: "completed" } }; }
-        if (route === "/api/graphs/runs/run-factory-recovery") return completedDetail();
+        if (route === "/api/graphs/runs/run-factory-recovery") return { run: { runId: "run-factory-recovery", status: "failed" }, liveCapability: null, externalEffects: [] };
+        if (route === "/api/graphs/runs" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-factory-recovered", status: "completed" } }; }
+        if (route === "/api/graphs/runs/run-factory-recovered") return completedDetail();
         throw new Error(`unexpected fixture route ${route}`);
       },
     });
-    expect(retried).toBe(true);
-    expect(executed).toBe(true);
+    expect(recoveryInput).toMatchObject({
+      graphId: "governed-task-execution",
+      version: "1.0.0",
+      correlationId: `${reserved.triggerId}:attempt:2`,
+      input: { payload: { observedAt: "2026-08-04T06:00:00.000Z" } },
+    });
     expect(result).toMatchObject({ outcome: "completed_unique_opportunity", providerWrites: 0 });
     const reopened = new GraphSchedulerStore(value.path);
-    expect(reopened.trigger(reserved.triggerId)).toMatchObject({ status: "completed", graphRunId: "run-factory-recovery", attemptCount: 2, failureReason: undefined });
+    expect(reopened.trigger(reserved.triggerId)).toMatchObject({ status: "completed", graphRunId: "run-factory-recovered", attemptCount: 2, failureReason: undefined });
     expect(reopened.triggers(binding.item.declaration.migrationId)).toHaveLength(1);
     expect(reopened.eventChainValid(binding.item.declaration.migrationId)).toBe(true);
     reopened.close();

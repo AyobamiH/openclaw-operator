@@ -98,10 +98,13 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
       if (portfolio.maximumExternalWrites !== 0 || unsafeEffects.length > 0 || detail.liveCapability?.status === "consumed") {
         throw new Error("graph_scheduler_failed_safe_recovery_requires_zero_effects");
       }
-      const checkpoint = [...(detail.run?.checkpoints ?? [])].reverse().find((item: any) => item.reason === "after_reconcile_prior_attempt");
-      if (!checkpoint?.checkpointId) throw new Error("graph_scheduler_failed_safe_recovery_checkpoint_missing");
-      await request(`/api/graphs/runs/${runId}/checkpoints/${checkpoint.checkpointId}/retry`, { method: "POST" });
+      const recovered = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
+        graphId: migration.graphId, version: migration.graphVersion, objective: `Graph-owned scheduled workflow recovery ${slot.slotId}`,
+        correlationId: `${triggerId}:attempt:${reservation.trigger.attemptCount + 1}`, input: resolveInputTemplate(portfolio.input, slot), authority: portfolio.authority,
+      }) });
+      runId = String(recovered.run.runId);
       detail = await request(`/api/graphs/runs/${runId}`);
+      store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId });
     }
 
     if (detail.run?.status === "waiting_for_approval") {
