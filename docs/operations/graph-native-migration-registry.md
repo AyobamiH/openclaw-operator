@@ -1,7 +1,7 @@
 ---
 title: "Graph-Native Workflow Migration Registry"
 status: "active"
-updated: "2026-08-03"
+updated: "2026-08-04"
 ---
 
 # Graph-Native Workflow Migration Registry
@@ -30,6 +30,23 @@ Statuses: `graph_native`, `graph_wrapped_legacy`,
 The approved 2026-08-03 activation loaded the exact four-definition production
 portfolio and restarted the orchestrator/Gateway. It did not transfer, delete,
 reschedule, disable or enable any additional legacy execution path.
+
+## 2026-08-04 implementation increment: governed task ownership
+
+The first autonomous-closure implementation increment adds
+`governed-task-execution@1.0.0` to the supported production source portfolio.
+It owns ingress, immutable lane/task/agent payload binding, durable graph state,
+checkpoints, reconciliation, bounded graph retries, child effect receipts,
+deterministic verifier receipts and terminal event-chain verification. The
+allowlist currently covers business-value, market-research, Git monitor and
+Campaign Factory task lanes. Queue children continue to pass through the
+durable ToolGate, while queue-local retry is disabled for graph child attempts
+so retry ownership cannot split.
+
+This entry records source readiness only. The installed runtime and active
+schedulers remain at the 2026-08-03 state until the remaining social adapters,
+portfolio tests, backup and atomic cutover gates pass. No workflow in the table
+is relabelled `graph_native` solely because this source increment exists.
 
 ## Persistence activation status
 

@@ -104,6 +104,7 @@ describe("production adapter registry", () => {
     const runtime = await testRuntime();
     expect(runtime.adapters.list().map((item) => item.adapterId).sort()).toEqual([
       "production.agent-child-run.v1",
+      "production.governed-task-dispatch.v1",
       "production.instagram-publication-live.v2",
       "production.instagram-publication-prepare.v2",
       "production.instagram-publication-readback.v2",

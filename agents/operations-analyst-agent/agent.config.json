@@ -1,6 +1,7 @@
 {
   "id": "operations-analyst-agent",
   "orchestratorTask": "control-plane-brief",
+  "orchestratorTasks": ["control-plane-brief", "business-value-cycle", "github-workflow-monitor"],
   "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/operations-analyst-agent-service.json",
   "name": "Operations Analyst Agent",

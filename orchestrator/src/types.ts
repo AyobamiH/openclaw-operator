@@ -930,6 +930,7 @@ export interface TaskHandlerContext {
   state: OrchestratorState;
   saveState: () => Promise<void>;
   saveBusinessSchedulerState?: () => Promise<void>;
+  runGitHubWorkflowMonitor?: () => Promise<Record<string, unknown>>;
   enqueueTask: (type: string, payload: Record<string, unknown>) => Task;
   getQueueSnapshot?: () => {
     queued: Task[];

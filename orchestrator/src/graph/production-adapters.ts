@@ -42,6 +42,17 @@ const RepoOutputSchema = z.object({ repositoryPath: z.string(), head: z.string()
 const CommandOutputSchema = z.object({ action: z.string(), exitCode: z.number().int(), outputHash: z.string().regex(/^[a-f0-9]{64}$/), skipped: z.boolean() }).strict();
 const ChildRunInputSchema = z.object({ repositoryPath: z.string().min(1), childPayload: z.record(z.unknown()).optional(), verifierPayload: z.record(z.unknown()).optional() }).passthrough();
 const ChildRunOutputSchema = z.object({ status: z.string(), childRunId: z.string(), childReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), verifierRunId: z.string().optional(), verifierReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), chainValid: z.boolean().optional() }).passthrough();
+const GovernedTaskInputSchema = z.object({
+  lane: z.enum(["business-value", "market-research", "git-monitor", "campaign-factory"]),
+  taskType: z.string().min(1),
+  agentId: z.string().min(1),
+  payload: z.record(z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.unknown()), z.record(z.unknown())])).default({}),
+}).passthrough();
+const GovernedTaskOutputSchema = z.object({
+  status: z.string(), lane: z.string(), childRunId: z.string().optional(),
+  childReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), verifierRunId: z.string().optional(),
+  verifierReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), chainValid: z.boolean().optional(),
+}).passthrough();
 
 const PublishingInputSchema = z.object({
   integrationPath: z.string().min(1), registryPath: z.string().min(1), opportunityId: z.string().min(1), observedAt: z.string().datetime({ offset: true }), shadowMode: z.literal(true),
@@ -114,6 +125,15 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
     execute: async (input, context) => childRuns
       ? childRuns.execute(input as never, context)
       : { outcome: "blocked", output: { status: "dispatcher_unavailable", childRunId: `child_${sha256(context.idempotencyKey).slice(0, 32)}` }, failure: failure("tool_unavailable", "Graph child-run coordinator is unavailable") },
+  });
+  registry.register({
+    adapterId: "production.governed-task-dispatch.v1", version: "1.0.0", sourceOwner: "orchestrator graph child-run coordinator + narrow task effect handlers", bindingStatus: "production",
+    inputSchema: GovernedTaskInputSchema.describe("allowlisted graph-owned task lane and exact payload contract"), outputSchema: GovernedTaskOutputSchema.describe("hash-bound effect and deterministic verifier receipts"),
+    sideEffectClass: "local_persistent", shadowSafe: true, idempotencyStrategy: "run_node_payload", authority: "local_persistent", timeoutMs: 30 * 60_000,
+    retryableFailures: ["state_conflict", "timeout", "verification_failed"], evidenceProduced: ["child-run-receipt", "verifier-receipt", "child-run-audit-chain"], redactedKeys: ["credential", "token", "secret"],
+    execute: async (input, context) => childRuns
+      ? childRuns.executeGovernedTask(input as never, context)
+      : { outcome: "blocked", output: { status: "dispatcher_unavailable", lane: String((input as { lane?: unknown }).lane ?? "unknown") }, failure: failure("tool_unavailable", "Graph child-run coordinator is unavailable") },
   });
   registry.register({
     adapterId: "production.repo-command.v1", version: "1.0.0", sourceOwner: "orchestrator package scripts", bindingStatus: "production",

@@ -1,6 +1,7 @@
 {
   "id": "content-agent",
   "orchestratorTask": "content-generate",
+  "orchestratorTasks": ["content-generate", "campaign-content-factory"],
   "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/content-agent-service.json",
   "name": "Content Generation Agent",

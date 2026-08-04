@@ -52,6 +52,7 @@ import { runAutonomousController } from "./autonomy/controller.js";
 import { normalizeApprovedIntake } from "./autonomy/runtime-hardening.js";
 import { readProviderRateLimitBridge } from "./autonomy/runtime-hardening.js";
 import type { ApprovedIntakeRecord, AutonomousWorkItem, ContextSnapshot, ControllerCheckpoint, ProviderRateLimitEvent, ToolResult } from "./autonomy/types.js";
+import { runCampaignFactoryShadowCycle } from "./publishing/campaign-factory-shadow-cycle.js";
 
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
@@ -83,6 +84,8 @@ export const ALLOWED_TASK_TYPES = [
   "send-digest",
   "heartbeat",
   "business-value-cycle",
+  "github-workflow-monitor",
+  "campaign-content-factory",
   "autonomous-work-cycle",
   "autonomous-intake-cycle",
   "agent-deploy",
@@ -155,6 +158,9 @@ export const TASK_AGENT_SKILL_REQUIREMENTS: Readonly<
     skillId: "runtimeStateReader",
   },
   "skill-audit": { agentId: "skill-audit-agent", skillId: "documentParser" },
+  "business-value-cycle": { agentId: "operations-analyst-agent", skillId: "runtimeStateReader" },
+  "github-workflow-monitor": { agentId: "operations-analyst-agent", skillId: "runtimeStateReader" },
+  "campaign-content-factory": { agentId: "content-agent", skillId: "documentParser" },
 };
 
 /**
@@ -4269,6 +4275,31 @@ const businessValueCycleHandler: TaskHandler = async (task, context) => {
   return `business-value cycle ${result.cycle.status}: ${result.cycle.nextSafeAction ?? "no next action recorded"}`;
 };
 
+const githubWorkflowMonitorHandler: TaskHandler = async (task, context) => {
+  if (!context.runGitHubWorkflowMonitor) throw new Error("github workflow monitor adapter is unavailable");
+  const result = await context.runGitHubWorkflowMonitor();
+  recordTaskExecutionResultSummary(context, task, { success: result.status !== "failed", githubWorkflowMonitor: result });
+  return `GitHub workflow monitor ${String(result.status ?? "unknown")}: ${String(result.summary ?? "no summary")}`;
+};
+
+const campaignContentFactoryHandler: TaskHandler = async (task, context) => {
+  const required = ["registryPath", "integrationPath", "databasePath", "artifactRoot", "rendererEntrypoint"] as const;
+  for (const key of required) if (typeof task.payload[key] !== "string" || !String(task.payload[key]).trim()) throw new Error(`campaign-content-factory requires ${key}`);
+  const observedAt = typeof task.payload.observedAt === "string" ? new Date(task.payload.observedAt) : new Date();
+  if (!Number.isFinite(observedAt.getTime())) throw new Error("campaign-content-factory observedAt is invalid");
+  const result = await runCampaignFactoryShadowCycle({
+    registryPath: String(task.payload.registryPath), integrationPath: String(task.payload.integrationPath), databasePath: String(task.payload.databasePath),
+    artifactRoot: String(task.payload.artifactRoot), rendererEntrypoint: String(task.payload.rendererEntrypoint), observedAt,
+    opportunityId: typeof task.payload.opportunityId === "string" ? task.payload.opportunityId : "auto",
+    nodeExecutable: typeof task.payload.nodeExecutable === "string" ? task.payload.nodeExecutable : undefined,
+    openclawBin: typeof task.payload.openclawBin === "string" ? task.payload.openclawBin : undefined,
+    workspace: typeof task.payload.workspace === "string" ? task.payload.workspace : undefined,
+  });
+  if (result.externalWrites !== 0) throw new Error("campaign-content-factory graph effect adapter detected an external write");
+  recordTaskExecutionResultSummary(context, task, { success: true, campaignContentFactory: result });
+  return `campaign-content-factory shadow completed for ${String(result.localDate ?? "unknown-date")} with zero external writes`;
+};
+
 const CODING_TOOL_COMMANDS: Record<string, string> = {
   coding_audit: "audit", coding_repo_map: "repo-map", coding_route_trace: "route-trace",
   coding_env_audit: "env-audit", coding_secret_audit: "secret-audit",
@@ -4413,6 +4444,8 @@ export const taskHandlers: Record<string, TaskHandler> = {
   "send-digest": sendDigestHandler,
   heartbeat: heartbeatHandler,
   "business-value-cycle": businessValueCycleHandler,
+  "github-workflow-monitor": githubWorkflowMonitorHandler,
+  "campaign-content-factory": campaignContentFactoryHandler,
   "autonomous-work-cycle": autonomousWorkCycleHandler,
   "autonomous-intake-cycle": autonomousIntakeCycleHandler,
   "agent-deploy": agentDeployHandler,

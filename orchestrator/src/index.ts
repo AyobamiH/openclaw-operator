@@ -10747,17 +10747,12 @@ async function bootstrap() {
   };
 
   if (githubActionsMonitorEnabled) {
-    void refreshGitHubWorkflowMonitor().catch((error) => {
-      console.warn(
-        `[orchestrator] GitHub workflow monitor startup check failed: ${(error as Error).message}`,
-      );
-    });
     setInterval(() => {
-      void refreshGitHubWorkflowMonitor().catch((error) => {
-        console.warn(
-          `[orchestrator] GitHub workflow monitor poll failed: ${(error as Error).message}`,
-        );
-      });
+      if (graphRuntime) {
+        startGraphOwnedTask("github-workflow-monitor", { reason: "scheduled-poll", idempotencyKey: `github-workflow-monitor:${Math.floor(Date.now() / (5 * 60_000))}` }, "scheduler");
+      } else {
+        void refreshGitHubWorkflowMonitor().catch((error) => console.warn(`[orchestrator] GitHub workflow monitor poll failed: ${(error as Error).message}`));
+      }
     }, 5 * 60 * 1000);
   }
 
@@ -10954,6 +10949,13 @@ async function bootstrap() {
       }).catch((error) => {
         console.error("[startup] business-value cycle recovery failed:", error);
       });
+    }
+    if (githubActionsMonitorEnabled) {
+      if (graphRuntime) {
+        startGraphOwnedTask("github-workflow-monitor", { reason: "startup", idempotencyKey: `github-workflow-monitor:startup:${Math.floor(Date.now() / (5 * 60_000))}` }, "startup");
+      } else {
+        void refreshGitHubWorkflowMonitor().catch((error) => console.warn(`[orchestrator] GitHub workflow monitor startup check failed: ${(error as Error).message}`));
+      }
     }
 
     // Monitor heartbeat failures (detect if orchestrator is hung)
@@ -11219,6 +11221,49 @@ async function bootstrap() {
     }
     return { taskId: task.id, completion };
   });
+  const graphOwnedTaskBindings = Object.freeze({
+    "business-value-cycle": { lane: "business-value", agentId: "operations-analyst-agent" },
+    "market-research": { lane: "market-research", agentId: "market-research-agent" },
+    "github-workflow-monitor": { lane: "git-monitor", agentId: "operations-analyst-agent" },
+    "campaign-content-factory": { lane: "campaign-factory", agentId: "content-agent" },
+  } as const);
+  type GraphOwnedTaskType = keyof typeof graphOwnedTaskBindings;
+  const isGraphOwnedTaskType = (type: string): type is GraphOwnedTaskType => Boolean(graphRuntime) && type in graphOwnedTaskBindings;
+  const startGraphOwnedTask = (type: GraphOwnedTaskType, payload: Record<string, unknown>, source: string) => {
+    if (!graphRuntime) throw new Error(`graph_runtime_required_for_owned_task:${type}`);
+    const binding = graphOwnedTaskBindings[type];
+    const ingressId = typeof payload.idempotencyKey === "string" && payload.idempotencyKey.trim()
+      ? payload.idempotencyKey.trim()
+      : `graph-ingress:${type}:${randomUUID()}`;
+    const existing = graphRuntime.store.listRuns({ graphId: "governed-task-execution", limit: 250 }).find((run) => run.input.ingressId === ingressId);
+    const created = existing ?? graphRuntime.engine.start({
+      graphId: "governed-task-execution",
+      version: "1.0.0",
+      objective: `Graph-owned ${type} execution from ${source}`,
+      correlationId: ingressId,
+      input: { lane: binding.lane, taskType: type, agentId: binding.agentId, payload, ingressId, shadowMode: false } as never,
+      authority: { maximum: "local_persistent", grantedBy: `graph-owned-ingress:${source}` },
+    });
+    const completion = ["completed", "failed", "cancelled"].includes(created.status)
+      ? Promise.resolve(created)
+      : graphRuntime.engine.runUntilSettled(created.runId, 250, `graph-owned-ingress:${source}`);
+    const task: Task = {
+      id: created.runId,
+      type,
+      payload,
+      createdAt: Date.parse(created.createdAt),
+      idempotencyKey: ingressId,
+      attempt: 1,
+      maxRetries: 0,
+      admission: { admitted: !existing, kind: existing ? "duplicate-suppressed" : "new", reason: existing ? "existing graph ingress" : "graph-owned ingress", runId: created.runId, attemptId: created.runId, sourceTaskId: null },
+    };
+    void completion.then((run) => {
+      console.log(`[graph-owned-task] ${type} ${run.status} (${run.runId})`);
+    }).catch((error) => {
+      console.error(`[graph-owned-task] ${type} failed:`, error);
+    });
+    return { task, runId: created.runId, completion, reused: Boolean(existing) };
+  };
   const enqueueGovernedBusinessValueCycle = async (args: {
     source: BusinessValueTriggerSource;
     reason: string;
@@ -11248,7 +11293,7 @@ async function bootstrap() {
       args.source === "startup-recovery"
         ? `business-value-cycle:${decision.fingerprint}`
         : `business-value-cycle:${args.source}:${Date.now()}`;
-    const task = queue.enqueue("business-value-cycle", {
+    const payload = {
       reason: args.reason,
       triggerSource: args.source,
       retryCycleId: args.retryCycleId ?? null,
@@ -11256,8 +11301,10 @@ async function bootstrap() {
       __actor: args.actor ?? "system",
       __role: args.role ?? "operator",
       __requestId: args.requestId ?? null,
-    });
-    if (task.admission?.admitted === false) {
+    };
+    const graphDispatch = graphRuntime ? startGraphOwnedTask("business-value-cycle", payload, args.source) : null;
+    const task = graphDispatch?.task ?? queue.enqueue("business-value-cycle", payload);
+    if (graphDispatch?.reused || task.admission?.admitted === false) {
       await persistBusinessSchedulerState();
       return { decision, task: null, admission: task.admission };
     }
@@ -11279,8 +11326,14 @@ async function bootstrap() {
     state,
     saveState: flushState,
     saveBusinessSchedulerState: persistBusinessSchedulerState,
+    runGitHubWorkflowMonitor: async () => {
+      await refreshGitHubWorkflowMonitor();
+      return githubWorkflowMonitor as unknown as Record<string, unknown>;
+    },
     enqueueTask: (type: string, payload: Record<string, unknown>) =>
-      queue.enqueue(type, payload),
+      isGraphOwnedTaskType(type)
+        ? startGraphOwnedTask(type, payload, "task-handler").task
+        : queue.enqueue(type, payload),
     getQueueSnapshot: () => queue.getSnapshot(),
     logger: console,
     appendIncidentHistoryEvent: (
@@ -12541,7 +12594,8 @@ async function bootstrap() {
       const attempt = Number.isFinite(execution.attempt)
         ? execution.attempt
         : 1;
-      const retryableFailure = isTaskFailureRetryable(error);
+      const graphManagedAttempt = task.payload.__graphPhase === "child" || task.payload.__graphPhase === "verifier";
+      const retryableFailure = !graphManagedAttempt && isTaskFailureRetryable(error);
 
       if (retryableFailure && attempt <= maxRetries) {
         execution.status = "retrying";
@@ -13667,7 +13721,10 @@ async function bootstrap() {
           __requestId: req.auth?.requestId ?? null,
         };
 
-        const task = queue.enqueue(type, enrichedPayload);
+        const graphDispatch = isGraphOwnedTaskType(type)
+          ? startGraphOwnedTask(type, enrichedPayload, "manual-api")
+          : null;
+        const task = graphDispatch?.task ?? queue.enqueue(type, enrichedPayload);
         await invalidateResponseCacheTags(["runtime-state"]);
         if (task.admission?.admitted === false) {
           return res.status(200).json({
@@ -13681,8 +13738,9 @@ async function bootstrap() {
           });
         }
         res.status(202).json({
-          status: "queued",
+          status: graphDispatch ? "graph-started" : "queued",
           taskId: task.id,
+          graphRunId: graphDispatch?.runId ?? null,
           type: task.type,
           createdAt: task.createdAt,
         });
@@ -13782,14 +13840,17 @@ async function bootstrap() {
             idempotencyKey: _originalIdempotencyKey,
             ...approvedPayload
           } = approval.payload;
-          const replay = queue.enqueue(approval.type, {
+          const replayPayload = {
             ...approvedPayload,
             idempotencyKey: `approval-replay:${approval.taskId}`,
             approvedFromTaskId: approval.taskId,
             __actor: req.auth?.actor ?? actor,
             __role: req.auth?.role ?? "operator",
             __requestId: req.auth?.requestId ?? null,
-          });
+          };
+          const replay = isGraphOwnedTaskType(approval.type)
+            ? startGraphOwnedTask(approval.type, replayPayload, "approval-replay").task
+            : queue.enqueue(approval.type, replayPayload);
           replayTaskId = replay.admission?.admitted === false ? null : replay.id;
         }
 

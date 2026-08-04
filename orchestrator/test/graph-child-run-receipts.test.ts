@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
 import { verifyGraphChildTaskAuthority } from "../src/graph/task-authority.js";
-import { governedCodingChangeGraph } from "../src/graph/workflows.js";
+import { governedCodingChangeGraph, governedTaskExecutionGraph } from "../src/graph/workflows.js";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
 const cleanups: Array<() => Promise<void>> = [];
@@ -38,6 +38,83 @@ function attachSuccessfulDispatcher(runtime: GraphRuntime, calls: string[]): voi
 }
 
 describe("graph child-run and verifier receipts", () => {
+  it("dispatches an allowlisted workflow effect once and closes a deterministic verifier receipt", async () => {
+    const value = await fixture();
+    const definition = governedTaskExecutionGraph();
+    const run = value.runtime.engine.start({
+      graphId: definition.graphId,
+      version: definition.version,
+      objective: "Check the governed Git workflow",
+      input: { lane: "git-monitor", taskType: "github-workflow-monitor", agentId: "operations-analyst-agent", payload: { reason: "fixture" } },
+      authority: { maximum: "local_persistent", grantedBy: "receipt-test" },
+    });
+    const node = definition.nodes.find((item) => item.id === "dispatch_effect_adapter")!;
+    const dispatches: string[] = [];
+    value.runtime.attachChildDispatcher((request) => {
+      dispatches.push(`${request.phase}:${request.taskType}:${request.agentId}`);
+      const authority = verifyGraphChildTaskAuthority(value.runtime.store, {
+        id: "task-one", type: request.taskType, createdAt: Date.now(), payload: {
+          ...request.payload, idempotencyKey: request.idempotencyKey, __graphParentRunId: request.parentRunId,
+          __graphParentNodeId: request.parentNodeId, __graphReceiptId: request.receiptId,
+          __graphRunId: request.runId, __graphPhase: request.phase,
+        },
+      });
+      expect(authority).toMatchObject({ allowed: true, graphRunId: run.runId, receiptId: request.receiptId });
+      return { taskId: "task-one", completion: Promise.resolve({ status: "succeeded", outcome: "digest_written", output: { path: "digest.json" }, evidence: { digestHash: "fixture" } }) };
+    });
+    const result = await value.runtime.childRuns.executeGovernedTask(
+      { lane: "git-monitor", taskType: "github-workflow-monitor", agentId: "operations-analyst-agent", payload: { reason: "fixture" } },
+      { definition, node, run, attemptId: "attempt-one", attemptNumber: 1, idempotencyKey: "digest-fixture", effectPayloadHash: "payload", signal: new AbortController().signal },
+    );
+    expect(result).toMatchObject({ outcome: "succeeded", output: { status: "verified", lane: "git-monitor", chainValid: true } });
+    expect(dispatches).toEqual(["child:github-workflow-monitor:operations-analyst-agent"]);
+    expect(value.runtime.store.childRunReceipts(run.runId)).toHaveLength(1);
+    expect(value.runtime.store.verifierReceipts(run.runId)).toHaveLength(1);
+    expect(value.runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
+    value.runtime.scheduler.close();
+    value.runtime.store.close();
+  });
+
+  it("completes the production graph with durable checkpoints and terminal evidence", async () => {
+    const value = await fixture();
+    const dispatches: string[] = [];
+    value.runtime.attachChildDispatcher((request) => {
+      dispatches.push(request.taskType);
+      return { taskId: "market-task", completion: Promise.resolve({ status: "succeeded", outcome: "research_completed", output: { claims: 2 }, evidence: { resultSetHash: "fixture" } }) };
+    });
+    const run = value.runtime.engine.start({
+      graphId: "governed-task-execution", version: "1.0.0", objective: "Run governed market research",
+      input: { lane: "market-research", taskType: "market-research", agentId: "market-research-agent", payload: { query: "fixture" }, shadowMode: false },
+      authority: { maximum: "local_persistent", grantedBy: "receipt-test" },
+    });
+    const completed = await value.runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.checkpoints.length).toBeGreaterThanOrEqual(6);
+    expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining(["child-run-receipt", "verifier-receipt", "child-run-audit-chain"]));
+    expect(dispatches).toEqual(["market-research"]);
+    expect(value.runtime.store.verifyEventChain(run.runId)).toBe(true);
+    expect(value.runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
+    value.runtime.scheduler.close();
+    value.runtime.store.close();
+  });
+
+  it("rejects lane, task and agent binding mismatches before dispatch", async () => {
+    const value = await fixture();
+    const definition = governedTaskExecutionGraph();
+    const run = value.runtime.engine.start({ graphId: definition.graphId, version: definition.version, objective: "Reject spoofed task", input: { lane: "git-monitor", taskType: "github-workflow-monitor", agentId: "operations-analyst-agent", payload: {} }, authority: { maximum: "local_persistent", grantedBy: "receipt-test" } });
+    const node = definition.nodes.find((item) => item.id === "dispatch_effect_adapter")!;
+    let calls = 0;
+    value.runtime.attachChildDispatcher(() => { calls += 1; throw new Error("unexpected dispatch"); });
+    const result = await value.runtime.childRuns.executeGovernedTask(
+      { lane: "git-monitor", taskType: "market-research", agentId: "market-research-agent", payload: {} },
+      { definition, node, run, attemptId: "attempt-one", attemptNumber: 1, idempotencyKey: "spoof", effectPayloadHash: "payload", signal: new AbortController().signal },
+    );
+    expect(result).toMatchObject({ outcome: "failed_terminal", output: { status: "binding_rejected" } });
+    expect(calls).toBe(0);
+    value.runtime.scheduler.close();
+    value.runtime.store.close();
+  });
+
   it("accepts queue approval reuse only for an active receipt bound to an exact granted production graph approval", async () => {
     const value = await fixture();
     const definition = governedCodingChangeGraph();

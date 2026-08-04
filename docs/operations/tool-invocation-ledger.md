@@ -1047,3 +1047,28 @@
   exact canary may run only after its next successful natural shadow proof;
   every additional provider write, service reload, schedule mutation or
   workflow transfer remains separately approval-gated.
+
+## 2026-08-04 — Graph-native closure implementation increment 1
+
+- Requested task: resume the already-approved migration with implementation,
+  not another inventory, and create a reusable graph owner for business-value,
+  market-research, Git-monitor and Campaign Factory task lanes.
+- Workflow lane: source implementation and zero-write validation; no installed
+  runtime or scheduler state changed in this increment.
+- Tools/source: coding-agent repo-map and direct bounded source inspection after
+  the migration-review adapter reported partial coverage; `apply_patch`,
+  TypeScript and focused Vitest suites.
+- Changed-state declaration: canonical source changed. Added
+  `governed-task-execution@1.0.0`, an allowlisted production adapter, exact
+  lane/task/agent contracts, graph-managed retry ownership, durable child and
+  deterministic verifier receipts, task-authority verification and graph-owned
+  ingress routing for supported internal task entry points.
+- Safety: no provider call, social write, service reload, scheduler mutation,
+  database migration, commit or push occurred during validation. Existing
+  Instagram ownership and `self-id-1100` remain untouched.
+- Evidence: graph child/receipt and production-adapter suites pass 26 focused
+  tests; TypeScript passes; the graph event and receipt hash chains are checked
+  in the new end-to-end fixture.
+- Next safe step: add the narrow Threads and Meta stage adapters, generic
+  scheduler trigger/cutover manifest and lane-specific historical zero-write
+  fixtures before installing the expanded portfolio.

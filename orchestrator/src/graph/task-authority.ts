@@ -29,7 +29,9 @@ export function verifyGraphChildTaskAuthority(store: GraphStore, task: Task, now
   }
   if (phase !== "child") return { allowed: false, reason: "graph_task_authority_not_child_phase" };
   const run = store.getRun(parentRunId);
-  if (!run || run.graphId !== "coding-change" || run.graphVersion !== "1.2.0") {
+  const codingGraph = run?.graphId === "coding-change" && run.graphVersion === "1.2.0";
+  const governedTaskGraph = run?.graphId === "governed-task-execution" && run.graphVersion === "1.0.0";
+  if (!run || (!codingGraph && !governedTaskGraph)) {
     return { allowed: false, reason: "graph_task_authority_unsupported_graph" };
   }
   const receipt = store.childRunReceipt(receiptId);
@@ -38,6 +40,18 @@ export function verifyGraphChildTaskAuthority(store: GraphStore, task: Task, now
   }
   if (receipt.parentRunId !== parentRunId || receipt.parentNodeId !== parentNodeId || receipt.childRunId !== childRunId || receipt.idempotencyKey !== idempotencyKey || receipt.childTaskType !== task.type) {
     return { allowed: false, reason: "graph_task_authority_receipt_mismatch" };
+  }
+  if (governedTaskGraph) {
+    const lane = text(run.input.lane);
+    const taskType = text(run.input.taskType);
+    const agentId = text(run.input.agentId);
+    if (!lane || taskType !== task.type || agentId !== receipt.childAgentId || text(receipt.input.graphLane) !== lane) {
+      return { allowed: false, reason: "graph_task_authority_payload_binding_mismatch" };
+    }
+    if (run.authority.maximum !== "local_persistent" && run.authority.maximum !== "local_reversible" && run.authority.maximum !== "external_reversible" && run.authority.maximum !== "external_public" && run.authority.maximum !== "irreversible") {
+      return { allowed: false, reason: "graph_task_authority_insufficient" };
+    }
+    return { allowed: true, reason: "graph_task_authority_granted", graphRunId: parentRunId, receiptId };
   }
   const approval = store.approvals(parentRunId).find((item) => item.nodeId === parentNodeId && item.status === "granted" && Date.parse(item.expiresAt) > now.getTime());
   if (!approval) return { allowed: false, reason: "graph_task_authority_approval_missing" };

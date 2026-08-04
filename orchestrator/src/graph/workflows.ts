@@ -182,7 +182,7 @@ export function researchToActionGraph(): GraphDefinition {
 export function representativeGraphDefinitions(): GraphDefinition[] {
   return [
     codingChangeGraph(), socialPublicationGraph(), researchToActionGraph(),
-    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(),
+    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(),
   ];
 }
 
@@ -191,6 +191,7 @@ export const PRODUCTION_GRAPH_DEFINITION_IDENTITIES = Object.freeze([
   "deterministic-social-publication@1.1.0",
   "deterministic-social-publication@2.0.0",
   "research-to-action@1.1.0",
+  "governed-task-execution@1.0.0",
 ] as const);
 
 function bindNode(definition: GraphDefinition, nodeId: string, handler: string, options: { localReversible?: boolean; mutation?: string } = {}): void {
@@ -345,5 +346,56 @@ export function boundResearchToActionGraph(): GraphDefinition {
   definition.description = "Production evidence-adapter-bound research graph; governed source fetching remains the existing market-research task lane.";
   definition.migrationCompatibility.compatibleFromVersions = ["1.0.0"];
   for (const id of ["extract", "quality_check", "gap_analysis"]) bindNode(definition, id, "production.research-evidence.v1", { mutation: "research" });
+  return definition;
+}
+
+export function governedTaskExecutionGraph(): GraphDefinition {
+  const stages = ["ingress", "validate_payload_contract", "reconcile_prior_attempt", "dispatch_effect_adapter", "verify_receipts", "package_terminal_receipt", "complete"];
+  const nodes = stages.map((id) => node({
+    id,
+    type: id === "complete" ? "terminal" : id === "dispatch_effect_adapter" ? "tool" : ["verify_receipts", "package_terminal_receipt"].includes(id) ? "verification" : "checkpoint",
+    handler: id === "dispatch_effect_adapter" ? "production.governed-task-dispatch.v1" : id === "verify_receipts" ? "graph.evidence-gate" : id === "complete" ? "graph.terminal" : "graph.pass",
+    purpose: `Graph-owned governed task stage: ${id.replaceAll("_", " ")}`,
+    mutations: id === "dispatch_effect_adapter" ? ["governedTask"] : [],
+    evidence: id === "dispatch_effect_adapter" ? ["child-run-receipt", "verifier-receipt", "child-run-audit-chain"] : [],
+    authority: id === "dispatch_effect_adapter" ? "local_persistent" : "read_only",
+    sideEffect: id === "dispatch_effect_adapter" ? "local_persistent" : "read_only",
+    outcomes: id === "complete" ? ["succeeded"] : ["succeeded", "failed_repairable", "failed_terminal", "blocked"],
+    retry: id === "dispatch_effect_adapter",
+    maxAttempts: id === "dispatch_effect_adapter" ? 3 : 1,
+  }));
+  const dispatch = nodes.find((item) => item.id === "dispatch_effect_adapter")!;
+  dispatch.requiredCapabilities = [dispatch.handler];
+  dispatch.idempotencyStrategy = "run_node_payload";
+  dispatch.timeoutMs = 30 * 60_000;
+  const edges = stages.slice(0, -1).map((id, index) => edge(id, stages[index + 1]!));
+  edges.push(edge("dispatch_effect_adapter", "reconcile_prior_attempt", "failed_repairable", { loopId: "governed-task-retry" }));
+  for (const candidate of nodes.filter((item) => item.type !== "terminal")) edges.push(edge(candidate.id, "complete", "failed_terminal", { priority: -100 }));
+  const definition = base({
+    graphId: "governed-task-execution",
+    description: "Graph-owned ingress, durable state, reconciliation, bounded retries, narrow effect dispatch and hash-bound terminal receipts for governed task lanes.",
+    nodes,
+    edges,
+    entry: "ingress",
+    terminal: "complete",
+    authority: "local_persistent",
+    evidence: [
+      { assertionId: "governed-task-effect-receipted", claim: "The narrow effect adapter completed with a durable child receipt", method: "child-run-receipt", requiredEvidenceKinds: ["child-run-receipt"] },
+      { assertionId: "governed-task-verifier-closed", claim: "A deterministic verifier receipt closed against the parent event chain", method: "verifier-receipt", requiredEvidenceKinds: ["verifier-receipt", "child-run-audit-chain"] },
+    ],
+    replaces: ["task-queue-direct-owner", "market-research-graph-wrapper", "business-value-cycle-direct-owner", "github-workflow-monitor-direct-owner", "campaign-content-factory-graph-wrapper"],
+  });
+  definition.inputSchema = {
+    type: "object",
+    required: ["lane", "taskType", "agentId", "payload"],
+    properties: {
+      lane: { enum: ["business-value", "market-research", "git-monitor", "campaign-factory"] },
+      taskType: { type: "string" }, agentId: { type: "string" }, payload: { type: "object" }, shadowMode: { type: "boolean" },
+    },
+    additionalProperties: true,
+  };
+  definition.stateSchema = { type: "object", properties: { governedTask: { type: "object" } }, additionalProperties: true };
+  definition.retryPolicy = { defaultMaxAttempts: 3, retryableFailures: ["network_transient", "provider_rate_limited", "timeout", "state_conflict", "verification_failed"] };
+  definition.concurrency = { maxRuns: 4, resourceKeys: ["governed-task:{runId}"], leaseMs: 30 * 60_000, priority: 80 };
   return definition;
 }
