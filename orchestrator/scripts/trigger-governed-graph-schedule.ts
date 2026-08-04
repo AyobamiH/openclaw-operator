@@ -2,14 +2,23 @@ import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readApiCredentialReference } from "../src/auth/credential-reference.js";
-import { GraphSchedulerStore, resolveGraphSchedulerDatabasePath } from "../src/graph/scheduler-store.js";
+import { GraphSchedulerStore } from "../src/graph/scheduler-store.js";
 import { governedSchedulerPortfolioEntry } from "../src/graph/scheduler-portfolio.js";
 
 const BASE_URL = "http://127.0.0.1:3312";
 const CREDENTIAL_FILE = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/credentials/orchestrator.env";
+export const PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/database/graph-scheduler.sqlite";
 const EVIDENCE_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers";
 
 type HttpRequest = (route: string, init?: RequestInit) => Promise<any>;
+
+export function resolveGovernedSchedulerDatabasePath(env: NodeJS.ProcessEnv = process.env): string {
+  const configured = env.OPENCLAW_GRAPH_SCHEDULER_DATABASE_PATH?.trim();
+  if (configured) return configured;
+  const stateRoot = env.OPENCLAW_OPERATOR_STATE_DIR?.trim();
+  if (stateRoot) return join(stateRoot, "database", "graph-scheduler.sqlite");
+  return PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH;
+}
 
 function fieldMatches(field: string, value: number): boolean {
   if (field === "*") return true;
@@ -56,7 +65,7 @@ async function defaultRequest(route: string, init?: RequestInit): Promise<any> {
 export async function executeGovernedSchedule(args: { migrationId: string; now?: Date; schedulerPath?: string; request?: HttpRequest }): Promise<Record<string, unknown>> {
   const portfolio = governedSchedulerPortfolioEntry(args.migrationId);
   const request = args.request ?? defaultRequest;
-  const store = new GraphSchedulerStore(args.schedulerPath ?? resolveGraphSchedulerDatabasePath());
+  const store = new GraphSchedulerStore(args.schedulerPath ?? resolveGovernedSchedulerDatabasePath());
   let triggerId: string | undefined;
   let runId: string | undefined;
   try {
