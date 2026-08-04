@@ -79,6 +79,38 @@ describe("graph scheduler migration registry", () => {
     reopened.close();
   });
 
+  it("executes every governed portfolio binding with injected natural clocks and zero effects", async () => {
+    const clocks: Record<string, string> = {
+      "threads-readiness-v1": "2026-08-04T03:30:00.000Z",
+      "threads-early-text-v1": "2026-08-04T04:00:00.000Z",
+      "threads-daily-image-v1": "2026-08-04T10:30:00.000Z",
+      "meta-reply-monitor-v1": "2026-08-04T04:15:00.000Z",
+      "campaign-content-factory-shadow-v1": "2026-08-04T04:00:00.000Z",
+      "continuous-marketing-digest-v1": "2026-08-04T07:30:00.000Z",
+    };
+    for (const item of GOVERNED_SCHEDULER_PORTFOLIO.values()) {
+      const value = await fixture();
+      const legacyJob = { id: item.declaration.scheduleId, declarationKey: item.declaration.declarationKey, enabled: true, schedule: { kind: "cron", expr: item.declaration.cronExpression, tz: item.declaration.timezone }, payload: { kind: "command", argv: ["node", "/workspace/legacy.mjs"] } };
+      const graphJob = buildGovernedGraphJob(legacyJob, item.declaration.migrationId, "/workspace/orchestrator/scripts/trigger-governed-graph-schedule.ts", "node");
+      value.store.prepareBoundedMigration({ legacyJob, graphJob, declaration: item.declaration, actor: "test" });
+      value.store.activateMigration(item.declaration.migrationId, "test");
+      value.store.close();
+      const runId = `run-${item.declaration.migrationId}`;
+      let runInput: any;
+      const result = await executeGovernedSchedule({ migrationId: item.declaration.migrationId, now: new Date(clocks[item.declaration.migrationId]!), schedulerPath: value.path, request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId, status: "completed" } }; }
+        if (route === `/api/graphs/runs/${runId}`) return { run: { runId, status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      } });
+      expect(runInput).toMatchObject({ graphId: item.declaration.graphId, version: item.declaration.graphVersion });
+      expect(result).toMatchObject({ outcome: "completed", migrationId: item.declaration.migrationId, providerWrites: 0, eventChainValid: true, childReceiptChainValid: true });
+      const reopened = new GraphSchedulerStore(value.path);
+      expect(reopened.triggers(item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: runId }]);
+      reopened.close();
+    }
+  });
+
   it("migrates empty with owner-only persistence and creates no authority", async () => {
     const value = await fixture();
     expect(value.store.migrations()).toEqual([]);

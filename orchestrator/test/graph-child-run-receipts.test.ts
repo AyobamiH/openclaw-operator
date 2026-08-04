@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
 import { verifyGraphChildTaskAuthority } from "../src/graph/task-authority.js";
+import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
 import { digestDeliveryGraph, governedCodingChangeGraph, governedTaskExecutionGraph } from "../src/graph/workflows.js";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
@@ -100,7 +101,7 @@ describe("graph child-run and verifier receipts", () => {
 
   it("binds one digest effect to the dedicated graph and ToolGate-routed task receipt", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-digest-receipts-"));
-    const runtime = createGraphRuntime(join(root, "graph.sqlite"), { zeroWriteOnly: false, runIdPrefix: "digest" });
+    const runtime = createGraphRuntime(join(root, "graph.sqlite"), { zeroWriteOnly: true, runIdPrefix: "digest" });
     cleanups.push(() => rm(root, { recursive: true, force: true }));
     const taskTypes: string[] = [];
     runtime.attachChildDispatcher((request) => {
@@ -121,10 +122,31 @@ describe("graph child-run and verifier receipts", () => {
       input: { lane: "digest", taskType: "send-digest", agentId: "operations-analyst-agent", payload: { reason: "fixture" }, shadowMode: false },
       authority: { maximum: "external_reversible", grantedBy: "receipt-test" },
     });
+    const waiting = await runtime.engine.runUntilSettled(run.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    const approval = runtime.store.approvals(run.runId)[0]!;
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    runtime.engine.decideApproval(
+      run.runId,
+      approval.approvalId,
+      "granted",
+      "receipt-test",
+      expiresAt,
+    );
+    const capability = issueOneRunLiveCapability({
+      store: runtime.store,
+      runId: run.runId,
+      approvalId: approval.approvalId,
+      issuedBy: "receipt-test",
+      expiresAt,
+      globalZeroWrite: true,
+    });
+    runtime.engine.resume(run.runId, "receipt-test");
     const completed = await runtime.engine.runUntilSettled(run.runId);
     expect(completed.status).toBe("completed");
     expect(taskTypes).toEqual(["send-digest"]);
     expect(runtime.store.externalEffects(run.runId)).toHaveLength(1);
+    expect(runtime.store.oneRunLiveCapability(capability.capabilityId)?.status).toBe("consumed");
     expect(runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
     runtime.scheduler.close();
     runtime.store.close();
