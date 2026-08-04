@@ -17,6 +17,7 @@ import {
 } from "../src/graph/live-publication.js";
 import { sha256 } from "../src/graph/reducer.js";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
+import { IssueOneRunLiveCapabilitySchema } from "../src/graph/schema.js";
 import type { GraphRunState, JsonValue, NodeExecutionContext, OneRunLiveCapability } from "../src/graph/types.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -211,6 +212,17 @@ function testExecutor(value: GraphRuntime, mutateExpected?: (expected: ReturnTyp
 }
 
 describe("payload-bound one-run live capability", () => {
+  it("accepts approval identifiers issued by graph approval gates", () => {
+    expect(IssueOneRunLiveCapabilitySchema.parse({
+      approvalId: `gap_${"a".repeat(32)}`,
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }).approvalId).toBe(`gap_${"a".repeat(32)}`);
+    expect(IssueOneRunLiveCapabilitySchema.parse({
+      approvalId: "gap_09ce3e7d-2841-444b-aeed-b0dc93c07641",
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+    }).approvalId).toBe("gap_09ce3e7d-2841-444b-aeed-b0dc93c07641");
+  });
+
   it("keeps the global runtime zero-write and blocks a run without a capability", async () => {
     const value = await runtime();
     const fixture = prepareFixture(value, { issue: false });

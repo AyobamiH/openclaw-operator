@@ -320,10 +320,10 @@ export class GraphStore {
   }
 
   activeRunCount(graphId?: string, graphVersion?: string): number {
-    const terminal = ["completed", "failed", "cancelled"];
+    const active = ["created", "running", "compensating"];
     const row = graphId && graphVersion
-      ? this.database.prepare("SELECT COUNT(*) AS count FROM graph_runs WHERE status NOT IN (?, ?, ?) AND graph_id=? AND graph_version=?").get(...terminal, graphId, graphVersion)
-      : this.database.prepare("SELECT COUNT(*) AS count FROM graph_runs WHERE status NOT IN (?, ?, ?)").get(...terminal) as { count: number };
+      ? this.database.prepare("SELECT COUNT(*) AS count FROM graph_runs WHERE status IN (?, ?, ?) AND graph_id=? AND graph_version=?").get(...active, graphId, graphVersion)
+      : this.database.prepare("SELECT COUNT(*) AS count FROM graph_runs WHERE status IN (?, ?, ?)").get(...active) as { count: number };
     return Number((row as { count: number }).count);
   }
 
@@ -436,6 +436,29 @@ export class GraphStore {
     return (this.database.prepare("SELECT attempt_id, run_id, node_id, lease_expires_at FROM graph_node_attempts WHERE status='running'").all() as Array<Record<string, unknown>>).map((row) => ({
       attemptId: String(row.attempt_id), runId: String(row.run_id), nodeId: String(row.node_id), leaseExpiresAt: String(row.lease_expires_at),
     }));
+  }
+
+  expireRunningAttempts(runId: string, now = new Date()): string[] {
+    const expired = this.activeAttempts()
+      .filter((attempt) => attempt.runId === runId && Date.parse(attempt.leaseExpiresAt) <= now.getTime())
+      .map((attempt) => attempt.attemptId);
+    if (expired.length === 0) return [];
+    this.transaction(() => {
+      for (const attemptId of expired) {
+        this.database.prepare(`
+          UPDATE graph_node_attempts
+          SET status='timed_out', outcome='timed_out',
+              error_json=?, completed_at=?
+          WHERE attempt_id=? AND status='running'
+        `).run(canonicalJson({ category: "timeout", message: "Recovered expired attempt lease" }), now.toISOString(), attemptId);
+      }
+    });
+    return expired;
+  }
+
+  releaseExpiredLeases(now = new Date()): number {
+    const result = this.database.prepare("DELETE FROM graph_resource_leases WHERE expires_at<=?").run(now.toISOString());
+    return Number(result.changes);
   }
 
   requestApproval(approval: GraphApproval): GraphApproval {

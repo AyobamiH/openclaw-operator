@@ -22,6 +22,7 @@ const JsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
 const identifier = z.string().regex(/^[a-z][a-z0-9._-]{1,119}$/);
 const authority = z.enum(AUTHORITY_CLASSES);
 const outcome = z.enum(NODE_OUTCOMES);
+const graphApprovalId = z.string().regex(/^gap_(?:[a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/);
 
 export const GraphDefinitionSchema = z.object({
   graphId: identifier,
@@ -142,7 +143,7 @@ export const GraphApprovalDecisionSchema = z.object({
 });
 
 export const IssueOneRunLiveCapabilitySchema = z.object({
-  approvalId: z.string().regex(/^gap_[a-f0-9]{32}$/),
+  approvalId: graphApprovalId,
   notBefore: z.string().datetime().optional(),
   expiresAt: z.string().datetime(),
 }).strict();

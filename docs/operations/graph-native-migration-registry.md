@@ -256,3 +256,59 @@ Business value, scoped task queue, market research and Git monitor remain
 graph-owned ingress lanes under `governed-task-execution@1.0.0`. Disabled or
 completed historical crons are `obsolete`; there is no remaining active legacy,
 graph-wrapped or unknown owner in the canonical scope.
+
+## 2026-08-04 Digest concurrency-exhaustion closure
+
+The 08:30 Europe/London digest slot
+`telegram:2026-08-04:08:30:25a7ffd8-d777-4dc5-a49a-76a229a5113a` originally
+failed as
+`graph_scheduler_http_400:graph_definition_concurrency_exhausted:digest-delivery@1.0.0`.
+The concurrency holder was
+`grzwcanary_fa6f11f3-1e0c-4183-a3d0-99e90cd45d7c`, a legacy 06:00
+`send-digest:2026-08-04` graph-owned task stranded at `deliver_notification`
+with approval `gap_4bc711db-bb45-45e3-b772-674f937b1d8e` and no provider
+effect.
+
+The root cause was duplicate active ingress: the governed graph scheduler owned
+`continuous-marketing-digest-v1`, but the in-process legacy 06:00 cron still
+created `send-digest` graph runs. Graph definition concurrency then counted the
+non-terminal approval wait against `digest-delivery@1.0.0` capacity.
+
+The repair makes scheduler ownership singular and fail-closed:
+
+- `continuous-marketing-digest-v1` is the only active digest owner for
+  schedule `25a7ffd8-d777-4dc5-a49a-76a229a5113a`.
+- legacy `send-digest` cron startup and graph-owned task admission now
+  policy-skip when that migration is `graph_owned`.
+- graph definition concurrency counts only executing capacity
+  (`created`, `running`, `compensating`) and not approval waits.
+- recovery releases expired resource leases, expires abandoned attempts, fails
+  stale effect-free non-terminal runs after wall-clock timeout, and fails
+  effect-free runs whose granted mutation approval expires before one-run live
+  capability issue.
+- failed-safe scheduler contention is recorded durably as `deferred` instead
+  of surfacing as an unclassified command crash.
+- failed-safe replay is allowed only when observed effects are zero and no live
+  capability was consumed; already-granted approval recovery can issue the
+  missing one-run capability idempotently.
+
+Runtime recovery terminalised the stale holder as
+`recovery_wall_clock_timeout` and a partial replay run
+`grzwcanary_a0a3c620-d9f6-4860-9ea6-450b39eaf63d` as
+`recovery_approval_expired_before_capability_issue`, both with zero provider
+effects. The affected slot then completed through governed graph run
+`grzwcanary_125adde3-09e2-4f38-bb7b-a473abb01016`, approval
+`gap_7b1b3a49-696d-4be3-bd87-874d47a2ab70`, capability
+`glc_aa5e0aa7278d74ff579f53391177dfb3`, child receipt
+`gcr_e7c32de5-cce8-4375-b988-5b9947584bb8`, receipt hash
+`061a2be14e061a7c3e62695569e3a42974671c77e3c8cfdd1ec3ffcd7ee09962`, and one
+`effect_verified` digest operation. A second injected trigger for the same slot
+returned `duplicate_suppressed` with zero provider writes.
+
+Post-restart `/api/graphs/health` reported `active=0`, `waiting=0`,
+`blocked=0`, `activeLiveCapabilities=0`, and Redis-backed persistence
+coordination was healthy and reachable. SQLite showed zero active
+`digest-delivery@1.0.0` runs and zero active digest resource leases. The next
+natural digest slot resolves to
+`telegram:2026-08-05:08:30:25a7ffd8-d777-4dc5-a49a-76a229a5113a`; no future
+trigger was executed early.

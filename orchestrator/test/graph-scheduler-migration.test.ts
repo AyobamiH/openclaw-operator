@@ -116,6 +116,32 @@ describe("graph scheduler migration registry", () => {
     reopened.close();
   });
 
+  it("records definition concurrency contention as a deferred zero-write trigger", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") throw new Error("graph_scheduler_http_400:graph_definition_concurrency_exhausted:digest-delivery@1.0.0");
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({ outcome: "deferred", reason: "definition_concurrency_exhausted", providerWrites: 0, eventChainValid: true });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toMatchObject([{
+      status: "failed_safe",
+      graphRunId: undefined,
+      failureReason: "deferred:definition_concurrency_exhausted:digest-delivery@1.0.0",
+    }]);
+    reopened.close();
+  });
+
   it("recovers one failed-safe zero-write Factory slot as a new immutable graph attempt", async () => {
     const binding = governedJobs("campaign-content-factory-shadow-v1");
     const value = await fixture();
@@ -160,6 +186,116 @@ describe("graph scheduler migration registry", () => {
     expect(reopened.triggers(binding.item.declaration.migrationId)).toHaveLength(1);
     expect(reopened.eventChainValid(binding.item.declaration.migrationId)).toBe(true);
     reopened.close();
+  });
+
+  it("recovers one failed-safe zero-write digest slot even though the portfolio allows one write", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `telegram:2026-08-04:08:30:${binding.item.declaration.scheduleId}`, "2026-08-04T07:30:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-digest-stale" });
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-digest-stale", failureReason: "graph_definition_concurrency_exhausted" });
+    value.store.close();
+
+    let recoveryInput: any;
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-digest-stale") return { run: { runId: "run-digest-stale", status: "failed" }, liveCapability: null, externalEffects: [] };
+        if (route === "/api/graphs/runs" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-digest-recovered", status: "completed" } }; }
+        if (route === "/api/graphs/runs/run-digest-recovered") return { run: { runId: "run-digest-recovered", status: "completed" }, approvals: [], liveCapability: { status: "consumed" }, externalEffects: [{ state: "effect_verified", providerOperationId: "telegram-message-one" }], childRunReceipts: [{ receiptId: "receipt-digest", status: "succeeded", outcome: "completed", receiptHash: "d".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+
+    expect(recoveryInput).toMatchObject({
+      graphId: "digest-delivery",
+      version: "1.0.0",
+      correlationId: `${reserved.triggerId}:attempt:2`,
+    });
+    expect(result).toMatchObject({ outcome: "completed", providerWrites: 1 });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.trigger(reserved.triggerId)).toMatchObject({ status: "completed", graphRunId: "run-digest-recovered", providerObjectId: "telegram-message-one" });
+    reopened.close();
+  });
+
+  it("resumes a failed-safe digest slot after approval was granted but capability issuance failed", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `telegram:2026-08-04:08:30:${binding.item.declaration.scheduleId}`, "2026-08-04T07:30:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-digest-partial", approvalId: "gap_09ce3e7d-2841-444b-aeed-b0dc93c07641" });
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-digest-partial", approvalId: "gap_09ce3e7d-2841-444b-aeed-b0dc93c07641", failureReason: "graph_scheduler_http_400:validation_error" });
+    value.store.close();
+
+    let capabilityRequest: any;
+    let executeCalls = 0;
+    let liveCapabilityIssued = false;
+    const approval = {
+      approvalId: "gap_09ce3e7d-2841-444b-aeed-b0dc93c07641",
+      action: "production.digest-delivery.v1",
+      target: "digest-delivery:deliver_notification",
+      payloadHash: "a".repeat(64),
+      status: "granted",
+      expiresAt: new Date(Date.now() + 20 * 60_000).toISOString(),
+    };
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-digest-partial") {
+          if (executeCalls > 0) return { run: { runId: "run-digest-partial", status: "completed" }, approvals: [approval], liveCapability: { capabilityId: "glc_digest", status: "consumed" }, externalEffects: [{ state: "effect_verified", providerOperationId: "telegram-message-one" }], childRunReceipts: [{ receiptId: "receipt-digest", status: "succeeded", outcome: "completed", receiptHash: "d".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+          return { run: { runId: "run-digest-partial", status: "waiting_for_approval" }, approvals: [approval], liveCapability: liveCapabilityIssued ? { capabilityId: "glc_digest", status: "prepared" } : null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
+        }
+        if (route === "/api/graphs/runs/run-digest-partial/live-capabilities" && init?.method === "POST") { capabilityRequest = JSON.parse(String(init.body)); liveCapabilityIssued = true; return { capability: { capabilityId: "glc_digest", status: "prepared" }, dispatches: [] }; }
+        if (route === "/api/graphs/runs/run-digest-partial/resume" && init?.method === "POST") return { run: { runId: "run-digest-partial", status: "running" } };
+        if (route === "/api/graphs/runs/run-digest-partial/execute" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-digest-partial", status: "completed" } }; }
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+
+    expect(capabilityRequest).toMatchObject({ approvalId: approval.approvalId });
+    expect(executeCalls).toBe(1);
+    expect(result).toMatchObject({ outcome: "completed", providerWrites: 1 });
+  });
+
+  it("issues a missing capability for a granted digest run recovered as running after restart", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `telegram:2026-08-04:08:30:${binding.item.declaration.scheduleId}`, "2026-08-04T07:30:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-digest-restart", approvalId: "gap_09ce3e7d-2841-444b-aeed-b0dc93c07641", failureReason: "restart_before_capability_issue" });
+    value.store.close();
+
+    let capabilityIssued = false;
+    let executeCalls = 0;
+    const approval = { approvalId: "gap_09ce3e7d-2841-444b-aeed-b0dc93c07641", status: "granted", expiresAt: new Date(Date.now() + 20 * 60_000).toISOString() };
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-digest-restart") {
+          if (executeCalls > 0) return { run: { runId: "run-digest-restart", status: "completed" }, approvals: [approval], liveCapability: { capabilityId: "glc_digest", status: "consumed" }, externalEffects: [{ state: "effect_verified", providerOperationId: "telegram-message-one" }], childRunReceipts: [{ receiptId: "receipt-digest", status: "succeeded", outcome: "completed", receiptHash: "d".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+          return { run: { runId: "run-digest-restart", status: "running" }, approvals: [approval], liveCapability: capabilityIssued ? { capabilityId: "glc_digest", status: "prepared" } : null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
+        }
+        if (route === "/api/graphs/runs/run-digest-restart/live-capabilities" && init?.method === "POST") { capabilityIssued = true; return { capability: { capabilityId: "glc_digest", status: "prepared" }, dispatches: [] }; }
+        if (route === "/api/graphs/runs/run-digest-restart/execute" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-digest-restart", status: "completed" } }; }
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+
+    expect(capabilityIssued).toBe(true);
+    expect(result).toMatchObject({ outcome: "completed", providerWrites: 1 });
   });
 
   it("keeps failed-safe recovery closed when any external effect exists", async () => {

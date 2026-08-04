@@ -634,15 +634,52 @@ export class GraphExecutor {
     return this.store.saveRun(resumed, current.revision, [{ type: "graph_resumed", actor, payload: { reason: "checkpoint_retry", checkpointId } }]);
   }
 
-  recover(now = new Date(), actor = "recovery-manager"): { resumed: string[]; blocked: string[]; unchanged: string[] } {
+  recover(now = new Date(), actor = "recovery-manager"): { resumed: string[]; blocked: string[]; failed: string[]; releasedLeases: number; expiredAttempts: string[]; unchanged: string[] } {
     const resumed: string[] = []; const blocked: string[] = []; const unchanged: string[] = [];
+    const failed: string[] = [];
+    const expiredAttempts: string[] = [];
+    const releasedLeases = this.store.releaseExpiredLeases(now);
     for (const run of this.store.listRuns({ limit: 250 }).filter((item) => item.status === "running" || item.status === "waiting_for_approval" || item.status === "waiting")) {
       const effects = this.store.externalEffects(run.runId);
+      const definition = this.registry.get(run.graphId, run.graphVersion);
+      const wallClockExpired = now.getTime() - Date.parse(run.createdAt) > definition.timeoutPolicy.wallClockMs;
+      const expiredGrantedApprovalWithoutCapability = !this.store.oneRunLiveCapabilityForRun(run.runId)
+        && this.store.approvals(run.runId).some((approval) => approval.status === "granted" && Date.parse(approval.expiresAt) <= now.getTime());
       if (effects.some((effect) => ["request_sent", "provider_accepted", "ambiguous"].includes(effect.state))) {
         this.store.saveRun({ ...run, status: "blocked", lastError: failure("idempotency_conflict", "Recovery requires external effect reconciliation"), updatedAt: now.toISOString() }, run.revision, [{ type: "graph_blocked", actor, payload: { reason: "external_effect_reconciliation_required" } }]);
         blocked.push(run.runId);
         graphRecoveries.labels("blocked_for_reconciliation").inc();
+      } else if (expiredGrantedApprovalWithoutCapability) {
+        const timedOutAttempts = this.store.expireRunningAttempts(run.runId, now);
+        expiredAttempts.push(...timedOutAttempts);
+        this.store.saveRun({
+          ...run,
+          status: "failed",
+          currentNodeId: null,
+          terminalOutcome: "recovery_approval_expired_before_capability_issue",
+          lastError: failure("approval_required", "Graph recovery terminalised an effect-free run whose granted mutation approval expired before live capability issue"),
+          updatedAt: now.toISOString(),
+          checkpoints: [...run.checkpoints, checkpoint(run, "recovery_approval_expired", run.currentNodeId)],
+        }, run.revision, [{ type: "graph_failed", actor, payload: { terminalOutcome: "recovery_approval_expired_before_capability_issue", expiredAttempts: timedOutAttempts } }]);
+        failed.push(run.runId);
+        graphRecoveries.labels("stale_run_failed").inc();
+      } else if (wallClockExpired) {
+        const timedOutAttempts = this.store.expireRunningAttempts(run.runId, now);
+        expiredAttempts.push(...timedOutAttempts);
+        this.store.saveRun({
+          ...run,
+          status: "failed",
+          currentNodeId: null,
+          terminalOutcome: "recovery_wall_clock_timeout",
+          lastError: failure("timeout", "Graph recovery terminalised a stale non-terminal run after its wall-clock budget expired"),
+          updatedAt: now.toISOString(),
+          checkpoints: [...run.checkpoints, checkpoint(run, "recovery_timeout", run.currentNodeId)],
+        }, run.revision, [{ type: "graph_failed", actor, payload: { terminalOutcome: "recovery_wall_clock_timeout", expiredAttempts: timedOutAttempts } }]);
+        failed.push(run.runId);
+        graphRecoveries.labels("stale_run_failed").inc();
       } else if (run.status === "running" && this.store.activeAttempts().some((attempt) => attempt.runId === run.runId && Date.parse(attempt.leaseExpiresAt) <= now.getTime())) {
+        const timedOutAttempts = this.store.expireRunningAttempts(run.runId, now);
+        expiredAttempts.push(...timedOutAttempts);
         this.store.saveRun({ ...run, status: "running", updatedAt: now.toISOString() }, run.revision, [{ type: "graph_resumed", actor, payload: { reason: "expired_attempt_lease_recovered" } }]);
         resumed.push(run.runId);
         graphRecoveries.labels("expired_lease_resumed").inc();
@@ -652,7 +689,7 @@ export class GraphExecutor {
         graphRecoveries.labels("approval_resumed").inc();
       } else unchanged.push(run.runId);
     }
-    return { resumed, blocked, unchanged };
+    return { resumed, blocked, failed, releasedLeases, expiredAttempts, unchanged };
   }
 
   decideApproval(runId: string, approvalId: string, decision: "granted" | "denied", approver: string, expiresAt: string, note?: string): GraphApproval {

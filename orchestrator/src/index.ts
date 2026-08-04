@@ -10884,9 +10884,17 @@ async function bootstrap() {
       queue.enqueue("nightly-batch", { reason: "scheduled" });
     });
 
-    // 6:00 AM UTC: Send morning digest notification
+    const digestSchedulerOwnsDelivery = () =>
+      graphRuntime?.scheduler.migration("continuous-marketing-digest-v1")?.status === "graph_owned";
+
+    // Legacy 6:00 AM UTC digest owner. Once the governed scheduler owns digest
+    // delivery, this in-process cron remains only as an auditable policy skip.
     cron.schedule(config.morningNotificationSchedule || "0 6 * * *", () => {
       console.log("[cron] send-digest triggered");
+      if (digestSchedulerOwnsDelivery()) {
+        console.log("[cron] send-digest policy-skipped: continuous-marketing-digest-v1 is authoritative");
+        return;
+      }
       if (graphRuntime) {
         startGraphOwnedTask("send-digest", {
           reason: "scheduled",
@@ -10995,7 +11003,7 @@ async function bootstrap() {
 
     console.log("[orchestrator] 🔔 Alerts configured and monitoring started");
     console.log(
-      `[orchestrator] Scheduled 5 cron jobs: nightly-batch (11pm), send-digest (6am), heartbeat (${HEARTBEAT_CRON_SCHEDULE}), business-value (${businessValueSchedule}), business-day-pulse (${businessDayPulseSchedule} ${businessDayPulseTimeZone})`,
+      `[orchestrator] Scheduled 5 cron jobs: nightly-batch (11pm), legacy send-digest policy-skip guard (6am), heartbeat (${HEARTBEAT_CRON_SCHEDULE}), business-value (${businessValueSchedule}), business-day-pulse (${businessDayPulseSchedule} ${businessDayPulseTimeZone})`,
     );
 
     // ============================================================
@@ -11247,10 +11255,30 @@ async function bootstrap() {
   const isGraphOwnedTaskType = (type: string): type is GraphOwnedTaskType => Boolean(graphRuntime) && type in graphOwnedTaskBindings;
   const startGraphOwnedTask = (type: GraphOwnedTaskType, payload: Record<string, unknown>, source: string) => {
     if (!graphRuntime) throw new Error(`graph_runtime_required_for_owned_task:${type}`);
-    const binding = graphOwnedTaskBindings[type];
     const ingressId = typeof payload.idempotencyKey === "string" && payload.idempotencyKey.trim()
       ? payload.idempotencyKey.trim()
       : `graph-ingress:${type}:${randomUUID()}`;
+    if (type === "send-digest" && graphRuntime.scheduler.migration("continuous-marketing-digest-v1")?.status === "graph_owned") {
+      const task: Task = {
+        id: `policy-skip:${ingressId}`,
+        type,
+        payload,
+        createdAt: Date.now(),
+        idempotencyKey: ingressId,
+        attempt: 1,
+        maxRetries: 0,
+        admission: {
+          admitted: false,
+          kind: "duplicate-suppressed",
+          reason: "continuous-marketing-digest-v1 is the authoritative digest scheduler owner",
+          runId: "continuous-marketing-digest-v1",
+          attemptId: `policy-skip:${ingressId}`,
+          sourceTaskId: null,
+        },
+      };
+      return { task, runId: null, completion: Promise.resolve(null), reused: true };
+    }
+    const binding = graphOwnedTaskBindings[type];
     const existing = graphRuntime.store.listRuns({ graphId: binding.graphId, limit: 250 }).find((run) => run.input.ingressId === ingressId);
     const created = existing ?? graphRuntime.engine.start({
       graphId: binding.graphId,

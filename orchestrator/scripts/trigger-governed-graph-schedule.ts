@@ -31,6 +31,11 @@ function localParts(date: Date, timezone: string): { date: string; hour: number;
   return { date: `${parts.year}-${parts.month}-${parts.day}`, hour: Number(parts.hour), minute: Number(parts.minute) };
 }
 
+function isDefinitionConcurrencyExhausted(error: unknown, graph: string): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes(`graph_definition_concurrency_exhausted:${graph}`);
+}
+
 export function resolveNaturalSlot(args: { now: Date; cronExpression: string; timezone: string; scheduleId: string; provider: string; latenessToleranceMinutes: number }): { slotId: string; scheduledFor: string } {
   const [minuteField, hourField, dayField, monthField, weekdayField] = args.cronExpression.trim().split(/\s+/);
   if (!minuteField || !hourField || dayField !== "*" || monthField !== "*" || weekdayField !== "*") throw new Error("graph_scheduler_cron_expression_not_supported");
@@ -84,10 +89,28 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
     store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, runId ? { graphRunId: runId, failureReason: undefined } : {});
     let detail: any;
     if (!runId) {
-      const created = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
-        graphId: migration.graphId, version: migration.graphVersion, objective: `Graph-owned scheduled workflow ${slot.slotId}`,
-        correlationId: triggerId, input: resolveInputTemplate(portfolio.input, slot), authority: portfolio.authority,
-      }) });
+      let created: any;
+      try {
+        created = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
+          graphId: migration.graphId, version: migration.graphVersion, objective: `Graph-owned scheduled workflow ${slot.slotId}`,
+          correlationId: triggerId, input: resolveInputTemplate(portfolio.input, slot), authority: portfolio.authority,
+        }) });
+      } catch (error) {
+        if (!isDefinitionConcurrencyExhausted(error, `${migration.graphId}@${migration.graphVersion}`)) throw error;
+        const deferred = store.updateTrigger(triggerId, "failed_safe", `graph-scheduler:${args.migrationId}`, {
+          failureReason: `deferred:definition_concurrency_exhausted:${migration.graphId}@${migration.graphVersion}`,
+        });
+        return {
+          outcome: "deferred",
+          reason: "definition_concurrency_exhausted",
+          migrationId: args.migrationId,
+          graph: `${migration.graphId}@${migration.graphVersion}`,
+          trigger: deferred,
+          providerWrites: 0,
+          eventChainValid: store.eventChainValid(args.migrationId),
+          childReceiptChainValid: true,
+        };
+      }
       runId = String(created.run.runId);
       detail = await request(`/api/graphs/runs/${runId}`);
       store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.[0]?.approvalId });
@@ -95,7 +118,7 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
 
     if (reservation.trigger.status === "failed_safe" && detail.run?.status === "failed") {
       const unsafeEffects = (detail.externalEffects ?? []).filter((item: any) => item.state !== "not_requested" && item.state !== "confirmed_absent");
-      if (portfolio.maximumExternalWrites !== 0 || unsafeEffects.length > 0 || detail.liveCapability?.status === "consumed") {
+      if (unsafeEffects.length > 0 || detail.liveCapability?.status === "consumed") {
         throw new Error("graph_scheduler_failed_safe_recovery_requires_zero_effects");
       }
       const recovered = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
@@ -108,13 +131,29 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
     }
 
     if (detail.run?.status === "waiting_for_approval") {
-      const approval = detail.approvals?.find((item: any) => item.status === "pending");
-      if (!approval || portfolio.approvalPolicy === "none") throw new Error("graph_scheduler_unexpected_approval_boundary");
-      if (portfolio.approvalPolicy === "prepared_payload_only" && !detail.run?.data?.socialEffect?.approvalId) throw new Error("graph_scheduler_exact_prepared_payload_approval_missing");
-      const expiresAt = new Date(Date.now() + 15 * 60_000).toISOString();
-      await request(`/api/graphs/runs/${runId}/approvals/${approval.approvalId}`, { method: "POST", body: JSON.stringify({ decision: "granted", action: approval.action, target: approval.target, payloadHash: approval.payloadHash, expiresAt, note: portfolio.approvalPolicy === "prepared_payload_only" ? `Bound to existing exact prepared payload approval ${String(detail.run.data.socialEffect.approvalId)}` : `Standing exact schedule authority ${args.migrationId}` }) });
-      await request(`/api/graphs/runs/${runId}/live-capabilities`, { method: "POST", body: JSON.stringify({ approvalId: approval.approvalId, expiresAt }) });
+      const pendingApproval = detail.approvals?.find((item: any) => item.status === "pending");
+      const grantedApproval = detail.approvals?.find((item: any) => item.status === "granted");
+      if (portfolio.approvalPolicy === "none" || (!pendingApproval && !grantedApproval)) throw new Error("graph_scheduler_unexpected_approval_boundary");
+      if (pendingApproval && portfolio.approvalPolicy === "prepared_payload_only" && !detail.run?.data?.socialEffect?.approvalId) throw new Error("graph_scheduler_exact_prepared_payload_approval_missing");
+      const approval = pendingApproval ?? grantedApproval;
+      const latestExpiry = new Date(Date.now() + 15 * 60_000);
+      const expiryMs = grantedApproval?.expiresAt ? Math.min(latestExpiry.getTime(), Date.parse(grantedApproval.expiresAt)) : latestExpiry.getTime();
+      if (!Number.isFinite(expiryMs) || expiryMs <= Date.now()) throw new Error("graph_scheduler_approval_expired_before_capability_issue");
+      const expiresAt = new Date(expiryMs).toISOString();
+      if (pendingApproval) {
+        await request(`/api/graphs/runs/${runId}/approvals/${approval.approvalId}`, { method: "POST", body: JSON.stringify({ decision: "granted", action: approval.action, target: approval.target, payloadHash: approval.payloadHash, expiresAt, note: portfolio.approvalPolicy === "prepared_payload_only" ? `Bound to existing exact prepared payload approval ${String(detail.run.data.socialEffect.approvalId)}` : `Standing exact schedule authority ${args.migrationId}` }) });
+      }
+      if (!detail.liveCapability) await request(`/api/graphs/runs/${runId}/live-capabilities`, { method: "POST", body: JSON.stringify({ approvalId: approval.approvalId, expiresAt }) });
       detail = await request(`/api/graphs/runs/${runId}`);
+    }
+    if (!detail.liveCapability && ["running", "blocked"].includes(String(detail.run?.status))) {
+      const approval = detail.approvals?.find((item: any) => item.status === "granted");
+      if (approval) {
+        const expiryMs = Math.min(Date.now() + 15 * 60_000, Date.parse(approval.expiresAt));
+        if (!Number.isFinite(expiryMs) || expiryMs <= Date.now()) throw new Error("graph_scheduler_approval_expired_before_capability_issue");
+        await request(`/api/graphs/runs/${runId}/live-capabilities`, { method: "POST", body: JSON.stringify({ approvalId: approval.approvalId, expiresAt: new Date(expiryMs).toISOString() }) });
+        detail = await request(`/api/graphs/runs/${runId}`);
+      }
     }
 
     store.updateTrigger(triggerId, "executing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail.liveCapability?.capabilityId });

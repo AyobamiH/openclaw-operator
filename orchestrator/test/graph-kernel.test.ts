@@ -72,6 +72,26 @@ describe("graph definition and state invariants", () => {
     expect(lockedRuntime.store.acquireLease("repo:shared", "other-run", "other-worker", 60_000)).toBe(true);
     await expect(lockedRuntime.engine.step(created.runId, "graph-worker")).rejects.toThrow("graph_resource_lease_conflict:repo:shared");
   });
+
+  it("releases definition capacity for waiting runs while retaining active execution pressure", async () => {
+    const { runtime } = await createTestRuntime({ zeroWriteOnly: false });
+    const waitingRun = runtime.engine.start(request("deterministic-social-publication", { dryRun: false, payload: { caption: "approval wait" } }, "external_public"));
+    const waiting = await runtime.engine.runUntilSettled(waitingRun.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    expect(runtime.store.activeRunCount("deterministic-social-publication", "1.0.0")).toBe(0);
+
+    const source = codingChangeGraph();
+    const limited: GraphDefinition = {
+      ...source,
+      graphId: "single-active-capacity",
+      description: "Single active capacity fixture",
+      concurrency: { ...source.concurrency, maxRuns: 1 },
+    };
+    runtime.engine.register(limited);
+    runtime.engine.start(request("single-active-capacity", { sources: [], claims: [] }));
+    expect(runtime.store.activeRunCount("single-active-capacity", "1.0.0")).toBe(1);
+    expect(() => runtime.engine.start(request("single-active-capacity", { sources: [], claims: [] }))).toThrow("graph_definition_concurrency_exhausted");
+  });
 });
 
 describe("representative graph workflows", () => {
@@ -252,7 +272,36 @@ describe("ledger, approvals, recovery and idempotency", () => {
     runtime.store.createAttempt({ attemptId: "expired-attempt", runId: running.runId, nodeId: running.currentNodeId!, attemptNumber: 1, idempotencyKey: "expired-attempt-key", owner: "dead-worker", leaseExpiresAt: new Date(Date.now() - 1000).toISOString(), startedAt: new Date(Date.now() - 2000).toISOString() });
     const recovery = runtime.engine.recover();
     expect(recovery.resumed).toContain(running.runId);
+    expect(recovery.expiredAttempts).toContain("expired-attempt");
     expect(runtime.store.getRun(running.runId)?.currentNodeId).toBe(running.currentNodeId);
+    expect(runtime.store.activeAttempts()).toHaveLength(0);
+  });
+
+  it("terminalises stale non-terminal runs without external effects during recovery", async () => {
+    const { runtime } = await createTestRuntime({ zeroWriteOnly: false });
+    const created = runtime.engine.start(request("deterministic-social-publication", { dryRun: false, payload: { caption: "stale approval" } }, "external_public"));
+    const waiting = await runtime.engine.runUntilSettled(created.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    const recovery = runtime.engine.recover(new Date(Date.parse(waiting.createdAt) + 2 * 60 * 60 * 1000), "restart-recovery");
+    expect(recovery.failed).toContain(waiting.runId);
+    const terminal = runtime.store.getRun(waiting.runId);
+    expect(terminal).toMatchObject({ status: "failed", terminalOutcome: "recovery_wall_clock_timeout", currentNodeId: null });
+    expect(runtime.store.activeRunCount("deterministic-social-publication", "1.0.0")).toBe(0);
+  });
+
+  it("terminalises effect-free runs when granted approval expires before capability issue", async () => {
+    const { runtime } = await createTestRuntime({ zeroWriteOnly: false });
+    const created = runtime.engine.start(request("deterministic-social-publication", { dryRun: false, payload: { caption: "expired approval" } }, "external_public"));
+    const waiting = await runtime.engine.runUntilSettled(created.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    const approval = runtime.store.approvals(waiting.runId)[0]!;
+    runtime.store.decideApproval(approval.approvalId, "granted", "john", new Date(Date.now() - 1000).toISOString());
+    const running = runtime.store.saveRun({ ...waiting, status: "running", updatedAt: new Date().toISOString() }, waiting.revision, [{ type: "graph_resumed", payload: { reason: "fixture" } }]);
+    const recovery = runtime.engine.recover(new Date(Date.now() + 1000), "restart-recovery");
+    expect(recovery.failed).toContain(running.runId);
+    const terminal = runtime.store.getRun(running.runId);
+    expect(terminal).toMatchObject({ status: "failed", terminalOutcome: "recovery_approval_expired_before_capability_issue", currentNodeId: null });
+    expect(runtime.store.activeRunCount("deterministic-social-publication", "1.0.0")).toBe(0);
   });
 
   it("keeps an older run attached to its immutable definition after a new version registers", async () => {
