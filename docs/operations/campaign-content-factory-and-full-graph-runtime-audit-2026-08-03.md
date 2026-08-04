@@ -347,3 +347,32 @@ repointed only the existing cron command. Its expression
 delivery-none setting and zero-write shadow mode are unchanged. No diagnostic
 run was forced. The exact `self-id-1100` canary approval remains unconsumed and
 may be used only after its next successful natural shadow proof.
+
+## 2026-08-04 Completion-Contract Repair
+
+The post-cutover 07:00 graph selected exactly one eligible opportunity,
+`self-id-0700`, at the exact boundary with zero lateness. Candidate freshness,
+the ten-minute window and deduplication were correct. The child failed because
+the local image specification omitted the renderer-required `cta` field; once
+that was supplied, the installed immutable package also needed to be copied to
+a writable ephemeral staging directory before rendering. Both faults remained
+fail-closed and caused no provider effect.
+
+Commit `26507a3` adds explicit healthy empty-window completion, exact-candidate
+Factory scoping, renderer staging, terminal child outcomes and deterministic
+zero/one/multiple/duplicate/boundary/replay/receipt tests. Commit `30254ad`
+replays only failed-safe zero-write scheduler slots, as a new immutable graph
+attempt, after proving there is no consumed capability or external-effect
+evidence. The protected gate passed 97 unit simulations, 35 integrations, 34
+operator UI tests, builds, both typechecks, documentation checks and docs-site
+build.
+
+The installed service restarted healthy with nine definitions. Exact trigger
+`gst_9611a714bd4ab8ad1811aa2d23ee6ca9` completed through run
+`grzwcanary_025f3f72-ca8e-428a-a375-d621c3165098` and immutable child receipt
+`gcr_abccb29f-6a77-4dde-ad22-7c17023e1ddf` with terminal outcome
+`completed_policy_skip`. The candidate was valid and its one local image passed
+the Factory audit, but the shared admission ledger correctly rejected an
+Instagram account-slot collision. This is a healthy explicit policy no-op with
+zero provider writes, not the natural unique canary proof. `self-id-1100`
+remains unused and no diagnostic provider write was made.

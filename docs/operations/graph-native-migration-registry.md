@@ -6,8 +6,7 @@ updated: "2026-08-04"
 
 # Graph-Native Workflow Migration Registry
 
-Statuses: `graph_native`, `graph_wrapped_legacy`,
-`legacy_approved_for_temporary_use`, `obsolete`, `unknown`.
+Statuses: `graph_native`, `graph_wrapped_legacy`, `obsolete`, `unknown`.
 
 | Workflow | Owner / active path | Trigger | Side effect | Persistence / retry / verification | Graph target | Status | Risk / next step |
 |---|---|---|---|---|---|---|---|
@@ -16,10 +15,10 @@ Statuses: `graph_native`, `graph_wrapped_legacy`,
 | Deterministic Threads image rotation | graph scheduler migration `threads-daily-image-v1`; cron `083e…66f7` | cron | external public | graph state/checkpoints/retries; exact prepared-payload approval; one-use capability; narrow provider adapter; official readback and terminal receipt | `threads-publication@1.0.0` | `graph_native` | High. Missing exact approval fails closed before capability issuance or provider work; schedule and daily limits are unchanged. |
 | Deterministic Threads early text rotation | graph scheduler migration `threads-early-text-v1`; cron `68b1…8106` | cron | external public | same graph-owned approval/effect/reconciliation chain with durable slot dedupe | `threads-publication@1.0.0` | `graph_native` | High. Legacy runner remains only behind prepare/effect/readback adapter contracts; it is no longer the cron owner. |
 | Meta reply monitor | graph scheduler migration `meta-reply-monitor-v1`; cron `4de8…a847` | hourly cron | external public replies | graph-owned discovery, exact reply authority, one-use capability, durable outbox reconciliation, child/verifier receipts | `meta-reply-monitor@1.0.0` | `graph_native` | High. `completed` and `completed_with_receipt_sync_failure` remain terminal and uncertain prior attempts reconcile before reuse. |
-| Self-identification shadow | graph scheduler migration `campaign-content-factory-shadow-v1`; cron `6fd3…a03` | cron shadow | read-only | graph-owned ingress/checkpoints/retries/child and verifier receipts; pinned Factory adapter; zero provider writes | `governed-task-execution@1.0.0` with immutable `campaign-factory` lane contract | `graph_native` | Medium. The deterministic Factory worker is an effect adapter only; the graph owns lifecycle and `self-id-1100` remains reserved for its separately approved natural canary. |
+| Self-identification shadow | graph scheduler migration `campaign-content-factory-shadow-v1`; cron `6fd3…a03` | cron shadow | read-only | graph-owned ingress/replay/child and verifier receipts; pinned Factory adapter; explicit empty and policy-skip terminal outcomes; zero provider writes | `governed-task-execution@1.0.0` with immutable `campaign-factory` lane contract | `graph_native` | Medium. The repaired 07:00 slot selected exactly one candidate and completed with a valid `completed_policy_skip` receipt because shared-account admission detected the existing Instagram slot. `self-id-1100` remains reserved for its separately approved natural canary. |
 | Self-identification readiness monitor | historical isolated OpenClaw cron `91fb…54d` | completed observer | read-only | retained cron history and evidence report | verification/health graph | `obsolete` | Low. Observer self-deleted after terminal proof; retain evidence only. |
 | Continuous social digest | graph scheduler migration `continuous-marketing-digest-v1`; cron `25a7…113a` | daily cron | local evidence; one Telegram delivery | graph-owned evidence load, delivery intent, bounded retry, reconciliation, child/verifier receipts and terminal receipt | `digest-delivery@1.0.0` | `graph_native` | Medium. Delivery capability remains single-use and bound to the configured digest schedule. |
-| Instagram Reel publisher | cron `2c70…113a`, disabled | cron | external public | legacy runner/outbox plus graph claim/envelope primitives | `deterministic-social-publication@2.0.0` | `legacy_approved_for_temporary_use`; v2 loaded zero-write proved | High. v2 prepares and freezes one exact candidate safely, but the production startup guard currently forbids non-zero-write graph runtime policy. Keep the job disabled and add a separately reviewed one-run live activation control before retrying Phase F. |
+| Instagram Reel publisher | cron `2c70…256e`, disabled | none while disabled | external public | historical runner/outbox evidence plus loaded v2 graph proof | `deterministic-social-publication@2.0.0` | `obsolete` as an active workflow; historical disabled job retained | High. There is no active owner or next run. Any future Reel publication is a new, separately reviewed one-run live activation rather than continued legacy authority. |
 | Continuous social hourly cycle | cron `7985…a9`, disabled | hourly cron | mixed external | historical cron state | no immediate target | `obsolete` | Low. Retain historical evidence; do not migrate wasteful loop. |
 | Queue admission activation one-shot | cron `ceb7…df39`, disabled/completed | one-shot | local persistent | cron receipt | none | `obsolete` | Low. Preserve receipt only. |
 | Business-value cycle | graph-owned scheduler/manual ingress; deterministic planner child | cron/manual | local planning; external actions gated | graph state, checkpoints, idempotent ingress, bounded retry, child/verifier receipts | `governed-task-execution@1.0.0` with immutable `business-value` lane contract | `graph_native` | Medium. Financial and public actions remain separate ToolGate approval boundaries. |
@@ -110,11 +109,13 @@ prepare/cutover event pair.
 | Business value | `governed-task-execution@1.0.0` / `business-value` | scheduler, manual and recovery ingress call `startGraphOwnedTask` | immutable ToolGate/child/verifier receipt contract; production receipt awaits the next admitted cycle | `graph_native` |
 | Task queue and market research | `governed-task-execution@1.0.0` / immutable lane bindings | scoped API, scheduler and child-handler ingress call `startGraphOwnedTask`; queue is effect transport only | queue retry disabled for graph children; injected market-research receipt chain passes | `graph_native` for the requested scope |
 | Git workflow | `governed-task-execution@1.0.0` / `git-monitor` | startup, five-minute scheduler and manual ingress are graph-owned | production monitor runs and child/verifier receipt pairs exist; commit/push authority remains separate | `graph_native` |
-| Campaign Factory | `governed-task-execution@1.0.0` / `campaign-factory` | cron `6fd3…a03` invokes `campaign-content-factory-shadow-v1` | immutable zero-write Factory adapter and hash-bound child/verifier receipt contract | `graph_native`; first post-cutover natural slot is 07:00 Europe/London; `self-id-1100` remains reserved |
+| Campaign Factory | `governed-task-execution@1.0.0` / `campaign-factory` | cron `6fd3…a03` invokes `campaign-content-factory-shadow-v1` | recovered 07:00 trigger `gst_9611…6ca9`; child `gcr_abcc…1ddf` and verifier `gvr_fb7f…814e` chains pass with zero effects | `graph_native`; repaired trigger completed `completed_policy_skip`; natural unique canary proof remains pending and `self-id-1100` remains reserved |
 
 The live production portfolio contains nine exact definitions. All six newly
 transferred migrations plus the existing Instagram migration are recorded
-`graph_owned`. The scoped registry contains no `graph_wrapped_legacy` row.
+`graph_owned`. The scoped registry contains no active `graph_wrapped_legacy`,
+legacy-approved or `unknown` row. The disabled Reel job is historical evidence,
+not an active owner.
 Natural 05:15 Meta and 05:30 Threads-readiness triggers completed after the
 cutover. At the terminal snapshot, the production graph database contained 17
 child receipts and 17 verifier receipts; the scoped natural runs above added no
@@ -202,3 +203,56 @@ workflows; no Reel, Threads, reply-monitor, digest, business-value,
 self-identification or general queue schedule was transferred by that Phase G
 proof. Those scoped lanes were transferred later under the 2026-08-04
 governed-portfolio cutover.
+
+## 2026-08-04 Campaign Factory completion-contract closure
+
+The 07:00 Europe/London run was not an empty-candidate case and was not rejected
+by freshness, the ten-minute tolerance or deduplication. Trigger
+`gst_9611a714bd4ab8ad1811aa2d23ee6ca9` resolved exactly one eligible candidate,
+`self-id-0700`, at zero milliseconds lateness. The original child receipt
+failed because the image renderer contract lacked `cta`; the installed
+immutable renderer then required a writable temporary staging copy. The graph
+correctly remained failed-safe with no external effects.
+
+Commits `26507a3` and `30254ad` add the explicit
+`completed_no_eligible_opportunity` terminal contract, exact-candidate Factory
+scoping, immutable receipt outcome propagation, writable ephemeral renderer
+staging, and zero-effect failed-safe replay as a new graph attempt. The graph
+definition itself did not change. Migration `campaign-content-factory-shadow-v1`
+remains pinned to `governed-task-execution@1.0.0` hash
+`ad9c80668bc0b348bf48abe5fe2cf4854b95d38682b64f67e6bcf53ee45f240b`.
+
+After restart, the same scheduler slot completed on attempt 3 through graph run
+`grzwcanary_025f3f72-ca8e-428a-a375-d621c3165098`. It selected the unique 07:00
+candidate, rendered and validated one local image package, then correctly
+recorded `completed_policy_skip` because shared-account admission found an
+`account-slot-collision` with the existing Instagram schedule. Child receipt
+`gcr_abccb29f-6a77-4dde-ad22-7c17023e1ddf` has hash
+`61d790507cd193048162b84d39577ade0f9f1cb0d4d0e79a32809f6d588493dd`;
+verifier receipt `gvr_fb7f10fe-9d73-41b0-a60b-02fde670814e` passed. Provider
+writes, graph external effects and Browser Relay calls were zero. The result is
+a healthy policy no-op, not the natural unique canary proof, so `self-id-1100`
+and its approval remain unused.
+
+The Gateway cron remains enabled with its unchanged expression and exact graph
+payload; its durable scheduler slot is healthy and completed. Gateway cron
+history still shows the original 07:00 command error until the next natural
+11:00 run updates that outer status, so the natural cron proof and alert clear
+are explicitly pending rather than inferred from the injected recovery.
+
+Exact active scheduled ownership is now:
+
+| Migration | Schedule | Owner | State |
+|---|---|---|---|
+| `phase-g-instagram-image-v1` | `24afbb84-457c-41bb-92c9-24a19725e984` | graph scheduler | `graph_owned` |
+| `threads-early-text-v1` | `68b10c5c-f604-4567-9213-d0d1eab08106` | graph scheduler | `graph_owned` |
+| `threads-daily-image-v1` | `083e3560-40fd-4487-9d78-674f64866ef7` | graph scheduler | `graph_owned` |
+| `threads-readiness-v1` | `abb3e214-0ff6-4813-a18d-6d8ffb9080ad` | graph scheduler | `graph_owned` |
+| `meta-reply-monitor-v1` | `4de811aa-f213-4cc3-b1aa-6c2cffb6a847` | graph scheduler | `graph_owned` |
+| `campaign-content-factory-shadow-v1` | `6fd37958-b450-400e-8c06-a781670f3a03` | graph scheduler | `graph_owned` |
+| `continuous-marketing-digest-v1` | `25a7ffd8-d777-4dc5-a49a-76a229a5113a` | graph scheduler | `graph_owned` |
+
+Business value, scoped task queue, market research and Git monitor remain
+graph-owned ingress lanes under `governed-task-execution@1.0.0`. Disabled or
+completed historical crons are `obsolete`; there is no remaining active legacy,
+graph-wrapped or unknown owner in the canonical scope.

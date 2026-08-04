@@ -1136,3 +1136,51 @@
   approved orchestrator restart, then prove nine definitions, the exact
   schedule-to-hash mapping, one graph owner, healthy persistence, and a fresh
   successful natural readiness cron. No diagnostic provider write is allowed.
+
+## 2026-08-04 — Campaign Factory completion-contract closure
+
+- Requested task: trace the failed 07:00 graph-owned Factory run, distinguish
+  empty opportunity from filtering/window/deduplication/system faults, repair
+  the completion contract, test it, commit, push, install and verify with no
+  diagnostic provider write.
+- Workflow lane: coding, graph scheduler recovery, deterministic publishing,
+  local media rendering, cron ownership and approved service lifecycle.
+- Tools/source: coding-agent-skills `coding_repo_map` first (read-only,
+  metadata-only adapter); OpenClaw cron `get`/`list`; bounded SQLite, journal,
+  systemd and HTTP inspection; `apply_patch`; Vitest, TypeScript and protected
+  `npm run verify:main`; injected-clock production graph execution through the
+  existing credential-reference boundary without reading or printing a secret.
+- Fallback reason: the coding evidence adapter established repository scope but
+  does not inspect runtime graph/task/receipt state or implement source changes,
+  so bounded core inspection and editing completed the authorised repair.
+- Changed-state declaration: true. Source, tests, docs, built runtime, service
+  process, the retained 07:00 scheduler trigger, graph/child/verifier receipts,
+  local Factory artifact and publishing audit state changed. No cron schedule,
+  migration owner, provider object, approval, capability or external-write
+  authority changed.
+- Root cause/evidence: 07:00 selected exactly one `self-id-0700` candidate at
+  zero lateness. The child failed on missing renderer `cta`, followed by the
+  read-only installed-template staging requirement. Trigger
+  `gst_9611a714bd4ab8ad1811aa2d23ee6ca9` had no external effects. Exact graph
+  hash remained
+  `ad9c80668bc0b348bf48abe5fe2cf4854b95d38682b64f67e6bcf53ee45f240b`.
+- Verification: 40 focused tests passed; the protected gate passed 97 unit
+  simulations, 35 integrations, 34 UI tests, builds, typechecks and docs checks.
+  Commits `26507a3` and `30254ad` were pushed. Two authorised orchestrator
+  restarts loaded nine definitions and healthy file/Redis persistence.
+- Terminal production proof: run
+  `grzwcanary_025f3f72-ca8e-428a-a375-d621c3165098`, child receipt
+  `gcr_abccb29f-6a77-4dde-ad22-7c17023e1ddf` and verifier receipt
+  `gvr_fb7f10fe-9d73-41b0-a60b-02fde670814e` passed. Outcome
+  `completed_policy_skip` reflects a real shared Instagram account-slot
+  collision after unique-candidate validation; provider writes and external
+  effects were zero.
+- Cron health: enabled, unchanged `0 5,7,11,15,17 * * *` Europe/London
+  schedule, exact graph-owner payload and next run at 11:00. The durable 07:00
+  scheduler trigger is completed; the Gateway job's outer `lastStatus` remains
+  the historical error until that next natural invocation and is not
+  misreported as cleared.
+- Next safe step: allow the existing schedule to produce a natural unique,
+  fully validated shadow before considering the retained `self-id-1100`
+  canary. Do not manufacture a candidate or infer canary authority from this
+  injected policy no-op.
