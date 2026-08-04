@@ -4309,8 +4309,9 @@ const campaignContentFactoryHandler: TaskHandler = async (task, context) => {
     workspace: typeof task.payload.workspace === "string" ? task.payload.workspace : undefined,
   });
   if (result.externalWrites !== 0) throw new Error("campaign-content-factory graph effect adapter detected an external write");
-  recordTaskExecutionResultSummary(context, task, { success: true, campaignContentFactory: result });
-  return `campaign-content-factory shadow completed for ${String(result.localDate ?? "unknown-date")} with zero external writes`;
+  const terminalOutcome = typeof result.terminalOutcome === "string" ? result.terminalOutcome : "completed_unique_opportunity";
+  recordTaskExecutionResultSummary(context, task, { success: true, terminalOutcome, campaignContentFactory: result });
+  return `campaign-content-factory ${terminalOutcome} for ${String(result.localDate ?? "unknown-date")} with zero external writes`;
 };
 
 const CODING_TOOL_COMMANDS: Record<string, string> = {

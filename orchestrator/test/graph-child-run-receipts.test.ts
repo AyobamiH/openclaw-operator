@@ -39,6 +39,33 @@ function attachSuccessfulDispatcher(runtime: GraphRuntime, calls: string[]): voi
 }
 
 describe("graph child-run and verifier receipts", () => {
+  it("preserves an explicit healthy Factory no-op in the immutable terminal receipt", async () => {
+    const value = await fixture();
+    const definition = governedTaskExecutionGraph();
+    const run = value.runtime.engine.start({
+      graphId: definition.graphId,
+      version: definition.version,
+      objective: "Close an empty Campaign Factory slot",
+      input: { lane: "campaign-factory", taskType: "campaign-content-factory", agentId: "content-agent", payload: { observedAt: "2026-08-04T06:00:00.000Z" } },
+      authority: { maximum: "local_persistent", grantedBy: "receipt-test" },
+    });
+    const node = definition.nodes.find((item) => item.id === "dispatch_effect_adapter")!;
+    value.runtime.attachChildDispatcher(() => ({
+      taskId: "factory-no-op-task",
+      completion: Promise.resolve({ status: "succeeded", outcome: "completed_no_eligible_opportunity", output: { externalWrites: 0 }, evidence: { candidateCount: 0 } }),
+    }));
+    const result = await value.runtime.childRuns.executeGovernedTask(
+      { lane: "campaign-factory", taskType: "campaign-content-factory", agentId: "content-agent", payload: { observedAt: "2026-08-04T06:00:00.000Z" } },
+      { definition, node, run, attemptId: "attempt-no-op", attemptNumber: 1, idempotencyKey: "factory-no-op", effectPayloadHash: "payload", signal: new AbortController().signal },
+    );
+    expect(result).toMatchObject({ outcome: "succeeded", output: { status: "verified", childOutcome: "completed_no_eligible_opportunity", chainValid: true } });
+    expect(value.runtime.store.childRunReceipts(run.runId)).toMatchObject([{ status: "succeeded", outcome: "completed_no_eligible_opportunity" }]);
+    expect(value.runtime.store.externalEffects(run.runId)).toEqual([]);
+    expect(value.runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
+    value.runtime.scheduler.close();
+    value.runtime.store.close();
+  });
+
   it("dispatches an allowlisted workflow effect once and closes a deterministic verifier receipt", async () => {
     const value = await fixture();
     const definition = governedTaskExecutionGraph();

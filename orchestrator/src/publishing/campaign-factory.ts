@@ -69,6 +69,7 @@ export async function auditCampaignContentFactory(input: {
   localDate: string;
   mediaArtifacts?: CampaignMediaArtifact[];
   mediaDeliveries?: CampaignMediaDelivery[];
+  opportunityIds?: string[];
 }): Promise<CampaignFactoryAudit> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.localDate)) {
     throw new Error("campaign_factory_local_date_invalid");
@@ -82,7 +83,10 @@ export async function auditCampaignContentFactory(input: {
   const artifacts = new Map((input.mediaArtifacts ?? []).map((artifact) => [artifact.contentSpecId, artifact]));
   const deliveries = new Map((input.mediaDeliveries ?? []).map((delivery) => [delivery.contentSpecId, delivery]));
 
-  for (const opportunity of integration.opportunities.filter((candidate) => candidate.enabled)) {
+  const opportunityIds = input.opportunityIds ? new Set(input.opportunityIds) : null;
+  for (const opportunity of integration.opportunities.filter(
+    (candidate) => candidate.enabled && (!opportunityIds || opportunityIds.has(candidate.id)),
+  )) {
     const observedAt = `${input.localDate}T${opportunity.localTime}:00${offset}`;
     const decision = await prepareProductionPublishingShadowDecision({
       integrationPath,
@@ -187,10 +191,12 @@ export function planCampaignFactoryContentForDate(input: {
   registry: PublishingRegistryBundle;
   integration: Awaited<ReturnType<typeof loadProductionIntegration>>;
   localDate: string;
+  opportunityIds?: string[];
 }): CampaignFactoryPlannedContent[] {
   const offset = londonOffsetFor(input.localDate);
+  const opportunityIds = input.opportunityIds ? new Set(input.opportunityIds) : null;
   return input.integration.opportunities
-    .filter((candidate) => candidate.enabled)
+    .filter((candidate) => candidate.enabled && (!opportunityIds || opportunityIds.has(candidate.id)))
     .map((configuredOpportunity) => {
       const observedAt = new Date(`${input.localDate}T${configuredOpportunity.localTime}:00${offset}`);
       const resolution = resolveProductionOpportunity(input.integration, configuredOpportunity.id, observedAt);

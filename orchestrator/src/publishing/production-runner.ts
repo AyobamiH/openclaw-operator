@@ -16,10 +16,11 @@ import {
   type ProductionToolInvoker,
 } from "./official-worker.js";
 import {
+  decideProductionOpportunity,
   loadProductionIntegration,
   opportunityFor,
-  resolveProductionOpportunity,
 } from "./production-integration.js";
+import { sha256 } from "./canonical.js";
 import { loadRegistryBundle } from "./registry.js";
 import { PublishingStore } from "./store.js";
 
@@ -45,17 +46,67 @@ export async function runProductionOpportunity(input: {
   if (mode !== integration.mode) {
     throw new Error(`Runner mode ${mode} does not match approved integration mode ${integration.mode}`);
   }
-  const resolution = resolveProductionOpportunity(
+  const resolution = decideProductionOpportunity(
     integration,
     input.opportunityId,
     input.scheduledFor,
   );
+  const store = new PublishingStore(resolve(input.databasePath));
+  if (resolution.outcome === "completed_no_eligible_opportunity") {
+    try {
+      const engine = new DeterministicPublishingEngine(registry, store);
+      engine.initialize();
+      const key = slotKey(input.scheduledFor);
+      const existing = store.slotRuns(500).find((candidate) => candidate.slot_key === key);
+      if (existing) {
+        if (existing.result !== "completed_no_eligible_opportunity") {
+          throw new Error("no_eligible_opportunity_slot_conflicts_with_existing_terminal_state");
+        }
+        return {
+          mode,
+          laneId: integration.laneId,
+          result: "completed_no_eligible_opportunity",
+          terminalOutcome: "completed_no_eligible_opportunity",
+          candidateCount: 0,
+          recovered: true,
+          providerDispatchSuppressed: true,
+          observedAt: input.scheduledFor.toISOString(),
+          schedulerLatenessToleranceMinutes: integration.schedulerLatenessToleranceMinutes,
+          auditChainValid: store.auditChainValid(),
+          externalWrites: 0,
+          llmCalls: 0,
+        };
+      }
+      const slotRunId = `slot_${sha256(key).slice(0, 24)}`;
+      store.startSlot(slotRunId, key, "none", "none", input.scheduledFor.toISOString(), input.scheduledFor);
+      store.completeSlot(
+        slotRunId,
+        "completed_no_eligible_opportunity",
+        ["no-enabled-opportunity-inside-exact-scheduler-window"],
+        null,
+        null,
+        input.scheduledFor,
+      );
+      return {
+        mode,
+        laneId: integration.laneId,
+        result: "completed_no_eligible_opportunity",
+        terminalOutcome: "completed_no_eligible_opportunity",
+        candidateCount: 0,
+        recovered: false,
+        providerDispatchSuppressed: true,
+        observedAt: input.scheduledFor.toISOString(),
+        schedulerLatenessToleranceMinutes: integration.schedulerLatenessToleranceMinutes,
+        auditChainValid: store.auditChainValid(),
+        externalWrites: 0,
+        llmCalls: 0,
+      };
+    } finally {
+      store.close();
+    }
+  }
   const scheduledFor = resolution.scheduledFor;
-  const opportunity = opportunityFor(
-    integration,
-    resolution.opportunity.id,
-    scheduledFor,
-  );
+  const opportunity = opportunityFor(integration, resolution.opportunity.id, scheduledFor);
   const policy = registry.platformPolicies.find(
     (candidate) =>
       candidate.status === "active" &&
@@ -63,7 +114,6 @@ export async function runProductionOpportunity(input: {
       candidate.accountId === opportunity.accountId,
   );
   if (!policy) throw new Error("Allocated opportunity has no active connector policy");
-  const store = new PublishingStore(resolve(input.databasePath));
   try {
     const engine = new DeterministicPublishingEngine(registry, store);
     engine.initialize();

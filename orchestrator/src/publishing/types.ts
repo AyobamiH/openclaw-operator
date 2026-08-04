@@ -38,6 +38,7 @@ export const PUBLICATION_STATES = [
 export type PublicationState = (typeof PUBLICATION_STATES)[number];
 
 export const SLOT_RESULTS = [
+  "completed_no_eligible_opportunity",
   "shadow_verified",
   "verified",
   "confirmed_absent",

@@ -1,10 +1,11 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
   loadProductionIntegration,
+  decideProductionOpportunity,
   opportunityFor,
   resolveProductionOpportunity,
   rehearseProductionRollback,
@@ -21,6 +22,58 @@ const integrationPath = resolve(
 );
 
 describe("production publishing integration", () => {
+  it("classifies zero, one, duplicate and multiple candidates at exact time boundaries", async () => {
+    const registry = await loadRegistryBundle(registryPath);
+    const integration = await loadProductionIntegration(integrationPath, registry);
+    const exact = decideProductionOpportunity(integration, "auto", new Date("2026-08-04T06:00:00.000Z"));
+    expect(exact).toMatchObject({ outcome: "eligible_unique_opportunity", candidateCount: 1, opportunity: { id: "self-id-0700" }, latenessMs: 0 });
+    expect(decideProductionOpportunity(integration, "auto", new Date("2026-08-04T06:10:00.000Z"))).toMatchObject({ outcome: "eligible_unique_opportunity", candidateCount: 1, latenessMs: 600_000 });
+    expect(decideProductionOpportunity(integration, "auto", new Date("2026-08-04T06:10:00.001Z"))).toEqual({ outcome: "completed_no_eligible_opportunity", scheduledFor: null, latenessMs: null, candidateCount: 0 });
+
+    const duplicate = structuredClone(integration);
+    duplicate.opportunities = [...duplicate.opportunities, { ...duplicate.opportunities[1]! }];
+    expect(() => decideProductionOpportunity(duplicate, "auto", new Date("2026-08-04T06:00:00.000Z"))).toThrow(/Multiple product opportunities/);
+
+    const multiple = structuredClone(integration);
+    multiple.opportunities[2] = { ...multiple.opportunities[2]!, localTime: "07:00" };
+    expect(() => decideProductionOpportunity(multiple, "auto", new Date("2026-08-04T06:00:00.000Z"))).toThrow(/Multiple product opportunities/);
+  });
+
+  it("persists a legitimate zero-candidate terminal no-op and suppresses restart replay", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "publishing-production-no-op-"));
+    try {
+      const integrationFixturePath = join(directory, "production-integration.json");
+      const fixture = JSON.parse(await readFile(integrationPath, "utf8")) as { opportunities: Array<{ id: string; enabled: boolean }> };
+      fixture.opportunities.find((item) => item.id === "self-id-0700")!.enabled = false;
+      await writeFile(integrationFixturePath, `${JSON.stringify(fixture)}\n`);
+      const databasePath = join(directory, "publishing.sqlite");
+      let providerCalls = 0;
+      const first = await runProductionOpportunity({
+        integrationPath: integrationFixturePath,
+        registryPath,
+        databasePath,
+        opportunityId: "auto",
+        scheduledFor: new Date("2026-08-04T06:00:00.000Z"),
+        mode: "shadow",
+        toolInvoker: async () => { providerCalls += 1; throw new Error("no-op must not dispatch"); },
+      });
+      expect(first).toMatchObject({ result: "completed_no_eligible_opportunity", terminalOutcome: "completed_no_eligible_opportunity", candidateCount: 0, recovered: false, providerDispatchSuppressed: true, auditChainValid: true, externalWrites: 0, llmCalls: 0 });
+      const replay = await runProductionOpportunity({
+        integrationPath: integrationFixturePath,
+        registryPath,
+        databasePath,
+        opportunityId: "auto",
+        scheduledFor: new Date("2026-08-04T06:00:00.000Z"),
+        mode: "shadow",
+        toolInvoker: async () => { providerCalls += 1; throw new Error("restart replay must not dispatch"); },
+      });
+      expect(replay).toMatchObject({ result: "completed_no_eligible_opportunity", recovered: true, providerDispatchSuppressed: true, auditChainValid: true, externalWrites: 0 });
+      expect(providerCalls).toBe(0);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("allocates exactly the five product opportunities and protects four legacy jobs", async () => {
     const registry = await loadRegistryBundle(registryPath);
     const integration = await loadProductionIntegration(integrationPath, registry);

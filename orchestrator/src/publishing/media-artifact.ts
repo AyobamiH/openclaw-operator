@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -356,6 +356,7 @@ export function buildLocalRendererSpec(
         { label: "Problem", detail: displayText(problem.problem, 96, "The current path creates avoidable friction.") },
         { label: "Outcome", detail: displayText(problem.outcome, 96, "A clearer next step becomes easier to see.") },
       ],
+      cta: displayText(contentSpec.renderedIntent.cta, 64, "Review the next useful step."),
       footer: displayText(contentSpec.renderedIntent.cta, 64, "Review the next useful step."),
     };
   }
@@ -432,6 +433,44 @@ function runRenderer(command: string, args: string[], timeoutMs: number): Promis
   });
 }
 
+async function stageWritableRendererRuntime(
+  rendererEntrypoint: string,
+  outputDir: string,
+): Promise<{ entrypoint: string; cleanupRoot: string | null }> {
+  const rendererRoot = resolve(dirname(rendererEntrypoint), "..");
+  const templateIndexes = ["image", "reel", "storyboard"].map((name) =>
+    join(rendererRoot, "templates", name, "index.html"),
+  );
+  const templateModes = await Promise.all(templateIndexes.map((path) =>
+    stat(path).then((value) => value.mode).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return null;
+      throw error;
+    }),
+  ));
+  if (!templateModes.some((mode) => mode !== null && (mode & 0o200) === 0)) {
+    return { entrypoint: rendererEntrypoint, cleanupRoot: null };
+  }
+
+  const stagedRoot = await mkdtemp(join(outputDir, ".campaign-renderer-runtime-"));
+  const stagedPackageRoot = join(stagedRoot, "package");
+  const stagedRendererRoot = join(stagedPackageRoot, "renderer");
+  await cp(resolve(rendererRoot, ".."), stagedPackageRoot, { recursive: true, errorOnExist: false, force: false });
+  for (const [index, mode] of templateModes.entries()) {
+    if (mode !== null) await chmod(join(stagedRendererRoot, "templates", ["image", "reel", "storyboard"][index]!, "index.html"), 0o600);
+  }
+  return {
+    entrypoint: join(stagedRendererRoot, relative(rendererRoot, rendererEntrypoint)),
+    cleanupRoot: stagedRoot,
+  };
+}
+
+async function makeDirectoriesWritable(root: string): Promise<void> {
+  await chmod(root, 0o700);
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (entry.isDirectory()) await makeDirectoriesWritable(join(root, entry.name));
+  }
+}
+
 export async function renderCampaignMediaLocally(input: {
   registry: PublishingRegistryBundle;
   contentSpec: ContentSpec;
@@ -481,11 +520,19 @@ export async function renderCampaignMediaLocally(input: {
     mode: 0o600,
     flag: "wx",
   });
-  await runRenderer(
-    nodeExecutable,
-    [rendererEntrypoint, input.contentSpec.format, "--spec", specPath, "--output-dir", outputDir],
-    input.contentSpec.format === "reel" ? 1_200_000 : 300_000,
-  );
+  const stagedRenderer = await stageWritableRendererRuntime(rendererEntrypoint, outputDir);
+  try {
+    await runRenderer(
+      nodeExecutable,
+      [stagedRenderer.entrypoint, input.contentSpec.format, "--spec", specPath, "--output-dir", outputDir],
+      input.contentSpec.format === "reel" ? 1_200_000 : 300_000,
+    );
+  } finally {
+    if (stagedRenderer.cleanupRoot) {
+      await makeDirectoriesWritable(stagedRenderer.cleanupRoot);
+      await rm(stagedRenderer.cleanupRoot, { recursive: true, force: false });
+    }
+  }
   const receiptPath = join(outputDir, `${slug}-local-render-receipt.json`);
   const artifact = await artifactFromLocalRendererReceipt({
     contentSpec: input.contentSpec,

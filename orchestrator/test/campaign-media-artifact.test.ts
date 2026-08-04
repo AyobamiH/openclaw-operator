@@ -46,6 +46,7 @@ describe("campaign media artifacts", () => {
     expect(first).toMatchObject({
       schema: "tailwagging-local-image-spec.v1",
       kind: "image",
+      cta: expect.any(String),
     });
     expect(JSON.stringify(first)).not.toContain("http://");
     expect(JSON.stringify(first)).not.toContain("https://");

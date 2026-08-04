@@ -93,6 +93,96 @@ describe("graph scheduler migration registry", () => {
     reopened.close();
   });
 
+  it("surfaces a healthy Factory no-op terminal receipt without external effects", async () => {
+    const binding = governedJobs("campaign-content-factory-shadow-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T06:00:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-factory-no-op", status: "completed" } };
+        if (route === "/api/graphs/runs/run-factory-no-op") return { run: { runId: "run-factory-no-op", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-factory-no-op", status: "succeeded", outcome: "completed_no_eligible_opportunity", receiptHash: "f".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({ outcome: "completed_no_eligible_opportunity", providerWrites: 0, terminalReceipt: { receiptId: "receipt-factory-no-op", outcome: "completed_no_eligible_opportunity", receiptHash: "f".repeat(64) } });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: "run-factory-no-op" }]);
+    reopened.close();
+  });
+
+  it("recovers one failed-safe zero-write Factory slot from its durable checkpoint", async () => {
+    const binding = governedJobs("campaign-content-factory-shadow-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `local:2026-08-04:07:00:${binding.item.declaration.scheduleId}`, "2026-08-04T06:00:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-factory-recovery" });
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-factory-recovery", failureReason: "renderer_contract_failed" });
+    value.store.close();
+
+    let retried = false;
+    let executed = false;
+    const completedDetail = () => ({
+      run: { runId: "run-factory-recovery", status: executed ? "completed" : retried ? "running" : "failed", checkpoints: [{ checkpointId: "checkpoint-before-dispatch", reason: "after_reconcile_prior_attempt" }] },
+      approvals: [],
+      liveCapability: null,
+      externalEffects: [],
+      childRunReceipts: executed ? [{ receiptId: "receipt-factory-recovery", status: "succeeded", outcome: "completed_unique_opportunity", receiptHash: "e".repeat(64) }] : [],
+      eventChainValid: true,
+      childRunReceiptChainValid: true,
+    });
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T06:00:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-factory-recovery/checkpoints/checkpoint-before-dispatch/retry" && init?.method === "POST") { retried = true; return { run: { status: "running" } }; }
+        if (route === "/api/graphs/runs/run-factory-recovery/execute" && init?.method === "POST") { executed = true; return { run: { status: "completed" } }; }
+        if (route === "/api/graphs/runs/run-factory-recovery") return completedDetail();
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(retried).toBe(true);
+    expect(executed).toBe(true);
+    expect(result).toMatchObject({ outcome: "completed_unique_opportunity", providerWrites: 0 });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.trigger(reserved.triggerId)).toMatchObject({ status: "completed", graphRunId: "run-factory-recovery", attemptCount: 2, failureReason: undefined });
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toHaveLength(1);
+    expect(reopened.eventChainValid(binding.item.declaration.migrationId)).toBe(true);
+    reopened.close();
+  });
+
+  it("keeps failed-safe recovery closed when any external effect exists", async () => {
+    const binding = governedJobs("campaign-content-factory-shadow-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `local:2026-08-04:07:00:${binding.item.declaration.scheduleId}`, "2026-08-04T06:00:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-factory-unsafe" });
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-factory-unsafe", failureReason: "ambiguous_provider_state" });
+    value.store.close();
+    await expect(executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T06:00:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-factory-unsafe") return { run: { runId: "run-factory-unsafe", status: "failed", checkpoints: [{ checkpointId: "checkpoint-before-dispatch", reason: "after_reconcile_prior_attempt" }] }, liveCapability: null, externalEffects: [{ state: "effect_verified" }] };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    })).rejects.toThrow("graph_scheduler_failed_safe_recovery_requires_zero_effects");
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.trigger(reserved.triggerId)).toMatchObject({ status: "failed_safe", attemptCount: 2 });
+    reopened.close();
+  });
+
   it("rejects missing, inactive, and definition-mismatched scheduler migrations before graph admission", async () => {
     const request = async (route: string) => {
       if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };

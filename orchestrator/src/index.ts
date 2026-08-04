@@ -11206,11 +11206,18 @@ async function bootstrap() {
     return admission;
   });
   const graphTaskWaiters = new Map<string, { resolve: (result: { status: "succeeded" | "failed" | "blocked"; outcome: string; output: unknown; evidence: unknown; failureReason?: string }) => void }>();
+  const graphTaskTerminalOutcome = (summary: unknown, fallback: string) => {
+    if (!summary || typeof summary !== "object" || Array.isArray(summary)) return fallback;
+    const highlights = (summary as Record<string, unknown>).highlights;
+    if (!highlights || typeof highlights !== "object" || Array.isArray(highlights)) return fallback;
+    const outcome = (highlights as Record<string, unknown>).terminalOutcome;
+    return typeof outcome === "string" && outcome.trim() ? outcome : fallback;
+  };
   const terminalGraphTaskResult = (idempotencyKey: string) => {
     const execution = state.taskExecutions.find((item) => item.idempotencyKey === idempotencyKey);
     if (!execution || !["success", "failed"].includes(execution.status)) return null;
     return execution.status === "success"
-      ? { status: "succeeded" as const, outcome: "task_success", output: execution.resultSummary ?? {}, evidence: { taskId: execution.taskId, queueAttempts: execution.queueAttempts ?? [] } }
+      ? { status: "succeeded" as const, outcome: graphTaskTerminalOutcome(execution.resultSummary, "task_success"), output: execution.resultSummary ?? {}, evidence: { taskId: execution.taskId, queueAttempts: execution.queueAttempts ?? [] } }
       : { status: "failed" as const, outcome: "task_failed", output: execution.resultSummary ?? {}, evidence: { taskId: execution.taskId, queueAttempts: execution.queueAttempts ?? [] }, failureReason: execution.lastError ?? "governed child task failed" };
   };
   graphRuntime?.attachChildDispatcher((request) => {
@@ -12578,7 +12585,7 @@ async function bootstrap() {
       const graphWaiter = graphTaskWaiters.get(idempotencyKey);
       if (graphWaiter) {
         graphTaskWaiters.delete(idempotencyKey);
-        graphWaiter.resolve({ status: "succeeded", outcome: "task_success", output: execution.resultSummary ?? { message }, evidence: { taskId: task.id, queueAttempts: execution.queueAttempts ?? [], workflowEvents: state.workflowEvents.filter((event) => event.runId === idempotencyKey).slice(-12) } });
+        graphWaiter.resolve({ status: "succeeded", outcome: graphTaskTerminalOutcome(execution.resultSummary, "task_success"), output: execution.resultSummary ?? { message }, evidence: { taskId: task.id, queueAttempts: execution.queueAttempts ?? [], workflowEvents: state.workflowEvents.filter((event) => event.runId === idempotencyKey).slice(-12) } });
       }
       console.log(`[orchestrator] ✅ ${task.type}: ${message}`);
     } catch (error) {

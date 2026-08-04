@@ -340,13 +340,22 @@ export class GraphSchedulerStore {
       reserved: ["reserved","preparing","failed_safe"], preparing: ["preparing","executing","failed_safe","ambiguous"], executing: ["executing","completed","failed_safe","ambiguous"], completed: ["completed"], failed_safe: ["failed_safe","preparing"], ambiguous: ["ambiguous","completed"],
     };
     if (!allowed[current.status].includes(status)) throw new Error(`graph_scheduler_trigger_transition_forbidden:${current.status}:${status}`);
-    const merged = { ...current, ...fields, status, updatedAt: now.toISOString(), completedAt: status === "completed" ? now.toISOString() : current.completedAt };
+    const merged = {
+      ...current,
+      ...fields,
+      status,
+      attemptCount: current.status === "failed_safe" && status === "preparing"
+        ? current.attemptCount + 1
+        : current.attemptCount,
+      updatedAt: now.toISOString(),
+      completedAt: status === "completed" ? now.toISOString() : current.completedAt,
+    };
     this.database.exec("BEGIN IMMEDIATE");
     try {
-      this.database.prepare(`UPDATE graph_scheduler_triggers SET status=?,graph_run_id=?,approval_id=?,capability_id=?,provider_object_id=?,permalink=?,updated_at=?,completed_at=?,failure_reason=? WHERE trigger_id=?`).run(
-        merged.status,merged.graphRunId ?? null,merged.approvalId ?? null,merged.capabilityId ?? null,merged.providerObjectId ?? null,merged.permalink ?? null,merged.updatedAt,merged.completedAt ?? null,merged.failureReason ?? null,triggerId,
+      this.database.prepare(`UPDATE graph_scheduler_triggers SET status=?,graph_run_id=?,approval_id=?,capability_id=?,provider_object_id=?,permalink=?,attempt_count=?,updated_at=?,completed_at=?,failure_reason=? WHERE trigger_id=?`).run(
+        merged.status,merged.graphRunId ?? null,merged.approvalId ?? null,merged.capabilityId ?? null,merged.providerObjectId ?? null,merged.permalink ?? null,merged.attemptCount,merged.updatedAt,merged.completedAt ?? null,merged.failureReason ?? null,triggerId,
       );
-      this.appendEventUnsafe(current.migrationId, triggerId, `trigger_${status}`, actor, { graphRunId: merged.graphRunId ?? null, approvalId: merged.approvalId ?? null, capabilityId: merged.capabilityId ?? null, providerObjectId: merged.providerObjectId ?? null, failureReason: merged.failureReason ?? null });
+      this.appendEventUnsafe(current.migrationId, triggerId, `trigger_${status}`, actor, { graphRunId: merged.graphRunId ?? null, approvalId: merged.approvalId ?? null, capabilityId: merged.capabilityId ?? null, providerObjectId: merged.providerObjectId ?? null, attemptCount: merged.attemptCount, failureReason: merged.failureReason ?? null });
       this.database.exec("COMMIT");
     } catch (error) { try { this.database.exec("ROLLBACK"); } catch {} throw error; }
     return this.trigger(triggerId)!;

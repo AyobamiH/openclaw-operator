@@ -47,6 +47,21 @@ export type ProductionIntegration = {
   };
 };
 
+export type ProductionOpportunityDecision =
+  | {
+      outcome: "eligible_unique_opportunity";
+      opportunity: ProductionOpportunity;
+      scheduledFor: Date;
+      latenessMs: number;
+      candidateCount: 1;
+    }
+  | {
+      outcome: "completed_no_eligible_opportunity";
+      scheduledFor: null;
+      latenessMs: null;
+      candidateCount: 0;
+    };
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -211,15 +226,11 @@ function localClock(date: Date, timezone: "Europe/London"): {
   };
 }
 
-export function resolveProductionOpportunity(
+export function decideProductionOpportunity(
   integration: ProductionIntegration,
   opportunityId: string,
   observedAt: Date,
-): {
-  opportunity: ProductionOpportunity;
-  scheduledFor: Date;
-  latenessMs: number;
-} {
+): ProductionOpportunityDecision {
   const observed = localClock(observedAt, integration.timezone);
   const observedMinute = observed.hour * 60 + observed.minute;
   const candidates = integration.opportunities
@@ -239,18 +250,46 @@ export function resolveProductionOpportunity(
         latenessMinutes >= 0 &&
         latenessMs <= integration.schedulerLatenessToleranceMinutes * 60_000,
     );
-  if (candidates.length !== 1) {
+  if (candidates.length > 1) {
+    throw new Error(
+      `Multiple product opportunities are allocated within the ${integration.schedulerLatenessToleranceMinutes}-minute scheduler tolerance`,
+    );
+  }
+  if (candidates.length === 0) {
+    if (opportunityId !== "auto") {
+      throw new Error(
+        `No product opportunity ${opportunityId} is allocated within the ${integration.schedulerLatenessToleranceMinutes}-minute scheduler tolerance`,
+      );
+    }
+    return {
+      outcome: "completed_no_eligible_opportunity",
+      scheduledFor: null,
+      latenessMs: null,
+      candidateCount: 0,
+    };
+  }
+  const selected = candidates[0]!;
+  return {
+    outcome: "eligible_unique_opportunity",
+    opportunity: selected.candidate,
+    scheduledFor: new Date(observedAt.getTime() - selected.latenessMs),
+    latenessMs: selected.latenessMs,
+    candidateCount: 1,
+  };
+}
+
+export function resolveProductionOpportunity(
+  integration: ProductionIntegration,
+  opportunityId: string,
+  observedAt: Date,
+): Extract<ProductionOpportunityDecision, { outcome: "eligible_unique_opportunity" }> {
+  const decision = decideProductionOpportunity(integration, opportunityId, observedAt);
+  if (decision.outcome !== "eligible_unique_opportunity") {
     throw new Error(
       `No unique product opportunity is allocated within the ${integration.schedulerLatenessToleranceMinutes}-minute scheduler tolerance`,
     );
   }
-  const selected = candidates[0];
-  const latenessMs = selected.latenessMs;
-  return {
-    opportunity: selected.candidate,
-    scheduledFor: new Date(observedAt.getTime() - latenessMs),
-    latenessMs,
-  };
+  return decision;
 }
 
 export function opportunityFor(

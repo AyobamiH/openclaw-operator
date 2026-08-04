@@ -81,7 +81,7 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
       if (["reserved", "preparing", "executing", "ambiguous"].includes(reservation.trigger.status)) return { outcome: "concurrent_or_ambiguous_trigger_suppressed", trigger: reservation.trigger, providerWrites: 0 };
       runId = reservation.trigger.graphRunId;
     }
-    store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, runId ? { graphRunId: runId } : {});
+    store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, runId ? { graphRunId: runId, failureReason: undefined } : {});
     let detail: any;
     if (!runId) {
       const created = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
@@ -92,6 +92,17 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
       detail = await request(`/api/graphs/runs/${runId}`);
       store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.[0]?.approvalId });
     } else detail = await request(`/api/graphs/runs/${runId}`);
+
+    if (reservation.trigger.status === "failed_safe" && detail.run?.status === "failed") {
+      const unsafeEffects = (detail.externalEffects ?? []).filter((item: any) => item.state !== "not_requested" && item.state !== "confirmed_absent");
+      if (portfolio.maximumExternalWrites !== 0 || unsafeEffects.length > 0 || detail.liveCapability?.status === "consumed") {
+        throw new Error("graph_scheduler_failed_safe_recovery_requires_zero_effects");
+      }
+      const checkpoint = [...(detail.run?.checkpoints ?? [])].reverse().find((item: any) => item.reason === "after_reconcile_prior_attempt");
+      if (!checkpoint?.checkpointId) throw new Error("graph_scheduler_failed_safe_recovery_checkpoint_missing");
+      await request(`/api/graphs/runs/${runId}/checkpoints/${checkpoint.checkpointId}/retry`, { method: "POST" });
+      detail = await request(`/api/graphs/runs/${runId}`);
+    }
 
     if (detail.run?.status === "waiting_for_approval") {
       const approval = detail.approvals?.find((item: any) => item.status === "pending");
@@ -111,8 +122,10 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
     if (detail.run?.status !== "completed" || detail.eventChainValid !== true || detail.childRunReceiptChainValid !== true || effects.length > portfolio.maximumExternalWrites) throw new Error("graph_scheduler_completion_contract_failed");
     if (portfolio.maximumExternalWrites === 1 && effects.length === 1 && detail.liveCapability?.status !== "consumed") throw new Error("graph_scheduler_live_capability_not_consumed");
     const effect = effects[0];
+    const terminalReceipt = [...(detail.childRunReceipts ?? [])].reverse().find((item: any) => item.status === "succeeded");
+    const terminalOutcome = typeof terminalReceipt?.outcome === "string" ? terminalReceipt.outcome : "completed";
     const completed = store.updateTrigger(triggerId, "completed", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail.liveCapability?.capabilityId, providerObjectId: effect?.providerOperationId, permalink: detail.run?.data?.socialEffect?.result?.permalink });
-    return { outcome: "completed", migrationId: args.migrationId, graph: `${migration.graphId}@${migration.graphVersion}`, definitionHash: migration.graphDefinitionHash, trigger: completed, providerWrites: effects.length, eventChainValid: true, childReceiptChainValid: true };
+    return { outcome: terminalOutcome, migrationId: args.migrationId, graph: `${migration.graphId}@${migration.graphVersion}`, definitionHash: migration.graphDefinitionHash, terminalReceipt: terminalReceipt ? { receiptId: terminalReceipt.receiptId, outcome: terminalReceipt.outcome, receiptHash: terminalReceipt.receiptHash } : null, trigger: completed, providerWrites: effects.length, eventChainValid: true, childReceiptChainValid: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (triggerId) {

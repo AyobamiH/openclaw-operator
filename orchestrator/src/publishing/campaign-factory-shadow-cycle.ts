@@ -11,8 +11,9 @@ import {
   renderCampaignMediaLocally,
   type CampaignMediaArtifact,
 } from "./media-artifact.js";
-import { loadProductionIntegration } from "./production-integration.js";
+import { decideProductionOpportunity, loadProductionIntegration } from "./production-integration.js";
 import { runProductionOpportunity } from "./production-runner.js";
+import type { ProductionToolInvoker } from "./official-worker.js";
 import { loadRegistryBundle } from "./registry.js";
 import type { ContentSpec } from "./types.js";
 
@@ -88,6 +89,7 @@ export async function ensureCampaignMediaForDate(input: {
   artifactRoot: string;
   rendererEntrypoint: string;
   nodeExecutable?: string;
+  opportunityIds?: string[];
 }): Promise<{ results: CampaignFactoryMediaResult[]; artifacts: CampaignMediaArtifact[] }> {
   const registryPath = resolve(input.registryPath);
   const integrationPath = resolve(input.integrationPath);
@@ -103,6 +105,7 @@ export async function ensureCampaignMediaForDate(input: {
     registry,
     integration,
     localDate: input.localDate,
+    opportunityIds: input.opportunityIds,
   });
   const results: CampaignFactoryMediaResult[] = [];
   const artifacts: CampaignMediaArtifact[] = [];
@@ -166,9 +169,40 @@ export async function runCampaignFactoryShadowCycle(input: {
   nodeExecutable?: string;
   openclawBin?: string;
   workspace?: string;
+  toolInvoker?: ProductionToolInvoker;
 }): Promise<Record<string, unknown>> {
   const observedAt = input.observedAt ?? new Date();
   const localDate = londonDate(observedAt);
+  const registry = await loadRegistryBundle(resolve(input.registryPath));
+  const integration = await loadProductionIntegration(resolve(input.integrationPath), registry);
+  const uniqueness = decideProductionOpportunity(integration, input.opportunityId ?? "auto", observedAt);
+  if (uniqueness.outcome === "completed_no_eligible_opportunity") {
+    const shadow = await runProductionOpportunity({
+      registryPath: input.registryPath,
+      integrationPath: input.integrationPath,
+      databasePath: input.databasePath,
+      opportunityId: input.opportunityId ?? "auto",
+      scheduledFor: observedAt,
+      mode: "shadow",
+      allowProviderWrite: false,
+      openclawBin: input.openclawBin,
+      workspace: input.workspace,
+      toolInvoker: input.toolInvoker,
+    });
+    return {
+      schemaVersion: "1.1.0",
+      factoryId: "campaigns-content-factory",
+      mode: "shadow",
+      localDate,
+      uniquenessDecision: uniqueness,
+      media: [],
+      audit: null,
+      opportunity: shadow,
+      terminalOutcome: "completed_no_eligible_opportunity",
+      externalWrites: 0,
+    };
+  }
+  const opportunityIds = [uniqueness.opportunity.id];
   const media = await ensureCampaignMediaForDate({
     registryPath: input.registryPath,
     integrationPath: input.integrationPath,
@@ -176,12 +210,14 @@ export async function runCampaignFactoryShadowCycle(input: {
     artifactRoot: input.artifactRoot,
     rendererEntrypoint: input.rendererEntrypoint,
     nodeExecutable: input.nodeExecutable,
+    opportunityIds,
   });
   const audit = await auditCampaignContentFactory({
     registryPath: input.registryPath,
     integrationPath: input.integrationPath,
     localDate,
     mediaArtifacts: media.artifacts,
+    opportunityIds,
   });
   if (audit.verdict !== "ready" || audit.totals.shadowReady !== audit.totals.opportunities) {
     throw new Error(`campaign_factory_shadow_audit_not_ready:${audit.verdict}`);
@@ -196,18 +232,25 @@ export async function runCampaignFactoryShadowCycle(input: {
     allowProviderWrite: false,
     openclawBin: input.openclawBin,
     workspace: input.workspace,
+    toolInvoker: input.toolInvoker,
   });
   if (shadow.externalWrites !== 0) {
     throw new Error("campaign_factory_shadow_cycle_external_write_detected");
   }
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     factoryId: "campaigns-content-factory",
     mode: "shadow",
     localDate,
+    uniquenessDecision: uniqueness,
     media: media.results,
     audit,
     opportunity: shadow,
+    terminalOutcome: shadow.result === "skipped_no_eligible_candidate"
+      ? "completed_no_eligible_opportunity"
+      : shadow.result === "skipped_policy"
+        ? "completed_policy_skip"
+        : "completed_unique_opportunity",
     externalWrites: 0,
   };
 }

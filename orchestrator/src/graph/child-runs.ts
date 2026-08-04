@@ -193,7 +193,7 @@ export class GraphChildRunCoordinator {
     }
     if (child.status !== "succeeded" || !child.receiptHash) {
       return {
-        outcome: child.status === "blocked" ? "blocked" : "failed_repairable",
+        outcome: child.status === "blocked" ? "blocked" : "failed_terminal",
         output: { status: child.status, lane: input.lane, childRunId: child.childRunId, childReceiptHash: child.receiptHash ?? null },
         failure: failure(child.status === "blocked" ? "authority_denied" : "verification_failed", child.failureReason ?? `Governed ${input.lane} task ${child.status}`),
         progressFingerprint: sha256(child),
@@ -239,6 +239,6 @@ export class GraphChildRunCoordinator {
       { kind: "verifier-receipt", uri: `graph://${context.run.runId}/verifiers/${verifier.verifierRunId}`, sha256: verifier.receiptHash, summary: `${input.lane} receipt was deterministically verified`, checker: "production.governed-task-dispatch.v1" },
       { kind: "child-run-audit-chain", uri: `graph://${context.run.runId}/child-run-chain`, sha256: sha256({ child: child.receiptHash, verifier: verifier.receiptHash }), summary: "Child and verifier receipts remain bound to the parent graph event chain", checker: "production.governed-task-dispatch.v1" },
     ];
-    return { outcome: "succeeded", output: { status: "verified", lane: input.lane, childRunId: child.childRunId, childReceiptHash: child.receiptHash, verifierRunId: verifier.verifierRunId, verifierReceiptHash: verifier.receiptHash, chainValid }, evidence, progressFingerprint: sha256({ childReceiptHash: child.receiptHash, verifierReceiptHash: verifier.receiptHash }) };
+    return { outcome: "succeeded", output: { status: "verified", lane: input.lane, childOutcome: child.outcome ?? "task_success", childRunId: child.childRunId, childReceiptHash: child.receiptHash, verifierRunId: verifier.verifierRunId, verifierReceiptHash: verifier.receiptHash, chainValid }, evidence, progressFingerprint: sha256({ childReceiptHash: child.receiptHash, verifierReceiptHash: verifier.receiptHash }) };
   }
 }
