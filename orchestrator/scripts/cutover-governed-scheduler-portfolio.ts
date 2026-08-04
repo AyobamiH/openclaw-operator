@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
+import { transferSchedulerOwnership, type SchedulerOwner } from "../src/graph/scheduler-cutover.js";
 import { GraphSchedulerStore } from "../src/graph/scheduler-store.js";
 import { buildGovernedGraphJob, GOVERNED_SCHEDULER_PORTFOLIO } from "../src/graph/scheduler-portfolio.js";
 
@@ -100,6 +101,17 @@ function verifyReadback(actual: CronJob, intended: CronJob, legacy: CronJob): vo
   if (canonical(payloadContract(actual.payload)) !== canonical(payloadContract(intended.payload))) throw new Error(`graph_scheduler_cutover_payload_failed:${legacy.id}`);
 }
 
+function classifyOwner(actual: CronJob, migration: { legacyJob: Record<string, unknown>; graphJob: Record<string, unknown> }): SchedulerOwner {
+  try {
+    verifyReadback(actual, migration.legacyJob as CronJob, migration.legacyJob as CronJob);
+    return "legacy";
+  } catch { /* graph owner remains possible */ }
+  try {
+    verifyReadback(actual, migration.graphJob as CronJob, migration.legacyJob as CronJob);
+    return "graph";
+  } catch { return "unknown"; }
+}
+
 function writeSnapshot(name: string, value: unknown): void {
   const path = join(backupDirectory!, name);
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
@@ -120,29 +132,26 @@ try {
       results.push({ migrationId, status: migration.status, eventChainValid: store.eventChainValid(migrationId) });
     }
   } else if (action === "cutover") {
-    const changed: Array<{ migrationId: string; legacy: CronJob }> = [];
-    try {
-      for (const migrationId of GOVERNED_SCHEDULER_PORTFOLIO.keys()) {
-        const migration = store.migration(migrationId);
-        if (!migration || migration.status !== "prepared") throw new Error(`graph_scheduler_cutover_not_prepared:${migrationId}`);
-        const legacy = migration.legacyJob as CronJob, graph = migration.graphJob as CronJob;
-        applyJob(graph);
-        changed.push({ migrationId, legacy });
-        verifyReadback(getJob(graph.id), graph, legacy);
-        const activated = store.activateMigration(migrationId, "governed-scheduler-portfolio-cutover");
-        results.push({ migrationId, status: activated.status, eventChainValid: store.eventChainValid(migrationId) });
-      }
-    } catch (error) {
-      const rollbackErrors: string[] = [];
-      for (const item of changed.reverse()) {
-        try {
-          applyJob(item.legacy);
-          const migration = store.migration(item.migrationId);
-          if (migration?.status === "graph_owned") store.rollbackMigration(item.migrationId, "governed-scheduler-portfolio-cutover", "automatic rollback after cutover failure");
-        } catch (rollbackError) { rollbackErrors.push(`${item.migrationId}:${String(rollbackError)}`); }
-      }
-      if (rollbackErrors.length) throw new AggregateError([error, ...rollbackErrors.map((value) => new Error(value))], "graph_scheduler_cutover_and_rollback_failed");
-      throw error;
+    for (const migrationId of GOVERNED_SCHEDULER_PORTFOLIO.keys()) {
+      const migration = store.migration(migrationId);
+      if (!migration) throw new Error(`graph_scheduler_cutover_migration_missing:${migrationId}`);
+      const legacy = migration.legacyJob as CronJob, graph = migration.graphJob as CronJob;
+      const transferred = transferSchedulerOwnership({
+        store,
+        migrationId,
+        actor: "governed-scheduler-portfolio-cutover",
+        readOwner: () => classifyOwner(getJob(migration.scheduleId), migration),
+        applyGraphOwner: () => applyJob(graph),
+        applyLegacyOwner: () => applyJob(legacy),
+      });
+      results.push({
+        migrationId,
+        status: transferred.migration.status,
+        activated: transferred.activated,
+        recovered: transferred.recovered,
+        alreadyGraphOwned: transferred.alreadyGraphOwned,
+        eventChainValid: store.eventChainValid(migrationId),
+      });
     }
   } else if (action === "verify") {
     for (const migrationId of GOVERNED_SCHEDULER_PORTFOLIO.keys()) {

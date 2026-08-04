@@ -1091,3 +1091,48 @@
   valid receipt chain.
 - Next safe step: extract and bind Threads and Meta stages, then exercise the
   expanded scheduler portfolio under injected clocks and zero-write fixtures.
+
+## 2026-08-04 — Threads readiness graph-scheduler ownership repair
+
+- Requested task: correlate and repair
+  `graph_scheduler_migration_not_active_or_exact` for cron
+  `threads-publication-readiness-preparer`, prove one exact owner, add
+  regression coverage, commit, push, install and verify after restart.
+- Workflow lane: coding, graph scheduler, cron ownership, approved service
+  lifecycle and production verification.
+- Tools/source: coding-agent-skills `coding_repo_map` first (read-only,
+  metadata-only adapter); OpenClaw cron `list`, `get` and `runs`; bounded Git,
+  journal, systemd, HTTP and owner-only scheduler-store reads; `apply_patch`;
+  Vitest, TypeScript and repository `npm run verify:main`; exact runtime graph
+  trigger using the existing credential-reference boundary without printing or
+  reading a credential value.
+- Changed-state declaration: true. Source and canonical operations evidence
+  changed. The injected historical production trigger failed safe before any
+  provider effect because a later readiness candidate was already active; it
+  created one terminal `failed_safe` scheduler trigger and graph run with zero
+  external effects. No cron payload, schedule, timezone, provider object,
+  approval, capability, Instagram owner or `self-id-1100` state changed.
+- Root cause: the 05:06 standalone cron process used cwd-local scheduler state,
+  while the canonical migration row in the production scheduler database was
+  already `graph_owned` and exact. Commit `bedd2f9` pinned standalone trigger
+  resolution to the production scheduler database; the 05:30, 06:00 and 06:30
+  natural readiness runs then succeeded with zero provider writes and cleared
+  the cron error streak.
+- Source repair: the portfolio coordinator now commits exact graph ownership
+  before cron repoint, resumes a post-activation/pre-repoint interruption,
+  treats an already graph-owned replay as idempotent, and restores only the
+  retained legacy owner before durable rollback when repoint/readback fails.
+- Verification: focused scheduler tests pass 15/15 and cover missing,
+  inactive, mismatched and exact records, rollback, concurrent replay,
+  restart recovery and preservation of Instagram. Repository
+  `npm run verify:main` passes builds, 95 unit simulations, 35 integration
+  tests, 34 UI tests, typechecks, docs drift/links/curation and docs-site build.
+- Evidence: `docs/operations/graph-native-migration-registry.md`, cron run
+  history for `abb3e214-0ff6-4813-a18d-6d8ffb9080ad`, migration
+  `threads-readiness-v1`, and scheduler trigger
+  `gst_7b62b301b86001b9a0e152f8aeac15ba` for the explicitly bounded failed-safe
+  historical-clock diagnostic.
+- Next safe step: commit and push the verified source repair, submit at most one
+  approved orchestrator restart, then prove nine definitions, the exact
+  schedule-to-hash mapping, one graph owner, healthy persistence, and a fresh
+  successful natural readiness cron. No diagnostic provider write is allowed.

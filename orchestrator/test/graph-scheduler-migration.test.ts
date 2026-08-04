@@ -8,6 +8,7 @@ import {
   PHASE_G_MIGRATION_ID,
   PHASE_G_SCHEDULE_ID,
 } from "../src/graph/scheduler-store.js";
+import { transferSchedulerOwnership } from "../src/graph/scheduler-cutover.js";
 import { buildGovernedGraphJob, GOVERNED_SCHEDULER_PORTFOLIO } from "../src/graph/scheduler-portfolio.js";
 import {
   executeGovernedSchedule,
@@ -24,6 +25,19 @@ function jobs() {
     legacyJob: { ...base, payload: { kind: "command", argv: ["node", "/workspace/scripts/instagram-publisher-outbox-runner.mjs", "--job-id", PHASE_G_SCHEDULE_ID, "--kind", "image"] } },
     graphJob: { ...base, payload: { kind: "command", argv: ["node", "--import", "tsx", "/workspace/orchestrator/scripts/trigger-graph-schedule.ts", "--migration-id", PHASE_G_MIGRATION_ID] } },
   };
+}
+
+function governedJobs(migrationId = "threads-readiness-v1") {
+  const item = GOVERNED_SCHEDULER_PORTFOLIO.get(migrationId)!;
+  const legacyJob = {
+    id: item.declaration.scheduleId,
+    declarationKey: item.declaration.declarationKey,
+    enabled: true,
+    schedule: { kind: "cron", expr: item.declaration.cronExpression, tz: item.declaration.timezone },
+    payload: { kind: "command", argv: ["node", "/workspace/legacy.mjs"] },
+  };
+  const graphJob = buildGovernedGraphJob(legacyJob, migrationId, "/workspace/orchestrator/scripts/trigger-governed-graph-schedule.ts", "node");
+  return { item, legacyJob, graphJob };
 }
 
 async function fixture() {
@@ -77,6 +91,131 @@ describe("graph scheduler migration registry", () => {
     const reopened = new GraphSchedulerStore(value.path);
     expect(reopened.triggers(item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: "run-readiness" }]);
     reopened.close();
+  });
+
+  it("rejects missing, inactive, and definition-mismatched scheduler migrations before graph admission", async () => {
+    const request = async (route: string) => {
+      if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+      throw new Error(`unexpected graph admission ${route}`);
+    };
+
+    const missing = await fixture();
+    missing.store.close();
+    await expect(executeGovernedSchedule({ migrationId: "threads-readiness-v1", now: new Date("2026-08-04T03:30:00.000Z"), schedulerPath: missing.path, request })).rejects.toThrow("graph_scheduler_migration_not_active_or_exact");
+
+    const inactive = await fixture();
+    const inactiveJobs = governedJobs();
+    inactive.store.prepareBoundedMigration({ legacyJob: inactiveJobs.legacyJob, graphJob: inactiveJobs.graphJob, declaration: inactiveJobs.item.declaration, actor: "test" });
+    inactive.store.close();
+    await expect(executeGovernedSchedule({ migrationId: "threads-readiness-v1", now: new Date("2026-08-04T03:30:00.000Z"), schedulerPath: inactive.path, request })).rejects.toThrow("graph_scheduler_migration_not_active_or_exact");
+
+    const mismatched = await fixture();
+    const mismatchedJobs = governedJobs();
+    const mismatchedHash = "a".repeat(64);
+    const mismatchedGraphJob = structuredClone(mismatchedJobs.graphJob) as any;
+    mismatchedGraphJob.graphTrigger.definitionHash = mismatchedHash;
+    mismatched.store.prepareBoundedMigration({
+      legacyJob: mismatchedJobs.legacyJob,
+      graphJob: mismatchedGraphJob,
+      declaration: { ...mismatchedJobs.item.declaration, graphDefinitionHash: mismatchedHash },
+      actor: "test",
+    });
+    mismatched.store.activateMigration("threads-readiness-v1", "test");
+    mismatched.store.close();
+    await expect(executeGovernedSchedule({ migrationId: "threads-readiness-v1", now: new Date("2026-08-04T03:30:00.000Z"), schedulerPath: mismatched.path, request })).rejects.toThrow("graph_scheduler_migration_not_active_or_exact");
+  });
+
+  it("activates exact graph ownership before repointing and admits concurrent replay only once", async () => {
+    const value = await fixture();
+    const binding = governedJobs();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    let owner: "legacy" | "graph" = "legacy";
+    const first = transferSchedulerOwnership({
+      store: value.store,
+      migrationId: binding.item.declaration.migrationId,
+      actor: "test",
+      readOwner: () => owner,
+      applyGraphOwner: () => {
+        expect(value.store.migration(binding.item.declaration.migrationId)?.status).toBe("graph_owned");
+        owner = "graph";
+      },
+      applyLegacyOwner: () => { owner = "legacy"; },
+    });
+    expect(first).toMatchObject({ activated: true, recovered: false, alreadyGraphOwned: false, migration: { status: "graph_owned" } });
+    const concurrent = transferSchedulerOwnership({
+      store: value.store,
+      migrationId: binding.item.declaration.migrationId,
+      actor: "test-concurrent",
+      readOwner: () => owner,
+      applyGraphOwner: () => { throw new Error("concurrent admission must not repoint"); },
+      applyLegacyOwner: () => { throw new Error("concurrent admission must not roll back"); },
+    });
+    expect(concurrent).toMatchObject({ activated: false, recovered: false, alreadyGraphOwned: true, migration: { status: "graph_owned" } });
+    value.store.close();
+  });
+
+  it("recovers a committed activation after restart and completes the retained legacy-owner repoint", async () => {
+    const value = await fixture();
+    const binding = governedJobs();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+
+    const restarted = new GraphSchedulerStore(value.path);
+    let owner: "legacy" | "graph" = "legacy";
+    const recovered = transferSchedulerOwnership({
+      store: restarted,
+      migrationId: binding.item.declaration.migrationId,
+      actor: "test-restart",
+      readOwner: () => owner,
+      applyGraphOwner: () => { owner = "graph"; },
+      applyLegacyOwner: () => { owner = "legacy"; },
+    });
+    expect(recovered).toMatchObject({ activated: false, recovered: true, alreadyGraphOwned: false, migration: { status: "graph_owned" } });
+    expect(owner).toBe("graph");
+    expect(restarted.eventChainValid(binding.item.declaration.migrationId)).toBe(true);
+    restarted.close();
+  });
+
+  it("restores the retained legacy owner and rolls back activation when graph repoint fails", async () => {
+    const value = await fixture();
+    const binding = governedJobs();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    let owner: "legacy" | "graph" = "legacy";
+    expect(() => transferSchedulerOwnership({
+      store: value.store,
+      migrationId: binding.item.declaration.migrationId,
+      actor: "test",
+      readOwner: () => owner,
+      applyGraphOwner: () => { owner = "graph"; throw new Error("simulated cron repoint failure"); },
+      applyLegacyOwner: () => { owner = "legacy"; },
+    })).toThrow("simulated cron repoint failure");
+    expect(owner).toBe("legacy");
+    expect(value.store.migration(binding.item.declaration.migrationId)).toMatchObject({ status: "rolled_back", failureReason: "automatic rollback after graph-owner admission failure" });
+    expect(value.store.eventChainValid(binding.item.declaration.migrationId)).toBe(true);
+    value.store.close();
+  });
+
+  it("preserves the existing Instagram graph owner while transferring a governed schedule", async () => {
+    const value = await fixture();
+    const instagram = value.store.prepareMigration({ ...jobs(), actor: "test-instagram" });
+    value.store.activateMigration(PHASE_G_MIGRATION_ID, "test-instagram");
+    const before = value.store.migration(PHASE_G_MIGRATION_ID);
+    const binding = governedJobs();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    let owner: "legacy" | "graph" = "legacy";
+    transferSchedulerOwnership({
+      store: value.store,
+      migrationId: binding.item.declaration.migrationId,
+      actor: "test",
+      readOwner: () => owner,
+      applyGraphOwner: () => { owner = "graph"; },
+      applyLegacyOwner: () => { owner = "legacy"; },
+    });
+    expect(instagram.status).toBe("prepared");
+    expect(value.store.migration(PHASE_G_MIGRATION_ID)).toEqual(before);
+    expect(value.store.eventChainValid(PHASE_G_MIGRATION_ID)).toBe(true);
+    value.store.close();
   });
 
   it("executes every governed portfolio binding with injected natural clocks and zero effects", async () => {

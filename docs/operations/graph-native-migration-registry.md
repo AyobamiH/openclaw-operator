@@ -134,6 +134,35 @@ typechecks, documentation drift and link checks. The immutable portfolio test
 exercises all six scheduler bindings with injected Europe/London clocks and
 asserts zero provider effects.
 
+## Threads readiness scheduler-path repair
+
+The first graph-owned readiness invocation at 05:06 Europe/London failed before
+trigger reservation with `graph_scheduler_migration_not_active_or_exact`. The
+canonical migration was not missing, inactive or hash-mismatched: migration
+`threads-readiness-v1` was already `graph_owned`, bound to cron
+`abb3e214-0ff6-4813-a18d-6d8ffb9080ad`, graph
+`threads-readiness@1.0.0`, and immutable definition hash
+`419f6c6380b43cbc6f7336dc747e6de1d83940ff095e9491224d4ba0bf43779f`.
+The failed standalone cron process had resolved a cwd-local scheduler database
+because it did not inherit the service-only state environment. Commit `bedd2f9`
+pins standalone governed triggers to the production scheduler database unless
+an exact scheduler path or state root is supplied.
+
+Natural readiness runs at 05:30, 06:00 and 06:30 then completed against the
+exact active migration. The 06:30 run
+`grzwcanary_25e60dbc-7168-453b-a053-7f2d6406f1ff` recorded zero provider writes
+and zero Browser Relay calls; the cron readback reports `lastRunStatus=ok` and
+`consecutiveErrors=0`, so the prior failure alert is cleared.
+
+The portfolio cutover coordinator is also ordered defensively: it commits the
+immutable `graph_owned` activation before repointing the cron, classifies the
+retained owner on replay, completes an interrupted post-activation repoint,
+and restores only the retained legacy job before rolling the migration back if
+repoint or readback fails. Focused regression coverage now distinguishes
+missing, inactive, mismatched and exact migration records and proves rollback,
+concurrent replay admission, restart recovery and preservation of the existing
+Instagram graph owner.
+
 ### Tool invocation record
 
 - Requested task: implement and activate the remaining graph-native workflow
