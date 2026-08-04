@@ -73,6 +73,13 @@ export class PersistenceIntegration {
     this.coreStateStoreKind = getStateStoreKind(target);
   }
 
+  static useLocalCoreStateOnly() {
+    this.healthSnapshot = null;
+    this.healthSnapshotPromise = null;
+    this.historicalStoreMode = "disabled";
+    this.initialized = true;
+  }
+
   private static historicalStore(): typeof DataPersistence {
     if (this.historicalStoreMode === "sqlite") {
       return SqliteDataPersistence as unknown as typeof DataPersistence;
@@ -515,7 +522,7 @@ export class PersistenceIntegration {
             coordination,
           });
         }
-        if (!this.isMongoConfigured() && this.coreStateStoreKind !== "mongo") {
+        if (this.historicalStoreMode === "disabled" && this.coreStateStoreKind !== "mongo") {
           const coordination = await getRuntimeCoordinationHealth();
           return this.cacheHealthSnapshot({
             status: this.isCoordinationOperational(coordination.status)

@@ -192,6 +192,31 @@ describe("persistence health snapshot caching", () => {
     }
   });
 
+  it("ignores an ambient legacy Mongo URL when file-backed historical persistence is disabled", async () => {
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    process.env.DATABASE_URL = "mongodb://127.0.0.1:27017/legacy-unused";
+    try {
+      PersistenceIntegration.setCoreStateStoreKind("file");
+      PersistenceIntegration.useLocalCoreStateOnly();
+      vi.spyOn(runtimeCoordination, "getRuntimeCoordinationHealth").mockResolvedValue({
+        status: "healthy",
+        store: "redis",
+        redisConfigured: true,
+        redisReachable: true,
+        detail: "Redis-backed coordination is active.",
+        checkedAt: new Date().toISOString(),
+        disabledUntil: null,
+      });
+
+      const health = await PersistenceIntegration.healthCheck();
+
+      expect(health).toMatchObject({ status: "healthy", database: true, store: "file", collections: 0 });
+    } finally {
+      if (originalDatabaseUrl === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = originalDatabaseUrl;
+    }
+  });
+
   it("deduplicates live dependency probes across concurrent and repeated reads", async () => {
     const mongoSpy = vi
       .spyOn(MongoConnection, "healthCheck")

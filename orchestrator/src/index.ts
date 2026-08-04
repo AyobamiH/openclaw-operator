@@ -10526,6 +10526,7 @@ async function bootstrap() {
       );
     }
   } else if (!fastStartMode) {
+    PersistenceIntegration.useLocalCoreStateOnly();
     console.log(
       "[orchestrator] file-backed runtime state configured; skipping Mongo persistence initialization",
     );
