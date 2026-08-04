@@ -1,7 +1,7 @@
 {
   "id": "operations-analyst-agent",
   "orchestratorTask": "control-plane-brief",
-  "orchestratorTasks": ["control-plane-brief", "business-value-cycle", "github-workflow-monitor"],
+  "orchestratorTasks": ["control-plane-brief", "business-value-cycle", "github-workflow-monitor", "send-digest"],
   "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/operations-analyst-agent-service.json",
   "name": "Operations Analyst Agent",
@@ -31,6 +31,11 @@
         "allowed": true,
         "maxCalls": 40,
         "reason": "Read bounded agent-config files to discover declared service surfaces."
+      },
+      "notificationSender": {
+        "allowed": true,
+        "maxCalls": 1,
+        "reason": "Deliver one scheduler-bound digest notification through the configured channel."
       }
     },
     "fileSystem": {
@@ -42,7 +47,8 @@
       ]
     },
     "network": {
-      "allowed": false
+      "allowed": true,
+      "allowedHosts": []
     }
   },
   "constraints": {

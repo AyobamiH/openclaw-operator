@@ -48,6 +48,16 @@ schedulers remain at the 2026-08-03 state until the remaining social adapters,
 portfolio tests, backup and atomic cutover gates pass. No workflow in the table
 is relabelled `graph_native` solely because this source increment exists.
 
+The second source increment adds `digest-delivery@1.0.0`. It separates the
+scheduled ingress and reconciliation stages from one narrow notification
+effect, routes that effect through the normal task ToolGate with a single-call
+`notificationSender` capability, and binds child/verifier receipts to the
+parent graph. The orchestrator cron now selects this graph owner whenever the
+graph runtime is enabled, while graph-disabled development fixtures retain the
+legacy queue fallback. This is not an installed cutover claim: the production
+zero-write policy and scheduler transfer gates must still pass before the live
+runtime loads or executes the definition.
+
 ## Persistence activation status
 
 The owner-only production graph database is schema v3 and retains the pre-v3

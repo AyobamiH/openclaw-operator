@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
 import { verifyGraphChildTaskAuthority } from "../src/graph/task-authority.js";
-import { governedCodingChangeGraph, governedTaskExecutionGraph } from "../src/graph/workflows.js";
+import { digestDeliveryGraph, governedCodingChangeGraph, governedTaskExecutionGraph } from "../src/graph/workflows.js";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
 const cleanups: Array<() => Promise<void>> = [];
@@ -96,6 +96,38 @@ describe("graph child-run and verifier receipts", () => {
     expect(value.runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
     value.runtime.scheduler.close();
     value.runtime.store.close();
+  });
+
+  it("binds one digest effect to the dedicated graph and ToolGate-routed task receipt", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-digest-receipts-"));
+    const runtime = createGraphRuntime(join(root, "graph.sqlite"), { zeroWriteOnly: false, runIdPrefix: "digest" });
+    cleanups.push(() => rm(root, { recursive: true, force: true }));
+    const taskTypes: string[] = [];
+    runtime.attachChildDispatcher((request) => {
+      taskTypes.push(request.taskType);
+      const authority = verifyGraphChildTaskAuthority(runtime.store, {
+        id: "digest-task", type: request.taskType, createdAt: Date.now(), payload: {
+          ...request.payload, idempotencyKey: request.idempotencyKey, __graphParentRunId: request.parentRunId,
+          __graphParentNodeId: request.parentNodeId, __graphReceiptId: request.receiptId,
+          __graphRunId: request.runId, __graphPhase: request.phase,
+        },
+      });
+      expect(authority.allowed).toBe(true);
+      return { taskId: "digest-task", completion: Promise.resolve({ status: "succeeded", outcome: "notification_sent", output: { count: 1 }, evidence: { channel: "fixture" } }) };
+    });
+    const definition = digestDeliveryGraph();
+    const run = runtime.engine.start({
+      graphId: definition.graphId, version: definition.version, objective: "Deliver scheduled digest",
+      input: { lane: "digest", taskType: "send-digest", agentId: "operations-analyst-agent", payload: { reason: "fixture" }, shadowMode: false },
+      authority: { maximum: "external_reversible", grantedBy: "receipt-test" },
+    });
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(taskTypes).toEqual(["send-digest"]);
+    expect(runtime.store.externalEffects(run.runId)).toHaveLength(1);
+    expect(runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
+    runtime.scheduler.close();
+    runtime.store.close();
   });
 
   it("rejects lane, task and agent binding mismatches before dispatch", async () => {

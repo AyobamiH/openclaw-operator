@@ -1072,3 +1072,22 @@
 - Next safe step: add the narrow Threads and Meta stage adapters, generic
   scheduler trigger/cutover manifest and lane-specific historical zero-write
   fixtures before installing the expanded portfolio.
+
+## 2026-08-04 — Graph-native closure implementation increment 2
+
+- Requested task: move the daily digest from direct task-queue ownership to a
+  dedicated graph without changing its schedule or notification authority.
+- Tools/source: bounded source inspection, `apply_patch`, TypeScript and focused
+  graph/receipt Vitest suites.
+- Changed-state declaration: canonical source changed. Added
+  `digest-delivery@1.0.0`, an exact external-effect adapter, graph ingress from
+  the existing morning cron, durable external-effect intent, reconciliation,
+  bounded retry, ToolGate task binding, and child/verifier receipt proof.
+- Safety: tests used a fixture dispatcher and local SQLite databases. No live
+  notification, social/provider call, scheduler mutation, install or reload
+  occurred.
+- Evidence: TypeScript passes; production-adapter tests pass 21/21; graph
+  child/receipt tests pass 6/6 including exactly one digest effect intent and a
+  valid receipt chain.
+- Next safe step: extract and bind Threads and Meta stages, then exercise the
+  expanded scheduler portfolio under injected clocks and zero-write fixtures.

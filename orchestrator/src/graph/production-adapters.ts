@@ -43,7 +43,7 @@ const CommandOutputSchema = z.object({ action: z.string(), exitCode: z.number().
 const ChildRunInputSchema = z.object({ repositoryPath: z.string().min(1), childPayload: z.record(z.unknown()).optional(), verifierPayload: z.record(z.unknown()).optional() }).passthrough();
 const ChildRunOutputSchema = z.object({ status: z.string(), childRunId: z.string(), childReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), verifierRunId: z.string().optional(), verifierReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), chainValid: z.boolean().optional() }).passthrough();
 const GovernedTaskInputSchema = z.object({
-  lane: z.enum(["business-value", "market-research", "git-monitor", "campaign-factory"]),
+  lane: z.enum(["business-value", "market-research", "git-monitor", "campaign-factory", "digest"]),
   taskType: z.string().min(1),
   agentId: z.string().min(1),
   payload: z.record(z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.unknown()), z.record(z.unknown())])).default({}),
@@ -115,6 +115,28 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       ]);
       const output = { repositoryPath, head, branch, dirty: status.length > 0, statusHash: sha256(status), diffHash: sha256(diff) };
       return { outcome: "succeeded", output, evidence: [{ kind: context.node.id === "diff_review" ? "git-diff" : "repository-truth", uri: `graph://${context.run.runId}/${context.node.id}`, sha256: sha256(output), summary: "Bounded canonical Git inspection completed", checker: "production.repo-inspect.v1" }], progressFingerprint: sha256({ nodeId: context.node.id, output }) };
+    },
+  });
+  registry.register({
+    adapterId: "production.digest-delivery.v1", version: "1.0.0", sourceOwner: "orchestrator send-digest narrow notification effect handler", bindingStatus: "production",
+    inputSchema: GovernedTaskInputSchema.extend({ lane: z.literal("digest"), taskType: z.literal("send-digest"), agentId: z.literal("operations-analyst-agent") }).describe("exact graph-owned digest delivery contract"),
+    outputSchema: GovernedTaskOutputSchema.describe("hash-bound digest effect and deterministic verifier receipts"),
+    sideEffectClass: "external_reversible", shadowSafe: false, idempotencyStrategy: "external_operation", authority: "external_reversible", timeoutMs: 5 * 60_000,
+    retryableFailures: ["state_conflict", "timeout", "network_transient"], evidenceProduced: ["child-run-receipt", "verifier-receipt", "child-run-audit-chain"], redactedKeys: ["credential", "token", "secret"],
+    execute: async (input, context) => {
+      if (!childRuns) return { outcome: "blocked", output: { status: "dispatcher_unavailable", lane: "digest" }, failure: failure("tool_unavailable", "Graph child-run coordinator is unavailable") };
+      const result = await childRuns.executeGovernedTask(input as never, context);
+      return {
+        ...result,
+        externalEffect: {
+          idempotencyKey: context.idempotencyKey,
+          operationType: "digest-notification",
+          target: "configured-notification-channel",
+          payloadHash: context.effectPayloadHash,
+          state: result.outcome === "succeeded" ? "effect_verified" : result.outcome === "failed_repairable" ? "confirmed_absent" : "ambiguous",
+          lastObservedAt: new Date().toISOString(),
+        },
+      };
     },
   });
   registry.register({

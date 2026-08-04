@@ -10886,7 +10886,14 @@ async function bootstrap() {
     // 6:00 AM UTC: Send morning digest notification
     cron.schedule(config.morningNotificationSchedule || "0 6 * * *", () => {
       console.log("[cron] send-digest triggered");
-      queue.enqueue("send-digest", { reason: "scheduled" });
+      if (graphRuntime) {
+        startGraphOwnedTask("send-digest", {
+          reason: "scheduled",
+          idempotencyKey: `send-digest:${new Date().toISOString().slice(0, 10)}`,
+        }, "scheduler");
+      } else {
+        queue.enqueue("send-digest", { reason: "scheduled" });
+      }
     });
 
     // 5-minute heartbeat for health checks (keeps background monitoring)
@@ -11222,10 +11229,11 @@ async function bootstrap() {
     return { taskId: task.id, completion };
   });
   const graphOwnedTaskBindings = Object.freeze({
-    "business-value-cycle": { lane: "business-value", agentId: "operations-analyst-agent" },
-    "market-research": { lane: "market-research", agentId: "market-research-agent" },
-    "github-workflow-monitor": { lane: "git-monitor", agentId: "operations-analyst-agent" },
-    "campaign-content-factory": { lane: "campaign-factory", agentId: "content-agent" },
+    "business-value-cycle": { lane: "business-value", agentId: "operations-analyst-agent", graphId: "governed-task-execution", version: "1.0.0", authority: "local_persistent" },
+    "market-research": { lane: "market-research", agentId: "market-research-agent", graphId: "governed-task-execution", version: "1.0.0", authority: "local_persistent" },
+    "github-workflow-monitor": { lane: "git-monitor", agentId: "operations-analyst-agent", graphId: "governed-task-execution", version: "1.0.0", authority: "local_persistent" },
+    "campaign-content-factory": { lane: "campaign-factory", agentId: "content-agent", graphId: "governed-task-execution", version: "1.0.0", authority: "local_persistent" },
+    "send-digest": { lane: "digest", agentId: "operations-analyst-agent", graphId: "digest-delivery", version: "1.0.0", authority: "external_reversible" },
   } as const);
   type GraphOwnedTaskType = keyof typeof graphOwnedTaskBindings;
   const isGraphOwnedTaskType = (type: string): type is GraphOwnedTaskType => Boolean(graphRuntime) && type in graphOwnedTaskBindings;
@@ -11235,14 +11243,14 @@ async function bootstrap() {
     const ingressId = typeof payload.idempotencyKey === "string" && payload.idempotencyKey.trim()
       ? payload.idempotencyKey.trim()
       : `graph-ingress:${type}:${randomUUID()}`;
-    const existing = graphRuntime.store.listRuns({ graphId: "governed-task-execution", limit: 250 }).find((run) => run.input.ingressId === ingressId);
+    const existing = graphRuntime.store.listRuns({ graphId: binding.graphId, limit: 250 }).find((run) => run.input.ingressId === ingressId);
     const created = existing ?? graphRuntime.engine.start({
-      graphId: "governed-task-execution",
-      version: "1.0.0",
+      graphId: binding.graphId,
+      version: binding.version,
       objective: `Graph-owned ${type} execution from ${source}`,
       correlationId: ingressId,
       input: { lane: binding.lane, taskType: type, agentId: binding.agentId, payload, ingressId, shadowMode: false } as never,
-      authority: { maximum: "local_persistent", grantedBy: `graph-owned-ingress:${source}` },
+      authority: { maximum: binding.authority, grantedBy: `graph-owned-ingress:${source}` },
     });
     const completion = ["completed", "failed", "cancelled"].includes(created.status)
       ? Promise.resolve(created)

@@ -31,7 +31,8 @@ export function verifyGraphChildTaskAuthority(store: GraphStore, task: Task, now
   const run = store.getRun(parentRunId);
   const codingGraph = run?.graphId === "coding-change" && run.graphVersion === "1.2.0";
   const governedTaskGraph = run?.graphId === "governed-task-execution" && run.graphVersion === "1.0.0";
-  if (!run || (!codingGraph && !governedTaskGraph)) {
+  const digestGraph = run?.graphId === "digest-delivery" && run.graphVersion === "1.0.0";
+  if (!run || (!codingGraph && !governedTaskGraph && !digestGraph)) {
     return { allowed: false, reason: "graph_task_authority_unsupported_graph" };
   }
   const receipt = store.childRunReceipt(receiptId);
@@ -41,7 +42,7 @@ export function verifyGraphChildTaskAuthority(store: GraphStore, task: Task, now
   if (receipt.parentRunId !== parentRunId || receipt.parentNodeId !== parentNodeId || receipt.childRunId !== childRunId || receipt.idempotencyKey !== idempotencyKey || receipt.childTaskType !== task.type) {
     return { allowed: false, reason: "graph_task_authority_receipt_mismatch" };
   }
-  if (governedTaskGraph) {
+  if (governedTaskGraph || digestGraph) {
     const lane = text(run.input.lane);
     const taskType = text(run.input.taskType);
     const agentId = text(run.input.agentId);

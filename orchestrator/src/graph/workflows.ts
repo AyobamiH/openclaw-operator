@@ -182,7 +182,7 @@ export function researchToActionGraph(): GraphDefinition {
 export function representativeGraphDefinitions(): GraphDefinition[] {
   return [
     codingChangeGraph(), socialPublicationGraph(), researchToActionGraph(),
-    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(),
+    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(), digestDeliveryGraph(),
   ];
 }
 
@@ -192,6 +192,7 @@ export const PRODUCTION_GRAPH_DEFINITION_IDENTITIES = Object.freeze([
   "deterministic-social-publication@2.0.0",
   "research-to-action@1.1.0",
   "governed-task-execution@1.0.0",
+  "digest-delivery@1.0.0",
 ] as const);
 
 function bindNode(definition: GraphDefinition, nodeId: string, handler: string, options: { localReversible?: boolean; mutation?: string } = {}): void {
@@ -333,6 +334,7 @@ export function liveCapableSocialPublicationGraph(): GraphDefinition {
     ],
     replaces: ["deterministic-social-publication@1.1.0"],
   });
+  definition.authorityRequirements.approvalsRequiredAtOrAbove = "external_public";
   definition.version = "2.0.0";
   definition.migrationCompatibility.compatibleFromVersions = [];
   definition.concurrency = { maxRuns: 1, resourceKeys: ["publication:instagram"], leaseMs: 15 * 60_000, priority: 100 };
@@ -397,5 +399,41 @@ export function governedTaskExecutionGraph(): GraphDefinition {
   definition.stateSchema = { type: "object", properties: { governedTask: { type: "object" } }, additionalProperties: true };
   definition.retryPolicy = { defaultMaxAttempts: 3, retryableFailures: ["network_transient", "provider_rate_limited", "timeout", "state_conflict", "verification_failed"] };
   definition.concurrency = { maxRuns: 4, resourceKeys: ["governed-task:{runId}"], leaseMs: 30 * 60_000, priority: 80 };
+  return definition;
+}
+
+export function digestDeliveryGraph(): GraphDefinition {
+  const stages = ["schedule_ingress", "load_latest_digest", "reconcile_prior_delivery", "deliver_notification", "verify_receipts", "complete"];
+  const nodes = stages.map((id) => node({
+    id,
+    type: id === "complete" ? "terminal" : id === "deliver_notification" ? "connector" : id === "verify_receipts" ? "verification" : "checkpoint",
+    handler: id === "deliver_notification" ? "production.digest-delivery.v1" : id === "verify_receipts" ? "graph.evidence-gate" : id === "complete" ? "graph.terminal" : "graph.pass",
+    purpose: `Graph-owned digest stage: ${id.replaceAll("_", " ")}`,
+    evidence: id === "deliver_notification" ? ["child-run-receipt", "verifier-receipt", "child-run-audit-chain"] : [],
+    authority: id === "deliver_notification" ? "external_reversible" : "read_only",
+    sideEffect: id === "deliver_notification" ? "external_reversible" : "read_only",
+    outcomes: id === "complete" ? ["succeeded"] : ["succeeded", "failed_repairable", "failed_terminal", "blocked"],
+    retry: id === "deliver_notification",
+    maxAttempts: id === "deliver_notification" ? 2 : 1,
+  }));
+  const delivery = nodes.find((item) => item.id === "deliver_notification")!;
+  delivery.requiredCapabilities = [delivery.handler];
+  delivery.idempotencyStrategy = "external_operation";
+  const edges = stages.slice(0, -1).map((id, index) => edge(id, stages[index + 1]!));
+  edges.push(edge("deliver_notification", "reconcile_prior_delivery", "failed_repairable", { loopId: "digest-delivery-retry" }));
+  for (const candidate of nodes.filter((item) => item.type !== "terminal")) edges.push(edge(candidate.id, "complete", "failed_terminal", { priority: -100 }));
+  const definition = base({
+    graphId: "digest-delivery", description: "Graph-owned digest ingress, effect ordering, bounded delivery, reconciliation and hash-bound terminal receipts.",
+    nodes, edges, entry: "schedule_ingress", terminal: "complete", authority: "external_reversible",
+    evidence: [
+      { assertionId: "digest-delivery-receipted", claim: "The notification effect completed with a durable child receipt", method: "child-run-receipt", requiredEvidenceKinds: ["child-run-receipt"] },
+      { assertionId: "digest-delivery-verified", claim: "The digest receipt chain was deterministically verified", method: "verifier-receipt", requiredEvidenceKinds: ["verifier-receipt", "child-run-audit-chain"] },
+    ],
+    replaces: ["send-digest-direct-cron", "send-digest-task-queue-owner"],
+  });
+  definition.authorityRequirements.approvalsRequiredAtOrAbove = "external_public";
+  definition.inputSchema = { type: "object", required: ["lane", "taskType", "agentId", "payload"], properties: { lane: { const: "digest" }, taskType: { const: "send-digest" }, agentId: { const: "operations-analyst-agent" }, payload: { type: "object" } }, additionalProperties: true };
+  definition.concurrency = { maxRuns: 1, resourceKeys: ["digest-delivery"], leaseMs: 5 * 60_000, priority: 90 };
+  definition.loopBudgets.externalRequestBudget = 1;
   return definition;
 }

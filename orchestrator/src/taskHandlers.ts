@@ -161,6 +161,7 @@ export const TASK_AGENT_SKILL_REQUIREMENTS: Readonly<
   "business-value-cycle": { agentId: "operations-analyst-agent", skillId: "runtimeStateReader" },
   "github-workflow-monitor": { agentId: "operations-analyst-agent", skillId: "runtimeStateReader" },
   "campaign-content-factory": { agentId: "content-agent", skillId: "documentParser" },
+  "send-digest": { agentId: "operations-analyst-agent", skillId: "notificationSender" },
 };
 
 /**
