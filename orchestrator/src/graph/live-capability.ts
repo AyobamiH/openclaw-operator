@@ -7,6 +7,10 @@ import type { GraphRunState, LiveCapabilityDispatch, OneRunLiveCapability } from
 import type { GraphApproval } from "./authority.js";
 
 export const LIVE_CAPABILITY_AWARE_HANDLER = "production.instagram-publication-live.v2";
+export const SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS = Object.freeze([
+  "production.threads-publication-live.v1",
+  "production.meta-reply-live.v1",
+] as const);
 export const LIVE_CAPABILITY_GRAPH_ID = "deterministic-social-publication";
 export const LIVE_CAPABILITY_GRAPH_VERSION = "2.0.0";
 export const LIVE_CAPABILITY_DEFINITION_HASH = "995ff8355a57113884129b7cda9f7966d4719163f9b9b81ed77e87d12c6a3473";
@@ -23,6 +27,52 @@ type PublicationLiveState = {
   envelope: FrozenPublicationEnvelope;
   envelopeHash: string;
 };
+
+type SocialEffectState = {
+  status: string;
+  action: "publish" | "reply" | "skip" | "shadow";
+  outboxId: string | null;
+  payloadHash: string | null;
+  targetId: string | null;
+};
+
+function isSocialHandler(value: string): value is (typeof SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS)[number] {
+  return SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS.includes(value as (typeof SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS)[number]);
+}
+
+function expectedSocialCapabilityBindings(args: { run: GraphRunState; approval: GraphApproval; nodeHandler: string; definitionHash: string }) {
+  const social = args.run.data.socialEffect as unknown as SocialEffectState | undefined;
+  const provider = String(args.run.input.provider ?? "");
+  const accountKey = String(args.run.input.accountKey ?? "");
+  const jobId = String(args.run.input.jobId ?? "");
+  const requiresDeliveryUpload = args.run.graphId === "threads-publication" && jobId === "083e3560-40fd-4487-9d78-674f64866ef7";
+  if (!social?.outboxId || !social.payloadHash || !["publish", "reply"].includes(social.action)) throw new Error("social_live_capability_preparation_missing");
+  if ((args.nodeHandler.includes("threads") && social.action !== "publish") || (args.nodeHandler.includes("meta-reply") && social.action !== "reply")) throw new Error("social_live_capability_action_mismatch");
+  const definitionHash = args.definitionHash;
+  const envelopeHash = sha256({ graphId: args.run.graphId, graphVersion: args.run.graphVersion, runId: args.run.runId, social, provider, accountKey, jobId, definitionHash });
+  const idempotencyKey = sha256({ runId: args.run.runId, nodeId: "perform_exact_effect", target: social.targetId ?? social.outboxId, payloadHash: args.approval.payloadHash, operationType: args.nodeHandler });
+  return {
+    graphId: args.run.graphId,
+    graphVersion: args.run.graphVersion,
+    graphDefinitionHash: definitionHash,
+    graphRunId: args.run.runId,
+    claimId: `social:${social.outboxId}`,
+    approvalId: args.approval.approvalId,
+    provider,
+    accountId: accountKey,
+    operationType: args.nodeHandler,
+    candidateId: social.targetId ?? social.outboxId,
+    campaignId: jobId,
+    sequenceId: social.outboxId,
+    slotId: social.outboxId,
+    payloadHash: social.payloadHash,
+    mediaHash: undefined,
+    envelopeHash,
+    idempotencyKeyFingerprint: sha256(idempotencyKey),
+    maximumMutatingDispatches: requiresDeliveryUpload ? 2 : 1,
+    maximumSuccessfulPublications: 1,
+  };
+}
 
 function nonWildcard(value: string, field: string): string {
   const normalized = value.trim();
@@ -76,13 +126,22 @@ export function validateOneRunLiveCapabilityForMutation(args: {
   now?: Date;
 }): { capability: OneRunLiveCapability; expected: ReturnType<typeof expectedCapabilityBindings> } {
   if (args.globalZeroWrite !== true) throw new Error("one_run_live_capability_requires_global_zero_write");
-  if (args.nodeHandler !== LIVE_CAPABILITY_AWARE_HANDLER) throw new Error("one_run_live_capability_node_not_aware");
+  if (args.nodeHandler !== LIVE_CAPABILITY_AWARE_HANDLER && !isSocialHandler(args.nodeHandler)) throw new Error("one_run_live_capability_node_not_aware");
   const capability = args.store.oneRunLiveCapabilityForRun(args.run.runId);
   if (!capability) throw new Error("one_run_live_capability_missing");
   const now = args.now ?? new Date();
   if (!["prepared", "active"].includes(capability.status)) throw new Error(`one_run_live_capability_not_usable:${capability.status}`);
   if (Date.parse(capability.notBefore) > now.getTime()) throw new Error("one_run_live_capability_not_yet_valid");
   if (Date.parse(capability.expiresAt) <= now.getTime()) throw new Error("one_run_live_capability_expired");
+  if (isSocialHandler(args.nodeHandler)) {
+    const definition = args.store.definitionRecord(args.run.graphId, args.run.graphVersion);
+    if (!definition) throw new Error("one_run_live_capability_definition_missing");
+    const expected = expectedSocialCapabilityBindings({ run: args.run, approval: args.approval, nodeHandler: args.nodeHandler, definitionHash: definition.definitionHash });
+    for (const key of Object.keys(expected) as Array<keyof typeof expected>) {
+      if ((capability[key] ?? null) !== (expected[key] ?? null)) throw new Error(`one_run_live_capability_binding_mismatch:${key}`);
+    }
+    return { capability, expected };
+  }
   const publicationLive = args.run.data.publicationLive as unknown as PublicationLiveState | undefined;
   const envelope = publicationLive?.envelope;
   if (!envelope || publicationLive?.envelopeHash !== frozenEnvelopeHash(envelope)) throw new Error("one_run_live_capability_frozen_envelope_missing");
@@ -113,6 +172,32 @@ export function issueOneRunLiveCapability(args: {
   const now = args.now ?? new Date();
   const run = args.store.getRun(args.runId);
   if (!run) throw new Error(`graph_run_not_found:${args.runId}`);
+  if (["threads-publication", "meta-reply-monitor"].includes(run.graphId) && run.graphVersion === "1.0.0") {
+    if (run.currentNodeId !== "perform_exact_effect" || !["waiting_for_approval", "running", "blocked"].includes(run.status)) throw new Error("one_run_live_capability_run_not_at_mutation_boundary");
+    if (run.input.shadowMode === true) throw new Error("one_run_live_capability_shadow_run_forbidden");
+    const definition = args.store.definitionRecord(run.graphId, run.graphVersion);
+    if (!definition) throw new Error("one_run_live_capability_definition_missing");
+    const approval = args.store.approvals(run.runId).find((item) => item.approvalId === args.approvalId);
+    if (!approval || approval.status !== "granted" || Date.parse(approval.expiresAt) <= now.getTime()) throw new Error("one_run_live_capability_approval_not_granted");
+    const nodeHandler = run.graphId === "threads-publication" ? "production.threads-publication-live.v1" : "production.meta-reply-live.v1";
+    const expectedTarget = String((run.data as Record<string, unknown>).target ?? `${run.graphId}:perform_exact_effect`);
+    const recomputedApprovalPayloadHash = buildApprovalPayloadHash({ objective: run.objective, input: run.input, data: run.data });
+    if (approval.nodeId !== "perform_exact_effect" || approval.action !== nodeHandler || approval.target !== expectedTarget || approval.payloadHash !== recomputedApprovalPayloadHash) throw new Error("one_run_live_capability_approval_envelope_mismatch");
+    if (args.store.externalEffects(run.runId).length !== 0) throw new Error("one_run_live_capability_effect_already_exists");
+    const notBefore = args.notBefore ?? now.toISOString();
+    const expiry = Date.parse(args.expiresAt);
+    if (!Number.isFinite(expiry) || expiry <= Math.max(now.getTime(), Date.parse(notBefore)) || expiry - now.getTime() > 30 * 60_000 || expiry > Date.parse(approval.expiresAt)) throw new Error("one_run_live_capability_expiry_invalid");
+    const bindings = expectedSocialCapabilityBindings({ run, approval, nodeHandler, definitionHash: definition.definitionHash });
+    for (const [field, value] of Object.entries(bindings)) if (value !== undefined) nonWildcard(String(value), field);
+    const capabilityId = `glc_${sha256({ bindings, issuedAt: now.toISOString(), issuedBy: args.issuedBy, nonce: randomUUID() }).slice(0, 32)}`;
+    const capability: OneRunLiveCapability = { capabilityId, status: "prepared", ...bindings, issuedAt: now.toISOString(), notBefore, expiresAt: args.expiresAt, issuedBy: nonWildcard(args.issuedBy, "issuedBy") };
+    const requiresDeliveryUpload = run.graphId === "threads-publication" && String(run.input.jobId) === "083e3560-40fd-4487-9d78-674f64866ef7";
+    const dispatches: LiveCapabilityDispatch[] = [
+      ...(requiresDeliveryUpload ? [{ dispatchId: `glcd_${sha256({ capabilityId, stepId: "delivery_upload" }).slice(0, 32)}`, capabilityId, stepIndex: 0, stepId: "delivery_upload", expectedOperation: "generated_media_delivery_upload", maximumDispatchCount: 1 as const, dispatchCount: 0, state: "prepared" as const }] : []),
+      { dispatchId: `glcd_${sha256({ capabilityId, stepId: "provider_effect" }).slice(0, 32)}`, capabilityId, stepIndex: requiresDeliveryUpload ? 1 : 0, stepId: "provider_effect", expectedOperation: nodeHandler, ...(requiresDeliveryUpload ? { predecessorStepId: "delivery_upload" } : {}), maximumDispatchCount: 1, dispatchCount: 0, state: "prepared" },
+    ];
+    return args.store.issueOneRunLiveCapability(capability, dispatches, args.issuedBy);
+  }
   if (run.graphId !== LIVE_CAPABILITY_GRAPH_ID || run.graphVersion !== LIVE_CAPABILITY_GRAPH_VERSION) throw new Error("one_run_live_capability_graph_not_allowed");
   if (run.currentNodeId !== "publish_provider_object" || !["waiting_for_approval", "running", "blocked"].includes(run.status)) throw new Error("one_run_live_capability_run_not_at_mutation_boundary");
   if (run.input.shadowMode === true) throw new Error("one_run_live_capability_shadow_run_forbidden");

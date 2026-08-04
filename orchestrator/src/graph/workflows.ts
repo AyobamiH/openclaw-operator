@@ -182,7 +182,7 @@ export function researchToActionGraph(): GraphDefinition {
 export function representativeGraphDefinitions(): GraphDefinition[] {
   return [
     codingChangeGraph(), socialPublicationGraph(), researchToActionGraph(),
-    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(), digestDeliveryGraph(),
+    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(), digestDeliveryGraph(), threadsPublicationGraph(), metaReplyMonitorGraph(),
   ];
 }
 
@@ -193,6 +193,8 @@ export const PRODUCTION_GRAPH_DEFINITION_IDENTITIES = Object.freeze([
   "research-to-action@1.1.0",
   "governed-task-execution@1.0.0",
   "digest-delivery@1.0.0",
+  "threads-publication@1.0.0",
+  "meta-reply-monitor@1.0.0",
 ] as const);
 
 function bindNode(definition: GraphDefinition, nodeId: string, handler: string, options: { localReversible?: boolean; mutation?: string } = {}): void {
@@ -436,4 +438,59 @@ export function digestDeliveryGraph(): GraphDefinition {
   definition.concurrency = { maxRuns: 1, resourceKeys: ["digest-delivery"], leaseMs: 5 * 60_000, priority: 90 };
   definition.loopBudgets.externalRequestBudget = 1;
   return definition;
+}
+
+function socialEffectGraph(args: {
+  graphId: "threads-publication" | "meta-reply-monitor";
+  prepareHandler: string;
+  liveHandler: string;
+  readbackHandler: string;
+  effectAction: "publish" | "reply";
+  resourceKey: string;
+  replaces: string[];
+}): GraphDefinition {
+  const nodes = [
+    node({ id: "schedule_ingress", type: "checkpoint", purpose: "Bind one injected or natural schedule slot" }),
+    node({ id: "prepare_exact_effect", type: "tool", handler: args.prepareHandler, purpose: "Select, validate, freeze and persist one exact zero-write candidate", mutations: ["socialEffect", "target"], evidence: ["social-preparation-receipt", "payload-hash", "zero-provider-writes"], authority: "local_persistent", sideEffect: "local_persistent", retry: true, maxAttempts: 2 }),
+    node({ id: "route_effect", type: "checkpoint", purpose: "Route skip, shadow or exact external effect from persisted preparation" }),
+    node({ id: "perform_exact_effect", type: "connector", handler: args.liveHandler, purpose: `Perform at most one exact provider ${args.effectAction}`, mutations: ["socialEffect"], evidence: [args.effectAction === "reply" ? "provider-reply" : "provider-publication", "official-provider-readback"], authority: "external_public", sideEffect: "external_public", outcomes: ["succeeded", "failed_repairable", "failed_terminal", "blocked"] }),
+    node({ id: "reconcile_provider_state", type: "verification", handler: args.readbackHandler, purpose: "Read provider state and reconcile an exact prior effect without retrying it", evidence: ["second-provider-readback", "social-terminal-receipt"], retry: true, maxAttempts: 2 }),
+    node({ id: "package_terminal_receipt", type: "verification", handler: "graph.evidence-gate", purpose: "Close the graph from preparation and provider evidence" }),
+    node({ id: "complete", type: "terminal", handler: "graph.terminal", purpose: "Terminal social effect state", outcomes: ["succeeded"] }),
+  ];
+  for (const graphNode of nodes.filter((item) => item.handler.startsWith("production."))) {
+    graphNode.requiredCapabilities = [graphNode.handler];
+    graphNode.idempotencyStrategy = graphNode.id === "perform_exact_effect" ? "external_operation" : "run_node_payload";
+  }
+  const edges = [
+    edge("schedule_ingress", "prepare_exact_effect"),
+    edge("prepare_exact_effect", "route_effect"),
+    edge("route_effect", "package_terminal_receipt", "succeeded", { priority: 100, guards: [{ path: "data.socialEffect.action", operator: "in", value: ["skip", "shadow"] }] }),
+    edge("route_effect", "perform_exact_effect", "succeeded", { priority: 50, guards: [{ path: "data.socialEffect.action", operator: "eq", value: args.effectAction }] }),
+    edge("perform_exact_effect", "reconcile_provider_state"),
+    edge("perform_exact_effect", "reconcile_provider_state", "failed_repairable"),
+    edge("reconcile_provider_state", "package_terminal_receipt"),
+    edge("package_terminal_receipt", "complete"),
+  ];
+  for (const candidate of nodes.filter((item) => item.type !== "terminal")) edges.push(edge(candidate.id, "complete", "failed_terminal", { priority: -100 }));
+  const definition = base({
+    graphId: args.graphId,
+    description: `Graph-owned ${args.graphId} with exact payload preparation, effect ordering, reconciliation and terminal receipts.`,
+    nodes, edges, entry: "schedule_ingress", terminal: "complete", authority: "external_public",
+    evidence: [{ assertionId: `${args.graphId}-receipted`, claim: "The scheduled social decision has a deterministic terminal receipt", method: "graph-receipt", requiredEvidenceKinds: ["social-preparation-receipt", "zero-provider-writes"] }],
+    replaces: args.replaces,
+  });
+  definition.inputSchema = { type: "object", required: ["provider", "accountKey", "jobId", "observedAt", "shadowMode", "maximumProviderMutations"], properties: { provider: { type: "string" }, accountKey: { type: "string" }, jobId: { type: "string" }, observedAt: { type: "string" }, shadowMode: { type: "boolean" }, maximumProviderMutations: { const: 1 } }, additionalProperties: false };
+  definition.stateSchema = { type: "object", properties: { socialEffect: { type: "object" }, target: { type: "string" } }, additionalProperties: true };
+  definition.concurrency = { maxRuns: 1, resourceKeys: [args.resourceKey], leaseMs: 15 * 60_000, priority: 100 };
+  definition.loopBudgets.externalRequestBudget = 1;
+  return definition;
+}
+
+export function threadsPublicationGraph(): GraphDefinition {
+  return socialEffectGraph({ graphId: "threads-publication", prepareHandler: "production.threads-publication-prepare.v1", liveHandler: "production.threads-publication-live.v1", readbackHandler: "production.threads-publication-readback.v1", effectAction: "publish", resourceKey: "publication:threads", replaces: ["threads-outbox-runner-scheduler-owner", "threads-readiness-preparer-scheduler-owner"] });
+}
+
+export function metaReplyMonitorGraph(): GraphDefinition {
+  return socialEffectGraph({ graphId: "meta-reply-monitor", prepareHandler: "production.meta-reply-prepare.v1", liveHandler: "production.meta-reply-live.v1", readbackHandler: "production.meta-reply-readback.v1", effectAction: "reply", resourceKey: "reply:meta", replaces: ["meta-reply-monitor-outbox-runner-scheduler-owner"] });
 }

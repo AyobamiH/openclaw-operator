@@ -58,6 +58,17 @@ legacy queue fallback. This is not an installed cutover claim: the production
 zero-write policy and scheduler transfer gates must still pass before the live
 runtime loads or executes the definition.
 
+The third source increment adds `threads-publication@1.0.0` and
+`meta-reply-monitor@1.0.0`. Both definitions now own schedule ingress, exact
+zero-write preparation, immutable payload binding, the approval boundary, a
+single-use live capability, provider-effect ordering, readback reconciliation
+and terminal receipts. Their canonical workspace runners expose only narrow
+prepare, exact-effect and reconciliation entry points to the graph adapters.
+Injected-clock shadows and an exact Threads capability-consumption fixture
+pass without a provider call. Scheduler ownership is intentionally unchanged
+until the generic migration registry, rollback snapshot and atomic cron
+repoint complete.
+
 ## Persistence activation status
 
 The owner-only production graph database is schema v3 and retains the pre-v3

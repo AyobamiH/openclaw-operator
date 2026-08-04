@@ -5,7 +5,7 @@ import { buildApprovalPayloadHash, evaluateAuthority, type GraphApproval } from 
 import { failure } from "./failures.js";
 import { NodeExecutionResultSchema, validateGraphDefinition } from "./schema.js";
 import { GraphStore, type EventInput } from "./store.js";
-import { LIVE_CAPABILITY_AWARE_HANDLER, validateOneRunLiveCapabilityForMutation } from "./live-capability.js";
+import { LIVE_CAPABILITY_AWARE_HANDLER, SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS, validateOneRunLiveCapabilityForMutation } from "./live-capability.js";
 import type {
   EvidenceReference,
   GraphBudgetState,
@@ -279,7 +279,7 @@ export class GraphExecutor {
         progressFingerprint: sha256({ nodeId: node.id, reason: "shadow_mode_external_mutation_unreachable" }),
       }, null);
     }
-    if (externalMutation && this.runtimePolicy.zeroWriteOnly === true && node.handler !== LIVE_CAPABILITY_AWARE_HANDLER) {
+    if (externalMutation && this.runtimePolicy.zeroWriteOnly === true && node.handler !== LIVE_CAPABILITY_AWARE_HANDLER && !SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS.includes(node.handler as (typeof SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS)[number])) {
       const reason = "runtime_zero_write_policy";
       const blocked = { ...run, status: "blocked" as const, lastError: failure("unsafe_operation", reason), updatedAt: new Date().toISOString() };
       return this.store.saveRun(blocked, initialRun.revision, [{ type: "graph_blocked", nodeId: node.id, actor: owner, payload: { reason, capabilityFailure: "node_not_live_capability_aware", sideEffectClass: node.sideEffectClass } }]);

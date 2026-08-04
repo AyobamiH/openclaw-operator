@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
+import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
 import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../src/graph/workflows.js";
 import { compareShadowDecisions, prepareProductionPublishingShadowDecision, type ShadowDecisionEnvelope } from "../src/publishing/shadow-equivalence.js";
 import type { AuthorityClass, GraphDefinition } from "../src/graph/types.js";
@@ -109,14 +110,75 @@ describe("production adapter registry", () => {
       "production.instagram-publication-live.v2",
       "production.instagram-publication-prepare.v2",
       "production.instagram-publication-readback.v2",
+      "production.meta-reply-live.v1",
+      "production.meta-reply-prepare.v1",
+      "production.meta-reply-readback.v1",
       "production.publishing-shadow-decision.v1",
       "production.repo-command.v1",
       "production.repo-inspect.v1",
       "production.research-evidence.v1",
+      "production.threads-publication-live.v1",
+      "production.threads-publication-prepare.v1",
+      "production.threads-publication-readback.v1",
     ]);
     expect(() => runtime.adapters.resolve("production.unregistered.v1")).toThrow("production_adapter_not_registered");
     const unknown = singleAdapterGraph("production.unregistered.v1");
     expect(() => runtime.engine.register(unknown)).toThrow("production_adapter_not_registered");
+  });
+
+  it("completes injected Threads and Meta shadows without reaching their live effect adapters", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-social-stage-fixtures-"));
+    const threadsPath = join(root, "threads-fixture.mjs");
+    const metaPath = join(root, "meta-fixture.mjs");
+    await writeFile(threadsPath, `export async function runOpportunity(){ return { entry: { id: "threads:2026-08-04:05:00:fixture", status: "prepared", selection: { text: "Exact prepared Threads fixture", approval: { approvalId: "fixture-approval" } }, externalWriteCount: 0 } }; }\nexport async function reconcileOutboxEntry(){ throw new Error("live readback must be unreachable in shadow"); }\n`);
+    await writeFile(metaPath, `export async function runMonitor(){ return { entry: { id: "meta-reply-monitor-20260804T0115Z", runId: "meta-reply-monitor-20260804T0115Z", status: "prepared_reply", draft: "Exact prepared reply fixture", selectedCandidate: { id: "candidate-one", platform: "threads" }, externalWriteCount: 0 } }; }\nexport async function executePreparedReply(){ throw new Error("live reply must be unreachable in shadow"); }\nexport async function reconcileReceiptOnly(){ throw new Error("live readback must be unreachable in shadow"); }\n`);
+    const priorThreads = process.env.OPENCLAW_THREADS_RUNNER_PATH;
+    const priorMeta = process.env.OPENCLAW_META_REPLY_RUNNER_PATH;
+    process.env.OPENCLAW_THREADS_RUNNER_PATH = threadsPath;
+    process.env.OPENCLAW_META_REPLY_RUNNER_PATH = metaPath;
+    cleanups.push(async () => {
+      if (priorThreads === undefined) delete process.env.OPENCLAW_THREADS_RUNNER_PATH; else process.env.OPENCLAW_THREADS_RUNNER_PATH = priorThreads;
+      if (priorMeta === undefined) delete process.env.OPENCLAW_META_REPLY_RUNNER_PATH; else process.env.OPENCLAW_META_REPLY_RUNNER_PATH = priorMeta;
+      await rm(root, { recursive: true, force: true });
+    });
+    const runtime = await testRuntime();
+    const inputs = [
+      { graphId: "threads-publication", provider: "threads", accountKey: "threads:owner", jobId: "68b10c5c-f604-4567-9213-d0d1eab08106" },
+      { graphId: "meta-reply-monitor", provider: "meta", accountKey: "meta:owner", jobId: "4de811aa-f213-4cc3-b1aa-6c2cffb6a847" },
+    ];
+    for (const input of inputs) {
+      const run = runtime.engine.start({ graphId: input.graphId, version: "1.0.0", objective: `Shadow ${input.graphId}`, input: { provider: input.provider, accountKey: input.accountKey, jobId: input.jobId, observedAt: "2026-08-04T01:15:00+01:00", shadowMode: true, maximumProviderMutations: 1 }, authority: { maximum: "external_public", grantedBy: "fixture" } });
+      const completed = await runtime.engine.runUntilSettled(run.runId);
+      expect(completed.status).toBe("completed");
+      expect(completed.externalEffects).toEqual([]);
+      expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining(["social-preparation-receipt", "zero-provider-writes"]));
+      expect((completed.data.socialEffect as any).action).toBe("shadow");
+    }
+  });
+
+  it("requires and consumes one exact capability before an injected Threads provider effect", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-threads-live-capability-"));
+    const runnerPath = join(root, "threads-live-fixture.mjs");
+    await writeFile(runnerPath, `const verified = { id: "threads:2026-08-04:05:00:fixture", status: "published_verified", selection: { text: "Exact prepared Threads fixture", approval: { approvalId: "fixture-approval" } }, externalWriteCount: 1, providerResultId: "provider-one", permalink: "https://example.invalid/provider-one" };\nexport async function runOpportunity(_jobId, options){ if(options.prepareOnly) return { entry: { ...verified, status: "prepared", externalWriteCount: 0 } }; await options.graphDispatchGate.reserve("provider_effect", "production.threads-publication-live.v1"); await options.graphDispatchGate.complete("provider_effect", "succeeded", { providerOperationId: "provider-one" }); return { entry: verified }; }\nexport async function reconcileOutboxEntry(){ return { entry: verified }; }\n`);
+    const prior = process.env.OPENCLAW_THREADS_RUNNER_PATH;
+    process.env.OPENCLAW_THREADS_RUNNER_PATH = runnerPath;
+    cleanups.push(async () => { if (prior === undefined) delete process.env.OPENCLAW_THREADS_RUNNER_PATH; else process.env.OPENCLAW_THREADS_RUNNER_PATH = prior; await rm(root, { recursive: true, force: true }); });
+    const runtime = await testRuntime();
+    const run = runtime.engine.start({ graphId: "threads-publication", version: "1.0.0", objective: "Exact Threads capability fixture", input: { provider: "threads", accountKey: "threads:owner", jobId: "68b10c5c-f604-4567-9213-d0d1eab08106", observedAt: "2026-08-04T05:00:00+01:00", shadowMode: false, maximumProviderMutations: 1 }, authority: { maximum: "external_public", grantedBy: "fixture" } });
+    const waiting = await runtime.engine.runUntilSettled(run.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    expect(waiting.currentNodeId).toBe("perform_exact_effect");
+    expect(waiting.externalEffects).toEqual([]);
+    const approval = runtime.store.approvals(run.runId)[0]!;
+    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
+    runtime.engine.decideApproval(run.runId, approval.approvalId, "granted", "fixture", expiresAt);
+    const capability = issueOneRunLiveCapability({ store: runtime.store, runId: run.runId, approvalId: approval.approvalId, issuedBy: "fixture", expiresAt, globalZeroWrite: true });
+    runtime.engine.resume(run.runId, "fixture");
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(runtime.store.oneRunLiveCapability(capability.capabilityId)?.status).toBe("consumed");
+    expect(runtime.store.liveCapabilityDispatches(capability.capabilityId)).toMatchObject([{ stepId: "provider_effect", dispatchCount: 1, state: "succeeded", providerOperationId: "provider-one" }]);
+    expect(runtime.store.externalEffects(run.runId)).toMatchObject([{ state: "effect_verified", providerOperationId: "provider-one" }]);
   });
 
   it("fails closed when a registered production adapter violates its output schema", async () => {
