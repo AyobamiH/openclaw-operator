@@ -52,7 +52,7 @@ function getJob(id: string): CronJob {
 
 function commandEditArguments(job: CronJob): string[] {
   const payload = job.payload;
-  const edit = ["cron", "edit", job.id, "--name", String(job.displayName ?? job.name ?? job.id), "--description", String(job.description ?? "")];
+  const edit = ["cron", "edit", job.id];
   if (payload.kind === "command") {
     const argv = payload.argv;
     if (!Array.isArray(argv) || !argv.every((value) => typeof value === "string") || !argv.length) throw new Error(`graph_scheduler_cutover_command_invalid:${job.id}`);
@@ -94,10 +94,9 @@ function payloadContract(payload: CronJob["payload"]): Record<string, unknown> {
 }
 
 function verifyReadback(actual: CronJob, intended: CronJob, legacy: CronJob): void {
-  for (const field of ["id", "declarationKey", "enabled", "schedule", "delivery"] as const) {
+  for (const field of ["id", "declarationKey", "displayName", "name", "description", "enabled", "schedule", "delivery"] as const) {
     if (canonical(actual[field]) !== canonical(legacy[field])) throw new Error(`graph_scheduler_cutover_preservation_failed:${legacy.id}:${field}`);
   }
-  if (actual.displayName !== intended.displayName || actual.description !== intended.description) throw new Error(`graph_scheduler_cutover_metadata_failed:${legacy.id}`);
   if (canonical(payloadContract(actual.payload)) !== canonical(payloadContract(intended.payload))) throw new Error(`graph_scheduler_cutover_payload_failed:${legacy.id}`);
 }
 

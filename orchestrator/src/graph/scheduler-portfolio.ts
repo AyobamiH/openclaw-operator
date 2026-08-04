@@ -67,8 +67,6 @@ export function buildGovernedGraphJob(legacyJob: Record<string, unknown>, migrat
   if (legacyJob.id !== value.declaration.scheduleId || legacyJob.declarationKey !== value.declaration.declarationKey) throw new Error("graph_scheduler_portfolio_legacy_binding_mismatch");
   return {
     ...structuredClone(legacyJob),
-    displayName: `${String(legacyJob.displayName ?? legacyJob.name ?? migrationId)} — graph owned`,
-    description: `Graph-owned scheduler ingress for ${migrationId}; rollback metadata is retained in the durable graph scheduler registry.`,
     payload: { kind: "command", argv: [nodeExecutable, "--import", "tsx", triggerScriptPath, "--migration-id", migrationId], cwd: triggerScriptPath.replace(/\/orchestrator\/scripts\/[^/]+$/, "/orchestrator"), noOutputTimeoutSeconds: 900, outputMaxBytes: 20000, timeoutSeconds: 1200 },
     graphTrigger: { graphId: value.declaration.graphId, graphVersion: value.declaration.graphVersion, definitionHash: value.declaration.graphDefinitionHash, input: value.input, authority: value.authority, approvalPolicy: value.approvalPolicy, maximumExternalWrites: value.maximumExternalWrites, latenessToleranceMinutes: value.latenessToleranceMinutes },
   };
