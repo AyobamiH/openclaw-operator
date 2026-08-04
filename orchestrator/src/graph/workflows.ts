@@ -337,7 +337,6 @@ export function liveCapableSocialPublicationGraph(): GraphDefinition {
     ],
     replaces: ["deterministic-social-publication@1.1.0"],
   });
-  definition.authorityRequirements.approvalsRequiredAtOrAbove = "external_public";
   definition.version = "2.0.0";
   definition.migrationCompatibility.compatibleFromVersions = [];
   definition.concurrency = { maxRuns: 1, resourceKeys: ["publication:instagram"], leaseMs: 15 * 60_000, priority: 100 };
