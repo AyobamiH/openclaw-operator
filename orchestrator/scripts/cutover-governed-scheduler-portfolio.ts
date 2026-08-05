@@ -25,12 +25,14 @@ for (let index = 2; index < process.argv.length; index += 2) {
 }
 
 const action = args.get("--action");
+const selectedMigrationId = args.get("--migration-id");
 const backupDirectory = args.get("--backup-directory");
 const schedulerDatabasePath = process.env.OPENCLAW_GRAPH_SCHEDULER_DATABASE_PATH?.trim();
 const openclawBin = process.env.OPENCLAW_BIN?.trim() || "/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.18.0/bin/openclaw";
 const triggerScript = new URL("./trigger-governed-graph-schedule.ts", import.meta.url).pathname;
 
 if (!action || !["prepare", "cutover", "verify", "rollback"].includes(action)) throw new Error("graph_scheduler_cutover_action_invalid");
+if (selectedMigrationId && !GOVERNED_SCHEDULER_PORTFOLIO.has(selectedMigrationId)) throw new Error(`graph_scheduler_cutover_migration_not_in_portfolio:${selectedMigrationId}`);
 if (!backupDirectory || !isAbsolute(backupDirectory)) throw new Error("graph_scheduler_cutover_requires_absolute_backup_directory");
 if (!schedulerDatabasePath || !isAbsolute(schedulerDatabasePath)) throw new Error("graph_scheduler_cutover_requires_absolute_scheduler_database");
 if (process.env.OPENCLAW_GRAPH_ZERO_WRITE_ONLY !== "true") throw new Error("graph_scheduler_cutover_requires_global_zero_write");
@@ -54,6 +56,7 @@ function getJob(id: string): CronJob {
 function commandEditArguments(job: CronJob): string[] {
   const payload = job.payload;
   const edit = ["cron", "edit", job.id];
+  edit.push(job.enabled ? "--enable" : "--disable");
   if (payload.kind === "command") {
     const argv = payload.argv;
     if (!Array.isArray(argv) || !argv.every((value) => typeof value === "string") || !argv.length) throw new Error(`graph_scheduler_cutover_command_invalid:${job.id}`);
@@ -95,9 +98,10 @@ function payloadContract(payload: CronJob["payload"]): Record<string, unknown> {
 }
 
 function verifyReadback(actual: CronJob, intended: CronJob, legacy: CronJob): void {
-  for (const field of ["id", "declarationKey", "displayName", "name", "description", "enabled", "schedule", "delivery"] as const) {
+  for (const field of ["id", "declarationKey", "displayName", "name", "description", "schedule", "delivery"] as const) {
     if (canonical(actual[field]) !== canonical(legacy[field])) throw new Error(`graph_scheduler_cutover_preservation_failed:${legacy.id}:${field}`);
   }
+  if (canonical(actual.enabled) !== canonical(intended.enabled)) throw new Error(`graph_scheduler_cutover_enabled_failed:${legacy.id}`);
   if (canonical(payloadContract(actual.payload)) !== canonical(payloadContract(intended.payload))) throw new Error(`graph_scheduler_cutover_payload_failed:${legacy.id}`);
 }
 
@@ -120,9 +124,10 @@ function writeSnapshot(name: string, value: unknown): void {
 
 const store = new GraphSchedulerStore(schedulerDatabasePath);
 const results: Array<Record<string, unknown>> = [];
+const selectedPortfolio = [...GOVERNED_SCHEDULER_PORTFOLIO].filter(([migrationId]) => !selectedMigrationId || migrationId === selectedMigrationId);
 try {
   if (action === "prepare") {
-    for (const [migrationId, portfolio] of GOVERNED_SCHEDULER_PORTFOLIO) {
+    for (const [migrationId, portfolio] of selectedPortfolio) {
       if (store.migration(migrationId)) throw new Error(`graph_scheduler_cutover_migration_already_exists:${migrationId}`);
       const legacy = getJob(portfolio.declaration.scheduleId);
       const graph = buildGovernedGraphJob(legacy, migrationId, triggerScript) as CronJob;
@@ -132,7 +137,7 @@ try {
       results.push({ migrationId, status: migration.status, eventChainValid: store.eventChainValid(migrationId) });
     }
   } else if (action === "cutover") {
-    for (const migrationId of GOVERNED_SCHEDULER_PORTFOLIO.keys()) {
+    for (const [migrationId] of selectedPortfolio) {
       const migration = store.migration(migrationId);
       if (!migration) throw new Error(`graph_scheduler_cutover_migration_missing:${migrationId}`);
       const legacy = migration.legacyJob as CronJob, graph = migration.graphJob as CronJob;
@@ -154,14 +159,14 @@ try {
       });
     }
   } else if (action === "verify") {
-    for (const migrationId of GOVERNED_SCHEDULER_PORTFOLIO.keys()) {
+    for (const [migrationId] of selectedPortfolio) {
       const migration = store.migration(migrationId);
       if (!migration || migration.status !== "graph_owned") throw new Error(`graph_scheduler_cutover_not_graph_owned:${migrationId}`);
       verifyReadback(getJob(migration.scheduleId), migration.graphJob as CronJob, migration.legacyJob as CronJob);
       results.push({ migrationId, status: migration.status, eventChainValid: store.eventChainValid(migrationId) });
     }
   } else {
-    for (const migrationId of [...GOVERNED_SCHEDULER_PORTFOLIO.keys()].reverse()) {
+    for (const [migrationId] of [...selectedPortfolio].reverse()) {
       const migration = store.migration(migrationId);
       if (!migration || migration.status !== "graph_owned") continue;
       applyJob(migration.legacyJob as CronJob);

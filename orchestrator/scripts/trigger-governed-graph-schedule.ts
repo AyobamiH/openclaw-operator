@@ -119,6 +119,16 @@ function resultFrom(socialEffect: Record<string, any> | null): Record<string, an
   return value && typeof value === "object" ? value as Record<string, any> : null;
 }
 
+function publicationLiveFrom(detail: any): Record<string, any> | null {
+  const value = detail?.run?.data?.publicationLive;
+  return value && typeof value === "object" ? value as Record<string, any> : null;
+}
+
+function publicationResultFrom(publicationLive: Record<string, any> | null): Record<string, any> | null {
+  const value = publicationLive?.readback ?? publicationLive?.result ?? publicationLive?.projection;
+  return value && typeof value === "object" ? value as Record<string, any> : null;
+}
+
 function compactReason(value: string): string {
   return value.replace(/\s+/g, " ").trim().slice(0, 240);
 }
@@ -155,6 +165,12 @@ function verifierReceiptsAccepted(detail: any): boolean {
   return verifierReceipts.every((item: any) => ["succeeded", "passed", "verified"].includes(String(item.status)));
 }
 
+function preparedPayloadApprovalId(detail: any): string | null {
+  return optionalString(detail?.run?.data?.socialEffect?.approvalId)
+    ?? optionalString(detail?.run?.data?.publicationLive?.envelope?.approvalId)
+    ?? optionalString(detail?.run?.data?.publicationApproval?.approvalId);
+}
+
 function receiptIds(detail: any, key: "childRunReceipts" | "verifierReceipts"): string[] {
   const receipts = Array.isArray(detail?.[key]) ? detail[key] : [];
   return receipts.map((item: any) => String(item.receiptId ?? item.verifierReceiptId ?? item.childRunId ?? "unknown"));
@@ -167,12 +183,16 @@ function isLegitimateZeroWriteReason(reason: string): boolean {
 export function buildPublicationReport(args: { detail: any; outcome: string; providerWrites: number; maximumExternalWrites: 0 | 1; eventChainValid: boolean; childReceiptChainValid: boolean; providerOperationId?: string | null; deferredReason?: string; completionContract?: SchedulerCompletionContract; recoveryResult?: string }): PublicationReport {
   const socialEffect = socialEffectFrom(args.detail);
   const result = resultFrom(socialEffect);
+  const publicationLive = publicationLiveFrom(args.detail);
+  const publicationResult = publicationResultFrom(publicationLive);
   const socialStatus = optionalString(socialEffect?.status) ?? optionalString(result?.status);
   const action = optionalString(socialEffect?.action);
-  const providerPostId = optionalString(result?.providerResultId) ?? optionalString(result?.providerOperationId) ?? optionalString(args.providerOperationId);
-  const providerPostUrl = optionalString(result?.permalink);
-  const candidateId = action && ["publish", "reply", "shadow"].includes(action) ? optionalString(socialEffect?.outboxId) : null;
-  const targetId = optionalString(socialEffect?.targetId) ?? optionalString(socialEffect?.outboxId) ?? optionalString(args.detail?.run?.data?.target);
+  const providerPostId = optionalString(result?.providerResultId) ?? optionalString(result?.providerOperationId) ?? optionalString(publicationResult?.providerResultId) ?? optionalString(args.providerOperationId);
+  const providerPostUrl = optionalString(result?.permalink) ?? optionalString(publicationResult?.permalink);
+  const candidateId = action && ["publish", "reply", "shadow"].includes(action)
+    ? optionalString(socialEffect?.outboxId)
+    : optionalString(publicationResult?.outboxId) ?? optionalString(publicationLive?.projection?.outboxId);
+  const targetId = optionalString(socialEffect?.targetId) ?? optionalString(socialEffect?.outboxId) ?? optionalString(args.detail?.run?.data?.target) ?? optionalString(publicationResult?.outboxId);
   const terminalZeroWriteReason = args.providerWrites === 0 ? terminalZeroWriteReasonFrom(args.detail) : null;
   const policyOrSkipReason = args.deferredReason ? `deferred:${args.deferredReason}`
     : args.providerWrites > 0 ? "published"
@@ -408,14 +428,14 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
       const pendingApproval = detail.approvals?.find((item: any) => item.status === "pending");
       const grantedApproval = detail.approvals?.find((item: any) => item.status === "granted");
       if (portfolio.approvalPolicy === "none" || (!pendingApproval && !grantedApproval)) throw new Error("graph_scheduler_unexpected_approval_boundary");
-      if (pendingApproval && portfolio.approvalPolicy === "prepared_payload_only" && !detail.run?.data?.socialEffect?.approvalId) throw new Error("graph_scheduler_exact_prepared_payload_approval_missing");
+      if (pendingApproval && portfolio.approvalPolicy === "prepared_payload_only" && !preparedPayloadApprovalId(detail)) throw new Error("graph_scheduler_exact_prepared_payload_approval_missing");
       const approval = pendingApproval ?? grantedApproval;
       const latestExpiry = new Date(Date.now() + 15 * 60_000);
       const expiryMs = grantedApproval?.expiresAt ? Math.min(latestExpiry.getTime(), Date.parse(grantedApproval.expiresAt)) : latestExpiry.getTime();
       if (!Number.isFinite(expiryMs) || expiryMs <= Date.now()) throw new Error("graph_scheduler_approval_expired_before_capability_issue");
       const expiresAt = new Date(expiryMs).toISOString();
       if (pendingApproval) {
-        await request(`/api/graphs/runs/${runId}/approvals/${approval.approvalId}`, { method: "POST", body: JSON.stringify({ decision: "granted", action: approval.action, target: approval.target, payloadHash: approval.payloadHash, expiresAt, note: portfolio.approvalPolicy === "prepared_payload_only" ? `Bound to existing exact prepared payload approval ${String(detail.run.data.socialEffect.approvalId)}` : `Standing exact schedule authority ${args.migrationId}` }) });
+        await request(`/api/graphs/runs/${runId}/approvals/${approval.approvalId}`, { method: "POST", body: JSON.stringify({ decision: "granted", action: approval.action, target: approval.target, payloadHash: approval.payloadHash, expiresAt, note: portfolio.approvalPolicy === "prepared_payload_only" ? `Bound to existing exact prepared payload approval ${String(preparedPayloadApprovalId(detail))}` : `Standing exact schedule authority ${args.migrationId}` }) });
       }
       if (!detail.liveCapability) await request(`/api/graphs/runs/${runId}/live-capabilities`, { method: "POST", body: JSON.stringify({ approvalId: approval.approvalId, expiresAt }) });
       detail = await request(`/api/graphs/runs/${runId}`);
@@ -491,7 +511,10 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
     const effect = effects[0];
     const terminalReceipt = [...(detail.childRunReceipts ?? [])].reverse().find((item: any) => item.status === "succeeded");
     const terminalOutcome = typeof terminalReceipt?.outcome === "string" ? terminalReceipt.outcome : "completed";
-    const completed = store.updateTrigger(triggerId, "completed", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail.liveCapability?.capabilityId, providerObjectId: effect?.providerOperationId, permalink: detail.run?.data?.socialEffect?.result?.permalink });
+    const publicationPermalink = optionalString(detail.run?.data?.socialEffect?.result?.permalink)
+      ?? optionalString(detail.run?.data?.publicationLive?.readback?.permalink)
+      ?? optionalString(detail.run?.data?.publicationLive?.result?.permalink);
+    const completed = store.updateTrigger(triggerId, "completed", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail.liveCapability?.capabilityId, providerObjectId: effect?.providerOperationId, permalink: publicationPermalink ?? undefined });
     const publicationReport = buildPublicationReport({ detail, outcome: terminalOutcome, providerWrites: effects.length, maximumExternalWrites: portfolio.maximumExternalWrites, eventChainValid: true, childReceiptChainValid: true, providerOperationId: effect?.providerOperationId ?? null, completionContract, recoveryResult: args.recoveryTriggerId ? "original_slot_recovered" : "not_required" });
     return {
       outcome: terminalOutcome,

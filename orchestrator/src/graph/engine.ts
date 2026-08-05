@@ -35,10 +35,13 @@ import {
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
 const PRODUCTION_ADAPTER_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
+  "production.instagram-publication-prepare.v2": 25 * 60_000,
   "production.threads-publication-prepare.v1": 10 * 60_000,
   "production.meta-reply-prepare.v1": 10 * 60_000,
+  "production.instagram-publication-live.v2": 20 * 60_000,
   "production.threads-publication-live.v1": 5 * 60_000,
   "production.meta-reply-live.v1": 5 * 60_000,
+  "production.instagram-publication-readback.v2": 5 * 60_000,
   "production.threads-publication-readback.v1": 5 * 60_000,
   "production.meta-reply-readback.v1": 5 * 60_000,
 };

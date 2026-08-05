@@ -1357,3 +1357,49 @@
   restart `orchestrator.service` once under the explicit approval, verify
   health and inspect the next natural Meta reply-monitor slot or exact
   zero-effect recovery evidence without causing an unauthorized provider write.
+
+## 2026-08-05 — Instagram Reel graph hard cutover
+
+- Requested task: make the full Instagram Reel rendering and publication lane
+  graph-owned with a hard cutover, preserving the working Reel renderer and
+  Instagram API shape while fixing the scheduler/runtime edge cases.
+- Workflow lane: coding/runtime repair, graph scheduler migration, Meta
+  official-API publication governance, approval-bounded service lifecycle and
+  scheduler mutation.
+- Tools/source: OpenClaw `memory_search` / `memory_get`; OpenClaw cron readback
+  and scheduler migration scripts; local `rg`, `sed`, `git`, `npm`, `curl`,
+  `systemctl`, focused Vitest and TypeScript validation; production-shaped
+  `scripts/instagram-publisher-outbox-runner.mjs --kind reel --validate-only`.
+- Changed-state declaration: true for source, tests, operations docs, this
+  ledger entry, the live graph scheduler migration row, and the retained Reel
+  cron repoint/re-enable. Commit, push and orchestrator restart are performed
+  only under John's explicit approval for this turn. False for provider writes,
+  Browser Relay calls, credential or secret changes, deployments and
+  unsupported browser automation.
+- Repair: added `instagram-reel-v1` to the governed scheduler portfolio, bound
+  it to `deterministic-social-publication@2.0.0`, preserved the retained cron
+  identity and schedule, routed the cron to
+  `trigger-governed-graph-schedule.ts --migration-id instagram-reel-v1`, and
+  applied Reel-specific command budgets. The scheduler trigger now recognizes
+  Instagram v2 prepared-payload approvals and publication/readback result shape
+  instead of assuming Threads-style `socialEffect` data.
+- Runtime safety: Instagram v2 prepare/live/readback budgets are extended at
+  execution time only, preserving immutable graph definition bytes. The graph
+  path still requires exact prepared-payload approval, a one-use live
+  capability, one maximum provider mutation, official Meta readback and the
+  unresolved-prior-write admission guard.
+- Live cutover evidence: `prepare`, `cutover` and `verify` for
+  `instagram-reel-v1` succeeded against the production scheduler database with
+  event-chain valid. The live cron is enabled, next scheduled at the retained
+  Europe/London Reel slots, and points only to the governed graph trigger.
+- Verification: focused graph scheduler migration tests passed `41/41`;
+  orchestrator typecheck passed; `git diff --check` passed before docs closeout.
+  The production-shaped 23:00 Reel validate-only path completed dynamic
+  allocation, local MP4 rendering and upload dry-run checks with zero provider
+  writes and zero Browser Relay calls.
+- Remaining blocker: live Reel publication must still fail closed while
+  unresolved prior Instagram image outbox row
+  `instagram:image:2026-08-05:05:00:24afbb84-457c-41bb-92c9-24a19725e984`
+  remains ambiguous after one prior upload and publish attempt. The next safe
+  step is official read-only reconciliation of that row before any new
+  Instagram image or Reel provider write.

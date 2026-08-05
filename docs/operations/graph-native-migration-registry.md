@@ -1,7 +1,7 @@
 ---
 title: "Graph-Native Workflow Migration Registry"
 status: "active"
-updated: "2026-08-04"
+updated: "2026-08-05"
 ---
 
 # Graph-Native Workflow Migration Registry
@@ -18,7 +18,7 @@ Statuses: `graph_native`, `graph_wrapped_legacy`, `obsolete`, `unknown`.
 | Self-identification shadow | graph scheduler migration `campaign-content-factory-shadow-v1`; cron `6fd3…a03` | cron shadow | read-only | graph-owned ingress/replay/child and verifier receipts; pinned Factory adapter; explicit empty and policy-skip terminal outcomes; zero provider writes | `governed-task-execution@1.0.0` with immutable `campaign-factory` lane contract | `graph_native` | Medium. The repaired 07:00 slot selected exactly one candidate and completed with a valid `completed_policy_skip` receipt because shared-account admission detected the existing Instagram slot. `self-id-1100` remains reserved for its separately approved natural canary. |
 | Self-identification readiness monitor | historical isolated OpenClaw cron `91fb…54d` | completed observer | read-only | retained cron history and evidence report | verification/health graph | `obsolete` | Low. Observer self-deleted after terminal proof; retain evidence only. |
 | Continuous social digest | graph scheduler migration `continuous-marketing-digest-v1`; cron `25a7…113a` | daily cron | local evidence; one Telegram delivery | graph-owned evidence load, delivery intent, bounded retry, reconciliation, child/verifier receipts and terminal receipt | `digest-delivery@1.0.0` | `graph_native` | Medium. Delivery capability remains single-use and bound to the configured digest schedule. |
-| Instagram Reel publisher | cron `2c70…256e`, disabled | none while disabled | external public | historical runner/outbox evidence plus loaded v2 graph proof | `deterministic-social-publication@2.0.0` | `obsolete` as an active workflow; historical disabled job retained | High. There is no active owner or next run. Any future Reel publication is a new, separately reviewed one-run live activation rather than continued legacy authority. |
+| Instagram Reel publisher | graph scheduler migration `instagram-reel-v1`; cron `2c70…256e` | cron | external public | graph claim/effect/capability chain, full local Reel renderer/MP4 validation, SQLite outbox and official provider readback | `deterministic-social-publication@2.0.0` | `graph_native` | High. Hard cutover activated the retained disabled schedule through the governed graph trigger. Exact prepared-payload approval, one-use capability and unresolved-prior-write admission still fail closed before a new Instagram provider write. |
 | Continuous social hourly cycle | cron `7985…a9`, disabled | hourly cron | mixed external | historical cron state | no immediate target | `obsolete` | Low. Retain historical evidence; do not migrate wasteful loop. |
 | Queue admission activation one-shot | cron `ceb7…df39`, disabled/completed | one-shot | local persistent | cron receipt | none | `obsolete` | Low. Preserve receipt only. |
 | Business-value cycle | graph-owned scheduler/manual ingress; deterministic planner child | cron/manual | local planning; external actions gated | graph state, checkpoints, idempotent ingress, bounded retry, child/verifier receipts | `governed-task-execution@1.0.0` with immutable `business-value` lane contract | `graph_native` | Medium. Financial and public actions remain separate ToolGate approval boundaries. |
@@ -30,7 +30,9 @@ The approved 2026-08-04 cutover expanded the production portfolio to nine exact
 definitions and atomically transferred the six active schedules listed above.
 Names, declaration keys, enabled state, cron expressions, timezone, delivery,
 payload authority and limits were preserved; only the command owner changed.
-The already graph-owned Instagram image schedule was not modified.
+The already graph-owned Instagram image schedule was not modified. On
+2026-08-05, the retained Instagram Reel schedule was hard-cut into the same
+governed scheduler portfolio and explicitly re-enabled as a graph-owned cron.
 
 ## 2026-08-04 implementation increment: governed task ownership
 
@@ -110,12 +112,12 @@ prepare/cutover event pair.
 | Task queue and market research | `governed-task-execution@1.0.0` / immutable lane bindings | scoped API, scheduler and child-handler ingress call `startGraphOwnedTask`; queue is effect transport only | queue retry disabled for graph children; injected market-research receipt chain passes | `graph_native` for the requested scope |
 | Git workflow | `governed-task-execution@1.0.0` / `git-monitor` | startup, five-minute scheduler and manual ingress are graph-owned | production monitor runs and child/verifier receipt pairs exist; commit/push authority remains separate | `graph_native` |
 | Campaign Factory | `governed-task-execution@1.0.0` / `campaign-factory` | cron `6fd3…a03` invokes `campaign-content-factory-shadow-v1` | recovered 07:00 trigger `gst_9611…6ca9`; child `gcr_abcc…1ddf` and verifier `gvr_fb7f…814e` chains pass with zero effects | `graph_native`; repaired trigger completed `completed_policy_skip`; natural unique canary proof remains pending and `self-id-1100` remains reserved |
+| Instagram Reel | `deterministic-social-publication@2.0.0` | cron `2c70…256e` invokes `instagram-reel-v1` | injected-clock approval/capability fixture passes; live cutover row is hash-chain valid; 23:00 production-shaped validate-only rendered and validated an MP4 with zero provider writes | `graph_native`; live publication is still blocked by unresolved prior Instagram image write ambiguity |
 
-The live production portfolio contains nine exact definitions. All six newly
-transferred migrations plus the existing Instagram migration are recorded
-`graph_owned`. The scoped registry contains no active `graph_wrapped_legacy`,
-legacy-approved or `unknown` row. The disabled Reel job is historical evidence,
-not an active owner.
+The live production portfolio contains nine exact definitions. The original six
+transferred migrations, the existing Instagram image migration and the
+Instagram Reel migration are recorded `graph_owned`. The scoped registry
+contains no active `graph_wrapped_legacy`, legacy-approved or `unknown` row.
 Natural 05:15 Meta and 05:30 Threads-readiness triggers completed after the
 cutover. At the terminal snapshot, the production graph database contained 17
 child receipts and 17 verifier receipts; the scoped natural runs above added no
@@ -251,6 +253,7 @@ Exact active scheduled ownership is now:
 | `meta-reply-monitor-v1` | `4de811aa-f213-4cc3-b1aa-6c2cffb6a847` | graph scheduler | `graph_owned` |
 | `campaign-content-factory-shadow-v1` | `6fd37958-b450-400e-8c06-a781670f3a03` | graph scheduler | `graph_owned` |
 | `continuous-marketing-digest-v1` | `25a7ffd8-d777-4dc5-a49a-76a229a5113a` | graph scheduler | `graph_owned` |
+| `instagram-reel-v1` | `2c7071ff-35dd-40d0-bf77-b1ed53de256e` | graph scheduler | `graph_owned` |
 
 Business value, scoped task queue, market research and Git monitor remain
 graph-owned ingress lanes under `governed-task-execution@1.0.0`. Disabled or
@@ -373,3 +376,53 @@ Regression coverage:
   and no longer emits `zero_provider_writes_without_publication_reason`;
 - focused scheduler migration tests and orchestrator typecheck pass before
   commit/install.
+
+## 2026-08-05 Instagram Reel graph hard cutover
+
+The Instagram Reel lane is no longer a disabled historical cron. Migration
+`instagram-reel-v1` binds schedule `2c7071ff-35dd-40d0-bf77-b1ed53de256e` to
+`deterministic-social-publication@2.0.0`, namespace
+`production.instagram.reel`, account `17841453638630920`, cron
+`0 15,17,19,21,23 * * *` in `Europe/London`, prepared-payload-only approval
+and a one-provider-write maximum. The cron command now invokes only
+`trigger-governed-graph-schedule.ts --migration-id instagram-reel-v1`; it does
+not call the legacy Reel runner directly.
+
+The cutover intentionally changed enabled state from disabled to enabled, while
+preserving the retained schedule identity, declaration key, cron expression,
+timezone, delivery configuration and failure alert. Because full Reel rendering
+can legitimately exceed the generic publication budget, the graph cron command
+has a 40-minute total timeout and 30-minute no-output timeout. The graph
+executor applies runtime-only adapter budgets for Instagram v2 publication:
+25 minutes for preparation/rendering, 20 minutes for the live publish step and
+5 minutes for official readback. The immutable
+`deterministic-social-publication@2.0.0` definition hash remains unchanged.
+
+Regression coverage proves the hard-cut binding, the runtime-only timeout
+override, and the Instagram v2 exact-prepared-payload approval path. The
+governed scheduler report now reads the Reel provider post ID, permalink,
+candidate ID and trigger permalink from the Instagram v2 publication envelope
+and official readback instead of assuming the older Threads `socialEffect`
+shape.
+
+Live cutover evidence:
+
+- prepare and cutover wrote a hash-chain-valid scheduler migration row with
+  graph hash
+  `995ff8355a57113884129b7cda9f7966d4719163f9b9b81ed77e87d12c6a3473`;
+- cron readback shows the job enabled with next natural slot at
+  `2026-08-05T23:00:00+01:00` when activated;
+- verification readback returned `graph_owned` and event-chain valid;
+- a production-shaped `--validate-only` run for the 23:00 Reel slot completed
+  dynamic allocation, caption/material selection, local Reel rendering,
+  measured layout audit, safe margins, contrast, reading-time and encoded MP4
+  validation with zero provider writes and zero Browser Relay calls.
+
+The remaining publication blocker is not graph ownership or Reel rendering.
+Admission still fails closed on unresolved prior Instagram provider-write
+ambiguity for outbox row
+`instagram:image:2026-08-05:05:00:24afbb84-457c-41bb-92c9-24a19725e984`,
+which remains `publish_authorized` / `write_started` after one prior upload and
+one prior publish attempt. Until official readback reconciles that row as
+published or absent, every new Instagram image or Reel publication must remain
+zero-write failed-safe.

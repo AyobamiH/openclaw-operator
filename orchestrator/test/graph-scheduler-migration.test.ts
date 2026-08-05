@@ -10,7 +10,7 @@ import {
 } from "../src/graph/scheduler-store.js";
 import { transferSchedulerOwnership } from "../src/graph/scheduler-cutover.js";
 import { buildGovernedGraphJob, GOVERNED_SCHEDULER_PORTFOLIO } from "../src/graph/scheduler-portfolio.js";
-import { metaReplyMonitorGraph } from "../src/graph/workflows.js";
+import { liveCapableSocialPublicationGraph, metaReplyMonitorGraph } from "../src/graph/workflows.js";
 import { effectiveNodeTimeoutMs } from "../src/graph/engine.js";
 import {
   executeGovernedSchedule,
@@ -88,6 +88,58 @@ describe("graph scheduler migration registry", () => {
     expect(effectiveNodeTimeoutMs(readback)).toBe(5 * 60_000);
   });
 
+  it("hard-cuts the retained Instagram Reel job into the governed graph portfolio", () => {
+    const binding = governedJobs("instagram-reel-v1");
+    expect(binding.item.declaration).toMatchObject({
+      migrationId: "instagram-reel-v1",
+      scheduleId: "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+      declarationKey: "instagram-reel-video-daily-v1",
+      graphId: "deterministic-social-publication",
+      graphVersion: "2.0.0",
+      graphNamespace: "production.instagram.reel",
+      provider: "instagram",
+      accountId: "17841453638630920",
+      cronExpression: "0 15,17,19,21,23 * * *",
+      timezone: "Europe/London",
+    });
+    expect(binding.item.input).toMatchObject({
+      provider: "instagram",
+      accountKey: "instagram:owner",
+      expectedAccountId: "17841453638630920",
+      jobId: "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+      kind: "reel",
+      observedAt: "$scheduledAt",
+      shadowMode: false,
+      maximumProviderMutations: 1,
+    });
+    expect(binding.graphJob.enabled).toBe(true);
+    expect(binding.graphJob.payload).toMatchObject({
+      kind: "command",
+      noOutputTimeoutSeconds: 1800,
+      timeoutSeconds: 2400,
+    });
+    expect(binding.graphJob.graphTrigger).toMatchObject({
+      graphId: "deterministic-social-publication",
+      graphVersion: "2.0.0",
+      approvalPolicy: "prepared_payload_only",
+      maximumExternalWrites: 1,
+      latenessToleranceMinutes: 10,
+    });
+  });
+
+  it("extends Instagram Reel runtime budgets without changing the immutable v2 graph definition", () => {
+    const definition = GOVERNED_SCHEDULER_PORTFOLIO.get("instagram-reel-v1")!;
+    const prepare = definition.declaration.graphDefinitionHash;
+    const reelDefinition = liveCapableSocialPublicationGraph();
+    const prepareNode = reelDefinition.nodes.find((node) => node.id === "acquire_durable_candidate_claim")!;
+    const liveNode = reelDefinition.nodes.find((node) => node.id === "publish_provider_object")!;
+    expect(prepareNode).toMatchObject({ timeoutMs: 15 * 60_000 });
+    expect(liveNode).toMatchObject({ timeoutMs: 15 * 60_000 });
+    expect(effectiveNodeTimeoutMs(prepareNode)).toBe(25 * 60_000);
+    expect(effectiveNodeTimeoutMs(liveNode)).toBe(20 * 60_000);
+    expect(GOVERNED_SCHEDULER_PORTFOLIO.get("instagram-reel-v1")!.declaration.graphDefinitionHash).toBe(prepare);
+  });
+
   it("executes an injected-clock zero-write portfolio trigger through the graph API contract", async () => {
     const item = GOVERNED_SCHEDULER_PORTFOLIO.get("threads-readiness-v1")!;
     const value = await fixture();
@@ -107,6 +159,111 @@ describe("graph scheduler migration registry", () => {
     expect(result).toMatchObject({ outcome: "completed", providerWrites: 0, eventChainValid: true });
     const reopened = new GraphSchedulerStore(value.path);
     expect(reopened.triggers(item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: "run-readiness" }]);
+    reopened.close();
+  });
+
+  it("binds Instagram Reel prepared-payload approval to the frozen publication envelope", async () => {
+    const binding = governedJobs("instagram-reel-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    let runInput: any;
+    let approvalRequest: any;
+    let capabilityRequest: any;
+    let executeCalls = 0;
+    let approved = false;
+    let capabilityIssued = false;
+    const approval = {
+      approvalId: "gap_reel_exact",
+      action: "production.instagram-publication-live.v2",
+      target: "instagram:17841453638630920",
+      payloadHash: "b".repeat(64),
+      status: "pending",
+      expiresAt: new Date(Date.now() + 20 * 60_000).toISOString(),
+    };
+    const publicationLive = {
+      envelope: { approvalId: approval.approvalId, approvalExpiry: new Date(Date.now() + 20 * 60_000).toISOString() },
+      envelopeHash: "c".repeat(64),
+      projection: {
+        outboxId: "instagram:reel:2026-08-05:23:00:2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+        claim: { leaseExpiresAt: new Date(Date.now() + 20 * 60_000).toISOString() },
+      },
+    };
+    const completedDetail = () => ({
+      run: {
+        runId: "run-reel",
+        status: "completed",
+        data: {
+          target: "instagram:17841453638630920",
+          publicationLive: {
+            ...publicationLive,
+            result: {
+              outboxId: "instagram:reel:2026-08-05:23:00:2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+              providerResultId: "ig-reel-one",
+              permalink: "https://www.instagram.com/reel/reel-one/",
+            },
+            readback: {
+              providerResultId: "ig-reel-one",
+              permalink: "https://www.instagram.com/reel/reel-one/",
+            },
+          },
+        },
+      },
+      approvals: [{ ...approval, status: "granted" }],
+      liveCapability: { capabilityId: "glc_reel", status: "consumed" },
+      externalEffects: [{ state: "effect_verified", providerOperationId: "ig-reel-one" }],
+      childRunReceipts: [{ receiptId: "receipt-reel", status: "succeeded", outcome: "completed", receiptHash: "d".repeat(64) }],
+      eventChainValid: true,
+      childRunReceiptChainValid: true,
+    });
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-05T22:00:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId: "run-reel", status: "waiting_for_approval" } }; }
+        if (route === "/api/graphs/runs/run-reel") {
+          if (executeCalls > 0) return completedDetail();
+          return {
+            run: { runId: "run-reel", status: capabilityIssued ? "running" : "waiting_for_approval", data: { target: "instagram:17841453638630920", publicationLive } },
+            approvals: [{ ...approval, status: approved ? "granted" : "pending" }],
+            liveCapability: capabilityIssued ? { capabilityId: "glc_reel", status: "prepared" } : null,
+            externalEffects: [],
+            eventChainValid: true,
+            childRunReceiptChainValid: true,
+          };
+        }
+        if (route === "/api/graphs/runs/run-reel/approvals/gap_reel_exact" && init?.method === "POST") { approvalRequest = JSON.parse(String(init.body)); approved = true; return { approval: { ...approval, status: "granted" } }; }
+        if (route === "/api/graphs/runs/run-reel/live-capabilities" && init?.method === "POST") { capabilityRequest = JSON.parse(String(init.body)); capabilityIssued = true; return { capability: { capabilityId: "glc_reel", status: "prepared" }, dispatches: [] }; }
+        if (route === "/api/graphs/runs/run-reel/execute" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-reel", status: "completed" } }; }
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(runInput).toMatchObject({
+      graphId: "deterministic-social-publication",
+      version: "2.0.0",
+      input: {
+        expectedAccountId: "17841453638630920",
+        jobId: "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+        kind: "reel",
+        observedAt: "2026-08-05T22:00:00.000Z",
+      },
+    });
+    expect(approvalRequest).toMatchObject({ decision: "granted", payloadHash: approval.payloadHash, note: expect.stringContaining(approval.approvalId) });
+    expect(capabilityRequest).toMatchObject({ approvalId: approval.approvalId });
+    expect(result).toMatchObject({
+      outcome: "completed",
+      providerWrites: 1,
+      publicationReport: {
+        providerPostUrl: "https://www.instagram.com/reel/reel-one/",
+        candidateId: "instagram:reel:2026-08-05:23:00:2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+        finalClassification: "published",
+      },
+    });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: "run-reel", permalink: "https://www.instagram.com/reel/reel-one/" }]);
     reopened.close();
   });
 
@@ -944,6 +1101,7 @@ describe("graph scheduler migration registry", () => {
       "meta-reply-monitor-v1": "2026-08-04T04:15:00.000Z",
       "campaign-content-factory-shadow-v1": "2026-08-04T04:00:00.000Z",
       "continuous-marketing-digest-v1": "2026-08-04T07:30:00.000Z",
+      "instagram-reel-v1": "2026-08-04T22:00:00.000Z",
     };
     for (const item of GOVERNED_SCHEDULER_PORTFOLIO.values()) {
       const value = await fixture();
