@@ -341,3 +341,32 @@ reason, candidate ID, provider write count, provider post ID or URL when
 present, verifier result, recovery requirement and final classification. A
 zero-write publication path must no longer report only `completed`; the repaired
 classification for this slot is `legitimate_skip`.
+
+## 2026-08-05 Meta reply-monitor runtime closure repair
+
+Live scheduler ownership remains graph-native: all seven scoped scheduler
+migrations are `graph_owned`, including `meta-reply-monitor-v1`. The remaining
+runtime gap was not ownership; it was the Meta reply monitor graph timing out
+inside `prepare_exact_effect` before it could persist a zero-write preparation
+receipt. The production adapter contract allows Meta reply discovery/prepare up
+to ten minutes, while the graph node still used the default one-minute timeout.
+That produced terminal `failed_safe` scheduler rows with zero provider writes
+and a generic `zero_provider_writes_without_publication_reason`.
+
+The graph definition now gives social-effect preparation, live effect and
+readback nodes timeout budgets aligned with their production adapter contracts:
+ten minutes for preparation and five minutes for live/readback. The governed
+scheduler report also derives a specific `zero_write_terminal:*` reason from a
+failed graph run's terminal error when no provider write occurred, so future
+failed-safe evidence identifies the actual graph-terminal cause rather than the
+generic missing-publication-reason fallback.
+
+Regression coverage:
+
+- `metaReplyMonitorGraph()` exposes the ten-minute prepare and five-minute
+  live/readback budgets;
+- a zero-write Meta reply preparation terminal failure reports
+  `zero_write_terminal:invariant_violation:graph_transition_missing:prepare_exact_effect:timed_out`
+  and no longer emits `zero_provider_writes_without_publication_reason`;
+- focused scheduler migration tests and orchestrator typecheck pass before
+  commit/install.

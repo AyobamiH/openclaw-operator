@@ -10,6 +10,7 @@ import {
 } from "../src/graph/scheduler-store.js";
 import { transferSchedulerOwnership } from "../src/graph/scheduler-cutover.js";
 import { buildGovernedGraphJob, GOVERNED_SCHEDULER_PORTFOLIO } from "../src/graph/scheduler-portfolio.js";
+import { metaReplyMonitorGraph } from "../src/graph/workflows.js";
 import {
   executeGovernedSchedule,
   formatGovernedScheduleOutput,
@@ -71,6 +72,13 @@ describe("graph scheduler migration registry", () => {
     expect(resolveGovernedSchedulerDatabasePath({})).toBe(PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH);
     expect(resolveGovernedSchedulerDatabasePath({ OPENCLAW_OPERATOR_STATE_DIR: "/state" })).toBe("/state/database/graph-scheduler.sqlite");
     expect(resolveGovernedSchedulerDatabasePath({ OPENCLAW_GRAPH_SCHEDULER_DATABASE_PATH: "/exact/scheduler.sqlite" })).toBe("/exact/scheduler.sqlite");
+  });
+
+  it("keeps Meta reply monitor graph timeouts aligned with production adapter contracts", () => {
+    const definition = metaReplyMonitorGraph();
+    expect(definition.nodes.find((node) => node.id === "prepare_exact_effect")).toMatchObject({ timeoutMs: 10 * 60_000 });
+    expect(definition.nodes.find((node) => node.id === "perform_exact_effect")).toMatchObject({ timeoutMs: 5 * 60_000 });
+    expect(definition.nodes.find((node) => node.id === "reconcile_provider_state")).toMatchObject({ timeoutMs: 5 * 60_000 });
   });
 
   it("executes an injected-clock zero-write portfolio trigger through the graph API contract", async () => {
@@ -313,6 +321,54 @@ describe("graph scheduler migration registry", () => {
     expect(message).toContain("Policy/skip reason: skip:not_ready_before_commit");
     expect(message).toContain("Candidate ID: none");
     expect(message).toContain("Final classification: legitimate_skip");
+  });
+
+  it("classifies zero-write Meta reply preparation terminal failures with an explicit reason", async () => {
+    const binding = governedJobs("meta-reply-monitor-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-05T16:18:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-meta-reply-prepare-timeout", status: "failed" } };
+        if (route === "/api/graphs/runs/run-meta-reply-prepare-timeout") return {
+          run: {
+            runId: "run-meta-reply-prepare-timeout",
+            status: "failed",
+            data: {},
+            terminalOutcome: "transition_resolution_failed",
+            lastError: { category: "invariant_violation", message: "graph_transition_missing:prepare_exact_effect:timed_out" },
+          },
+          approvals: [],
+          liveCapability: null,
+          externalEffects: [],
+          childRunReceipts: [],
+          verifierReceipts: [],
+          eventChainValid: true,
+          childRunReceiptChainValid: true,
+        };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({
+      outcome: "completion_contract_failed",
+      providerWrites: 0,
+      publicationReport: {
+        publicationOutcome: "failed",
+        policyOrSkipReason: "zero_write_terminal:invariant_violation:graph_transition_missing:prepare_exact_effect:timed_out",
+        recoveryResult: "failed_safe_recovery_available",
+        recoveryRequired: true,
+        finalClassification: "failed",
+      },
+    });
+    const message = formatGovernedScheduleOutput(result, binding.item.declaration.migrationId);
+    expect(message).toContain("Policy/skip reason: zero_write_terminal:invariant_violation:graph_transition_missing:prepare_exact_effect:timed_out");
+    expect(message).not.toContain("zero_provider_writes_without_publication_reason");
   });
 
   it("polls a completed run until terminal receipt-chain persistence is visible", async () => {

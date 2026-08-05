@@ -1305,3 +1305,49 @@
 - Next safe step / approval boundary: push the commit and restart/install the
   orchestrator only under separate explicit approval, then verify the next
   natural graph-owned slots emit the corrected terminal classification.
+
+## 2026-08-05 — Meta reply-monitor graph runtime closure repair
+
+- Requested task: implement graph runtime closure end to end for the remaining
+  Meta reply-monitor graph-owned migration gap, with approval to patch,
+  validate, commit, push/install, restart and continue after interruption.
+- Workflow lane: coding/runtime repair, graph scheduler completion contract,
+  graph-owned Meta reply monitor runtime closure, and approval-bounded service
+  lifecycle.
+- Tools/source: OpenClaw `memory_search` attempted and timed out; fallback used
+  exact daily notes and live SQLite scheduler evidence. OpenClaw
+  `coding_repo_map` provided read-only repo evidence; core `git`, `sqlite3`,
+  `sed`, `rg`, `npm`, `systemctl`, `ss`, `curl`, and focused source edits were
+  used for implementation and verification.
+- Changed-state declaration: true for source, tests, product operations docs,
+  this ledger entry, Git commit/push and the approved orchestrator lifecycle
+  reload when performed. False for scheduler DB mutation, cron mutation,
+  approval/capability grant outside the existing governed scheduler path,
+  provider writes, Browser Relay calls, deployments, migrations,
+  credentials/secrets, and config mutation.
+- Root cause: live trigger
+  `gst_4e32f1066ce7d526542ac9f2b3387d1f` /
+  `grzwcanary_e2e1391d-0e56-458e-bae4-dda5b1f80467` failed in
+  `prepare_exact_effect` with zero external effects. The Meta reply preparation
+  adapter contract allows ten minutes, but the graph node still had the default
+  one-minute timeout, so the graph failed before a zero-write preparation
+  receipt or publication reason could be persisted.
+- Repair: social-effect graph nodes now align timeout budgets to production
+  adapter contracts: ten minutes for preparation and five minutes for
+  live/readback. The governed scheduler publication report also derives an
+  explicit `zero_write_terminal:*` reason from failed zero-write graph runs
+  instead of falling back to
+  `zero_provider_writes_without_publication_reason`.
+- Evidence: source files
+  `orchestrator/src/graph/workflows.ts`,
+  `orchestrator/scripts/trigger-governed-graph-schedule.ts`,
+  `orchestrator/test/graph-scheduler-migration.test.ts`, and
+  `docs/operations/graph-native-migration-registry.md`; live scheduler rows
+  showed all seven scoped migrations as `graph_owned` before the patch.
+- Verification: focused scheduler migration suite passed `38/38`, typecheck
+  passed, and `git diff --check` passed before broader verification and
+  commit/install.
+- Next safe step: run the protected verification gate, commit/push the repair,
+  restart `orchestrator.service` once under the explicit approval, verify
+  health and inspect the next natural Meta reply-monitor slot or exact
+  zero-effect recovery evidence without causing an unauthorized provider write.

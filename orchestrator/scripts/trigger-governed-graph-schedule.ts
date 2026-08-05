@@ -119,6 +119,21 @@ function resultFrom(socialEffect: Record<string, any> | null): Record<string, an
   return value && typeof value === "object" ? value as Record<string, any> : null;
 }
 
+function compactReason(value: string): string {
+  return value.replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function terminalZeroWriteReasonFrom(detail: any): string | null {
+  if (detail?.run?.status === "completed") return null;
+  const error = detail?.run?.lastError && typeof detail.run.lastError === "object" ? detail.run.lastError : null;
+  const category = optionalString(error?.category) ?? optionalString(detail?.run?.terminalOutcome);
+  const message = optionalString(error?.message);
+  if (category && message) return `zero_write_terminal:${compactReason(category)}:${compactReason(message)}`;
+  if (category) return `zero_write_terminal:${compactReason(category)}`;
+  if (message) return `zero_write_terminal:unknown:${compactReason(message)}`;
+  return null;
+}
+
 function terminalCheckpointFrom(detail: any): { checkpointId: string; reason: string; stateHash: string } | null {
   const checkpoints = Array.isArray(detail?.run?.checkpoints) ? detail.run.checkpoints : [];
   const checkpoint = [...checkpoints].reverse().find((item: any) => item?.reason === "completion_verified" || item?.nodeId === "complete");
@@ -158,9 +173,11 @@ export function buildPublicationReport(args: { detail: any; outcome: string; pro
   const providerPostUrl = optionalString(result?.permalink);
   const candidateId = action && ["publish", "reply", "shadow"].includes(action) ? optionalString(socialEffect?.outboxId) : null;
   const targetId = optionalString(socialEffect?.targetId) ?? optionalString(socialEffect?.outboxId) ?? optionalString(args.detail?.run?.data?.target);
+  const terminalZeroWriteReason = args.providerWrites === 0 ? terminalZeroWriteReasonFrom(args.detail) : null;
   const policyOrSkipReason = args.deferredReason ? `deferred:${args.deferredReason}`
     : args.providerWrites > 0 ? "published"
       : socialStatus ? `${action === "skip" ? "skip" : "zero_write"}:${socialStatus}`
+        : terminalZeroWriteReason ? terminalZeroWriteReason
         : args.maximumExternalWrites === 0 ? "zero_write_policy"
           : "zero_provider_writes_without_publication_reason";
   const finalClassification: PublicationClassification = args.outcome === "deferred" ? "deferred"
