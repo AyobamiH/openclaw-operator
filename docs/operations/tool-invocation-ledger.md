@@ -1184,3 +1184,124 @@
   fully validated shadow before considering the retained `self-id-1100`
   canary. Do not manufacture a candidate or infer canary authority from this
   injected policy no-op.
+
+## 2026-08-04 — Threads daily-image zero-write notification classification
+
+- Requested task: reconcile 16:30 `threads-daily-image-v1` trigger
+  `gst_3016f8f745076068472437e55760488d` / run
+  `grzwcanary_5b48d1e5-f9b3-445d-a3eb-c2b06206ca29`, determine whether
+  provider writes `0` was legitimate, and repair graph-owned publication
+  completion messaging so zero-write runs are not reported as merely completed.
+- Workflow lane: coding, graph scheduler reconciliation, publication policy
+  evidence and notification contract repair.
+- Tools/source: attempted OpenClaw `memory_search` over durable memory and
+  session context; fallback to exact daily memory files because the memory
+  provider timed out; core SQLite inspection of graph/scheduler stores;
+  bounded outbox/prepared-payload JSON inspection; `apply_patch`; focused
+  Vitest and TypeScript validation.
+- Changed-state declaration: true for source, tests and docs only. Production
+  graph/scheduler SQLite, cron records, service processes, approvals,
+  capabilities, provider objects and external effects were not mutated.
+- Classification evidence: scheduler trigger is terminal `completed` with slot
+  `threads:2026-08-04:16:30:083e3560-40fd-4487-9d78-674f64866ef7`. Graph run
+  status is `completed` at node `complete`; preparation returned
+  `status=not_ready_before_commit`, `action=skip`, `providerWrites=0`,
+  `payloadHash=null`, no approval ID and no target provider object. SQLite has
+  no approval, live capability, external effect, child-run receipt or verifier
+  receipt rows for the run. Current outbox/prepared-payload stores contain no
+  row for the 2026-08-04 16:30 slot.
+- Final classification: `legitimate_skip` / no eligible opportunity before
+  commit. Recovery is not required and replay/publication would not be
+  policy-valid.
+- Source repair: `orchestrator/scripts/trigger-governed-graph-schedule.ts`
+  now returns and prints a publication report with graph execution outcome,
+  publication outcome, policy/skip reason, candidate ID, provider write count,
+  provider post ID/URL, verifier result, recovery requirement and final
+  classification. Zero-write graph-owned publication summaries can no longer
+  say only `completed`.
+- Verification: `timeout 120s npm --prefix orchestrator exec -- vitest run
+  test/graph-scheduler-migration.test.ts -t "classifies zero-write"` passed
+  one focused regression; `timeout 180s npm --prefix orchestrator run
+  typecheck` passed; `git diff --check` passed. A broader accidental
+  `npm test -- --run orchestrator/test/graph-scheduler-migration.test.ts`
+  was stopped after heavy suites timed out or showed unrelated host-pressure
+  timing failures; it also exposed the initial fixture typo that was corrected.
+- Evidence: `docs/operations/graph-native-migration-registry.md`; scheduler
+  evidence
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers/gst_3016f8f745076068472437e55760488d.json`;
+  graph/scheduler SQLite rows named above.
+- Next safe step / approval boundary: commit/push and service restart/install
+  of the reporting repair remain separate approval-gated actions. Until then,
+  runtime state is terminal and legitimate, but the live scheduler command has
+  not been reloaded from this local source patch.
+
+## 2026-08-05 — Gateway-interrupted continuation and recent-error pass
+
+- Requested task: continue the interrupted "fix all recent errors" turn after a
+  Gateway restart and finish the local repair safely.
+- Workflow lane: coding/runtime verification, graph scheduler notification
+  contract, and host memory-pressure containment.
+- Tools/source: OpenClaw `coding_repo_map` and `coding_validate_project`;
+  attempted OpenClaw `memory_search` over memory plus sessions; fallback to
+  exact `MEMORY.md` and `memory/2026-08-04.md` / `memory/2026-08-05.md`
+  because semantic memory timed out; core `git`, `npm`, `systemctl`,
+  `journalctl`, `curl`, `free`, `ps`, and `kill -TERM`.
+- Changed-state declaration: true for the existing local source/test/docs patch
+  set and this ledger entry. A narrow TERM signal was sent to six stale
+  high-memory `openclaw-hooks` helper PIDs after an OOM record and low-memory
+  pressure; they initially remained in `D` state, then drained by the final
+  memory check and available memory recovered to about `1.4 GiB`. False for
+  commits, pushes, service restarts, scheduler
+  database/history, approvals, capabilities, provider objects, external
+  effects, deployments, migrations, installs, and credential/config changes.
+- Source result: the repaired scheduler trigger now waits for terminal
+  completion-contract evidence, distinguishes completed graph execution from
+  publication proof, classifies explicit zero-write skips, flags missed
+  zero-write publications without a skip reason, and supports exact
+  trigger-bound failed-safe recovery/reconciliation without replaying already
+  completed triggers.
+- Verification: `timeout 240s npm --prefix orchestrator exec -- vitest run
+  test/graph-scheduler-migration.test.ts --reporter verbose` passed all
+  `33/33` scheduler migration tests; `timeout 180s npm --prefix orchestrator
+  run typecheck` passed; `git diff --check` passed. Public `/health` and
+  `/api/persistence/health` returned healthy file/Redis state.
+- Runtime evidence: `orchestrator.service` and `openclaw-gateway.service` were
+  active/running. Recent journal evidence showed a child process of
+  `openclaw-gateway.service` was OOM-killed at 2026-08-05 01:52 BST, while
+  gateway requests later completed and public health remained green. Available
+  memory was critically low during the burst (`96-190 MiB` observed) and later
+  recovered to about `1.4 GiB` after the stale helpers drained.
+- Remaining boundary: loading the local scheduler reporting repair requires a
+  separate commit/push and service restart/install approval. Fully clearing the
+  current helper-burst class of memory pressure likely requires a host/service
+  lifecycle or concurrency-control change if it recurs; no restart or kill -9
+  was performed in this continuation.
+
+## 2026-08-05 — Commit approved graph scheduler completion repair
+
+- Requested task: investigate whether the recent graph scheduler completion
+  fixes already landed locally and commit them so recurring Telegram-reported
+  scheduler errors can be resolved.
+- Workflow lane: repo hygiene, graph scheduler runtime contract, notification
+  contract, and approval-bounded commit.
+- Tools/source: OpenClaw `memory_search` / `memory_get`; OpenClaw
+  `coding_repo_map`; core `git`, `rg`, `sed`, `npm`, and `git diff --check`.
+- Changed-state declaration: true for this ledger update and the approved local
+  Git commit. False for push, service restart, scheduler database mutation,
+  cron mutation, approval grant, capability issue, provider write, external
+  effect, deployment, migration, install, or credential/config change.
+- Investigation result: `main` and `origin/main` were still at `191350b`, while
+  the landed local repair remained uncommitted in
+  `orchestrator/scripts/trigger-governed-graph-schedule.ts`,
+  `orchestrator/test/graph-scheduler-migration.test.ts`, and the graph
+  operations docs. The active Threads and Meta graph-native rows use
+  `trigger-governed-graph-schedule.ts`; the older
+  `trigger-graph-schedule.ts` stack trace is the retained Phase G
+  Instagram-only compatibility path.
+- Verification before commit: `git diff --check` passed;
+  `timeout 240s npm --prefix orchestrator exec -- vitest run
+  test/graph-scheduler-migration.test.ts --reporter verbose` passed `33/33`;
+  `timeout 180s npm --prefix orchestrator run typecheck` passed.
+- Next safe step / approval boundary: push the commit and restart/install the
+  orchestrator only under separate explicit approval, then verify the next
+  natural graph-owned slots emit the corrected terminal classification.

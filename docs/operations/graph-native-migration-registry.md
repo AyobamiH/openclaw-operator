@@ -312,3 +312,32 @@ coordination was healthy and reachable. SQLite showed zero active
 natural digest slot resolves to
 `telegram:2026-08-05:08:30:25a7ffd8-d777-4dc5-a49a-76a229a5113a`; no future
 trigger was executed early.
+
+## 2026-08-04 Threads daily-image zero-write classification
+
+The 16:30 Europe/London `threads-daily-image-v1` trigger
+`gst_3016f8f745076068472437e55760488d` completed through graph run
+`grzwcanary_5b48d1e5-f9b3-445d-a3eb-c2b06206ca29` with zero provider writes.
+Completion alone is not publication proof. Direct graph and scheduler SQLite
+inspection classified the slot as a legitimate zero-write skip:
+
+- slot:
+  `threads:2026-08-04:16:30:083e3560-40fd-4487-9d78-674f64866ef7`;
+- graph status: `completed`, current node `complete`, event chain valid;
+- preparation status: `not_ready_before_commit`, action `skip`;
+- candidate ID: none; no current outbox/prepared-payload row existed for this
+  2026-08-04 16:30 slot;
+- approval, live capability, external-effect, child-run receipt and verifier
+  receipt rows: none, because no candidate was admitted to publication;
+- evidence: `social-preparation-receipt`, `payload-hash` summarised as no
+  eligible Threads payload, and `zero-provider-writes`;
+- terminal assertion: `threads-publication-receipted` passed from graph
+  evidence gate; terminal checkpoint `completion_verified`;
+- recovery required: no.
+
+The source scheduler completion message now carries a publication report for
+every governed run: graph execution outcome, publication outcome, policy/skip
+reason, candidate ID, provider write count, provider post ID or URL when
+present, verifier result, recovery requirement and final classification. A
+zero-write publication path must no longer report only `completed`; the repaired
+classification for this slot is `legitimate_skip`.

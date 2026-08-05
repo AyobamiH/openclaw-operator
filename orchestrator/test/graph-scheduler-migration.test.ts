@@ -12,6 +12,7 @@ import { transferSchedulerOwnership } from "../src/graph/scheduler-cutover.js";
 import { buildGovernedGraphJob, GOVERNED_SCHEDULER_PORTFOLIO } from "../src/graph/scheduler-portfolio.js";
 import {
   executeGovernedSchedule,
+  formatGovernedScheduleOutput,
   PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH,
   resolveGovernedSchedulerDatabasePath,
   resolveInputTemplate,
@@ -114,6 +115,301 @@ describe("graph scheduler migration registry", () => {
     const reopened = new GraphSchedulerStore(value.path);
     expect(reopened.triggers(binding.item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: "run-factory-no-op" }]);
     reopened.close();
+  });
+
+  it("classifies zero-write Threads publication completions with explicit skip reason", async () => {
+    const binding = governedJobs("threads-daily-image-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const detail = {
+      run: {
+        runId: "run-threads-skip",
+        status: "completed",
+        data: {
+          socialEffect: {
+            status: "not_ready_before_commit",
+            action: "skip",
+            outboxId: "threads:2026-08-04:16:30:083e3560-40fd-4487-9d78-674f64866ef7",
+            payloadHash: null,
+            targetId: null,
+            approvalId: null,
+            providerWrites: 0,
+            browserRelayCalls: 0,
+          },
+          target: "threads:2026-08-04:16:30:083e3560-40fd-4487-9d78-674f64866ef7",
+        },
+        assertions: [{ assertionId: "threads-publication-receipted", status: "passed" }],
+        checkpoints: [{ checkpointId: "gcp_terminal", nodeId: "complete", reason: "completion_verified", stateHash: "a".repeat(64) }],
+      },
+      approvals: [],
+      liveCapability: null,
+      externalEffects: [],
+      childRunReceipts: [],
+      eventChainValid: true,
+      childRunReceiptChainValid: true,
+    };
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T15:30:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-threads-skip", status: "completed" } };
+        if (route === "/api/graphs/runs/run-threads-skip") return detail;
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({
+      outcome: "completed",
+      providerWrites: 0,
+      terminalReceipt: { checkpointId: "gcp_terminal", reason: "completion_verified", stateHash: "a".repeat(64) },
+      publicationReport: {
+        publicationOutcome: "not_published_zero_write",
+        policyOrSkipReason: "skip:not_ready_before_commit",
+        candidateId: null,
+        providerWrites: 0,
+        providerPostId: null,
+        providerPostUrl: null,
+        verifierResult: "threads-publication-receipted:passed",
+        recoveryRequired: false,
+        finalClassification: "legitimate_skip",
+      },
+    });
+    const message = formatGovernedScheduleOutput(result, binding.item.declaration.migrationId);
+    expect(message).toContain("Graph execution outcome: completed");
+    expect(message).toContain("Publication outcome: not_published_zero_write");
+    expect(message).toContain("Policy/skip reason: skip:not_ready_before_commit");
+    expect(message).toContain("Candidate ID: none");
+    expect(message).toContain("Final classification: legitimate_skip");
+  });
+
+  it("polls a completed run until terminal receipt-chain persistence is visible", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    let reads = 0;
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      completionPollAttempts: 3,
+      completionPollIntervalMs: 0,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-async-receipt", status: "completed" } };
+        if (route === "/api/graphs/runs/run-async-receipt") {
+          reads += 1;
+          if (reads < 3) return { run: { runId: "run-async-receipt", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], eventChainValid: true };
+          return { run: { runId: "run-async-receipt", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-async", status: "succeeded", outcome: "completed", receiptHash: "a".repeat(64) }], verifierReceipts: [{ verifierReceiptId: "gvr_async", status: "succeeded", outcome: "passed", receiptHash: "b".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+        }
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(reads).toBe(3);
+    expect(result).toMatchObject({ outcome: "completed", completionContract: { status: "passed", childReceiptIds: ["receipt-async"], verifierReceiptIds: ["gvr_async"] } });
+  });
+
+  it("terminalises a permanently missing child receipt as classified failed-safe evidence", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      completionPollAttempts: 2,
+      completionPollIntervalMs: 0,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-missing-receipt", status: "completed" } };
+        if (route === "/api/graphs/runs/run-missing-receipt") return { run: { runId: "run-missing-receipt", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], eventChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({ outcome: "completion_contract_failed", providerWrites: 0, completionContract: { status: "terminal", recoverySafe: true, childReceiptIds: [] } });
+    expect((result.completionContract as any).chainValidationReasons).toContain("sealed terminal state not observed before bounded polling limit");
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toMatchObject([{ status: "failed_safe", graphRunId: "run-missing-receipt" }]);
+    expect(JSON.parse(reopened.triggers(binding.item.declaration.migrationId)[0]!.failureReason!)).toMatchObject({ type: "graph_scheduler_completion_contract_classified", recoverySafe: true });
+    reopened.close();
+  });
+
+  it.each([
+    ["invalid child receipt chain", { eventChainValid: true, childRunReceiptChainValid: false }, "detail.childRunReceiptChainValid === true"],
+    ["invalid event chain", { eventChainValid: false, childRunReceiptChainValid: true }, "detail.eventChainValid === true"],
+  ])("classifies %s without accepting completed status alone", async (_name, chainFlags, failedPredicate) => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      completionPollAttempts: 1,
+      completionPollIntervalMs: 0,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: `run-${String(failedPredicate).slice(7, 12)}`, status: "completed" } };
+        if (route.startsWith("/api/graphs/runs/run-")) return { run: { runId: "run-chain-invalid", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-chain", status: "succeeded", outcome: "completed", receiptHash: "c".repeat(64) }], ...chainFlags };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({ outcome: "completion_contract_failed", completionContract: { status: "terminal" } });
+    expect((result.completionContract as any).predicates.find((item: any) => item.name === failedPredicate)).toMatchObject({ passed: false });
+  });
+
+  it("classifies verifier failure as terminal completion-contract evidence", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      completionPollAttempts: 1,
+      completionPollIntervalMs: 0,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-verifier-failed", status: "completed" } };
+        if (route === "/api/graphs/runs/run-verifier-failed") return { run: { runId: "run-verifier-failed", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-verifier", status: "succeeded", outcome: "completed", receiptHash: "d".repeat(64) }], verifierReceipts: [{ verifierReceiptId: "gvr_failed", status: "failed", outcome: "failed", receiptHash: "e".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({ outcome: "completion_contract_failed", publicationReport: { verifierResult: "gvr_failed:failed:failed", recoveryResult: "failed_safe_recovery_available" } });
+    expect((result.completionContract as any).predicates.find((item: any) => item.name === "verifier receipts accepted")).toMatchObject({ passed: false });
+  });
+
+  it("refuses completion when verified effects exceed the portfolio maximum", async () => {
+    const binding = governedJobs("continuous-marketing-digest-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T07:30:00.000Z"),
+      schedulerPath: value.path,
+      completionPollAttempts: 1,
+      completionPollIntervalMs: 0,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-too-many-effects", status: "completed" } };
+        if (route === "/api/graphs/runs/run-too-many-effects") return { run: { runId: "run-too-many-effects", status: "completed" }, approvals: [], liveCapability: { capabilityId: "glc_many", status: "consumed" }, externalEffects: [{ state: "effect_verified", providerOperationId: "one" }, { state: "effect_verified", providerOperationId: "two" }], childRunReceipts: [{ receiptId: "receipt-many", status: "succeeded", outcome: "completed", receiptHash: "f".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({ outcome: "completion_contract_failed", providerWrites: 2, trigger: { status: "ambiguous" }, publicationReport: { recoveryResult: "recovery_refused_unsafe_or_ambiguous" } });
+    expect((result.completionContract as any).predicates.find((item: any) => item.name === "effects.length <= portfolio.maximumExternalWrites")).toMatchObject({ actual: 2, passed: false });
+  });
+
+  it("uses the immutable original slot for recovery after the natural window has closed", async () => {
+    const binding = governedJobs("campaign-content-factory-shadow-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `local:2026-08-04:07:00:${binding.item.declaration.scheduleId}`, "2026-08-04T06:00:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-old-slot" });
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-old-slot", failureReason: "completion_contract_failed" });
+    value.store.close();
+    let recoveryInput: any;
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      recoveryTriggerId: reserved.triggerId,
+      now: new Date("2026-08-04T22:47:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-old-slot") return { run: { runId: "run-old-slot", status: "failed" }, liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-old-slot-recovered", status: "completed" } }; }
+        if (route === "/api/graphs/runs/run-old-slot-recovered") return { run: { runId: "run-old-slot-recovered", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-old-slot", status: "succeeded", outcome: "completed_unique_opportunity", receiptHash: "1".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(recoveryInput).toMatchObject({ correlationId: `${reserved.triggerId}:attempt:2`, input: { payload: { observedAt: "2026-08-04T06:00:00.000Z" } } });
+    expect(result).toMatchObject({ outcome: "completed_unique_opportunity", publicationReport: { recoveryResult: "original_slot_recovered" } });
+  });
+
+  it("refuses failed-safe recovery after capability consumption even without a verified effect", async () => {
+    const binding = governedJobs("threads-daily-image-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `threads:2026-08-04:16:30:${binding.item.declaration.scheduleId}`, "2026-08-04T15:30:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-consumed-no-effect" });
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-consumed-no-effect", failureReason: "ambiguous_capability" });
+    value.store.close();
+    await expect(executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      recoveryTriggerId: reserved.triggerId,
+      schedulerPath: value.path,
+      request: async (route) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-consumed-no-effect") return { run: { runId: "run-consumed-no-effect", status: "failed" }, liveCapability: { capabilityId: "glc_consumed", status: "consumed" }, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    })).rejects.toThrow("graph_scheduler_failed_safe_recovery_requires_zero_effects");
+  });
+
+  it("honestly marks a zero-write publication with no skip reason as missed", async () => {
+    const binding = governedJobs("threads-daily-image-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T15:30:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-missed-zero", status: "completed" } };
+        if (route === "/api/graphs/runs/run-missed-zero") return { run: { runId: "run-missed-zero", status: "completed", data: { socialEffect: { action: "publish", outboxId: "candidate-one" } } }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], assertions: [{ assertionId: "threads-publication-receipted", status: "passed" }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({ outcome: "completed", providerWrites: 0, publicationReport: { finalClassification: "missed", recoveryRequired: true, candidateId: "candidate-one" } });
+    expect(formatGovernedScheduleOutput(result, binding.item.declaration.migrationId)).toContain("Final classification: missed");
+  });
+
+  it("reconciles an already-completed original trigger with a corrected terminal notification and no replay", async () => {
+    const binding = governedJobs("threads-daily-image-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `threads:2026-08-04:16:30:${binding.item.declaration.scheduleId}`, "2026-08-04T15:30:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-completed-original" });
+    value.store.updateTrigger(reserved.triggerId, "executing", "test", { graphRunId: "run-completed-original" });
+    value.store.updateTrigger(reserved.triggerId, "completed", "test", { graphRunId: "run-completed-original" });
+    value.store.close();
+    let created = false;
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      recoveryTriggerId: reserved.triggerId,
+      now: new Date("2026-08-04T22:47:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") { created = true; throw new Error("must not replay completed trigger"); }
+        if (route === "/api/graphs/runs/run-completed-original") return { run: { runId: "run-completed-original", status: "completed", data: { socialEffect: { status: "not_ready_before_commit", action: "skip", outboxId: `threads:2026-08-04:16:30:${binding.item.declaration.scheduleId}`, providerWrites: 0 } }, checkpoints: [{ checkpointId: "gcp_done", nodeId: "complete", reason: "completion_verified", stateHash: "2".repeat(64) }] }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], assertions: [{ assertionId: "threads-publication-receipted", status: "passed" }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(created).toBe(false);
+    expect(result).toMatchObject({ outcome: "completed", trigger: { status: "completed" }, publicationReport: { finalClassification: "legitimate_skip", recoveryResult: "terminal_reconciled_no_replay" } });
+    const message = formatGovernedScheduleOutput(result, binding.item.declaration.migrationId);
+    expect(message).toContain("Scheduler completion contract: passed");
+    expect(message).toContain("Recovery result: terminal_reconciled_no_replay");
+    expect(message).not.toBe("completed");
   });
 
   it("records definition concurrency contention as a deferred zero-write trigger", async () => {
@@ -465,7 +761,7 @@ describe("graph scheduler migration registry", () => {
       value.store.close();
       const runId = `run-${item.declaration.migrationId}`;
       let runInput: any;
-      const result = await executeGovernedSchedule({ migrationId: item.declaration.migrationId, now: new Date(clocks[item.declaration.migrationId]!), schedulerPath: value.path, request: async (route, init) => {
+      const result = await executeGovernedSchedule({ migrationId: item.declaration.migrationId, now: new Date(clocks[item.declaration.migrationId]!), schedulerPath: value.path, completionPollAttempts: 1, completionPollIntervalMs: 0, request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
         if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId, status: "completed" } }; }
         if (route === `/api/graphs/runs/${runId}`) return { run: { runId, status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
@@ -477,7 +773,7 @@ describe("graph scheduler migration registry", () => {
       expect(reopened.triggers(item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: runId }]);
       reopened.close();
     }
-  });
+  }, 20_000);
 
   it("migrates empty with owner-only persistence and creates no authority", async () => {
     const value = await fixture();
