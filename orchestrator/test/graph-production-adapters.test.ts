@@ -157,6 +157,81 @@ describe("production adapter registry", () => {
     }
   });
 
+  it("turns Meta read-side provider discovery failures into zero-write terminal skips", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-meta-provider-skip-"));
+    const metaPath = join(root, "meta-provider-failure.mjs");
+    await writeFile(metaPath, `export async function runMonitor(){ throw new Error("Provider request failed with HTTP 400"); }\nexport async function executePreparedReply(){ throw new Error("live reply must be unreachable after discovery skip"); }\nexport async function reconcileReceiptOnly(){ throw new Error("live readback must be unreachable after discovery skip"); }\n`);
+    const priorMeta = process.env.OPENCLAW_META_REPLY_RUNNER_PATH;
+    process.env.OPENCLAW_META_REPLY_RUNNER_PATH = metaPath;
+    cleanups.push(async () => {
+      if (priorMeta === undefined) delete process.env.OPENCLAW_META_REPLY_RUNNER_PATH; else process.env.OPENCLAW_META_REPLY_RUNNER_PATH = priorMeta;
+      await rm(root, { recursive: true, force: true });
+    });
+    const runtime = await testRuntime();
+    const run = runtime.engine.start({
+      graphId: "meta-reply-monitor",
+      version: "1.0.0",
+      objective: "Meta discovery provider skip",
+      input: {
+        provider: "meta",
+        accountKey: "meta:owner",
+        jobId: "4de811aa-f213-4cc3-b1aa-6c2cffb6a847",
+        observedAt: "2026-08-04T01:15:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.externalEffects).toEqual([]);
+    expect(completed.data.socialEffect).toMatchObject({
+      status: "provider_discovery_unavailable",
+      action: "skip",
+      providerWrites: 0,
+      browserRelayCalls: 0,
+    });
+    expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining(["social-preparation-receipt", "zero-provider-writes"]));
+  });
+
+  it("keeps blocked Instagram preparation terminal and zero-write with the canonical readiness reason", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-instagram-prep-block-"));
+    const runnerPath = join(root, "instagram-prep-block.mjs");
+    await writeFile(runnerPath, `export async function runOpportunity(){ return { entry: { id: "instagram:2026-08-05:13:00:24afbb84-457c-41bb-92c9-24a19725e984", status: "blocked", reason: "initial_meta_readiness_failed", recoveryRequired: true, executionFailure: { stage: "reservation", category: "external_or_runtime_readiness_failure", rootCause: "initial_meta_readiness_failed", metaWrites: 0, uploadCalls: 0 }, generatedMediaUploadCalls: 0, instagramPublishCalls: 0, browserRelayCalls: 0 } }; }\nexport async function instagramGraphPublicationProjection(){ throw new Error("projection must not run for blocked preparation"); }\nexport async function bindInstagramGraphPublicationEnvelope(){ throw new Error("live bind must be unreachable"); }\nexport async function releaseInstagramGraphPublicationClaim(){ throw new Error("claim release must be unreachable"); }\nexport async function reconcileInstagramOutboxEntry(){ throw new Error("readback must be unreachable"); }\nexport async function readBackVerifiedInstagramGraphPublication(){ throw new Error("readback must be unreachable"); }\n`);
+    const prior = process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH;
+    process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH = runnerPath;
+    cleanups.push(async () => {
+      if (prior === undefined) delete process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH; else process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH = prior;
+      await rm(root, { recursive: true, force: true });
+    });
+    const runtime = await testRuntime();
+    const run = runtime.engine.start({
+      graphId: "deterministic-social-publication",
+      version: "2.0.0",
+      objective: "Instagram blocked preparation fixture",
+      input: {
+        provider: "instagram",
+        accountKey: "instagram:owner",
+        expectedAccountId: "17841400000000000",
+        jobId: "24afbb84-457c-41bb-92c9-24a19725e984",
+        kind: "image",
+        observedAt: "2026-08-05T13:00:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("failed");
+    expect(completed.currentNodeId).toBe("complete");
+    expect(completed.lastError?.message).toBe("initial_meta_readiness_failed");
+    expect(completed.externalEffects).toEqual([]);
+    expect(completed.budgets.externalRequestsConsumed).toBe(0);
+    expect(completed.data.target).toBe("instagram:2026-08-05:13:00:24afbb84-457c-41bb-92c9-24a19725e984");
+    expect(completed.data.publicationLive).toMatchObject({ status: "blocked", providerWrites: 0 });
+    expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining(["candidate-claim", "zero-provider-writes"]));
+  });
+
   it("requires and consumes one exact capability before an injected Threads provider effect", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-threads-live-capability-"));
     const runnerPath = join(root, "threads-live-fixture.mjs");

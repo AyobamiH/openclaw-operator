@@ -7,7 +7,7 @@ import { z } from "zod";
 import { ProductionAdapterRegistry } from "./adapter-registry.js";
 import { failure } from "./failures.js";
 import { sha256 } from "./reducer.js";
-import type { JsonValue, NodeExecutionContext } from "./types.js";
+import type { JsonValue, NodeExecutionContext, NodeExecutionResult } from "./types.js";
 import type { GraphStore } from "./store.js";
 import { prepareProductionPublishingShadowDecision, ShadowDecisionEnvelopeSchema } from "../publishing/shadow-equivalence.js";
 import {
@@ -132,6 +132,24 @@ function socialPreparation(entry: Record<string, any>, input: { shadowMode: bool
   };
 }
 
+function isReadSideProviderFailure(error: unknown): boolean {
+  const text = error instanceof Error ? error.message : String(error);
+  return /Provider request failed with HTTP (?:4\d\d|5\d\d)|http.?4\d\d|http.?5\d\d|rate.?limit|timeout|transport|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(text);
+}
+
+function zeroWriteSocialSkip(status: string): z.infer<typeof SocialPreparationOutputSchema> {
+  return {
+    status,
+    action: "skip",
+    outboxId: null,
+    payloadHash: null,
+    targetId: null,
+    approvalId: null,
+    providerWrites: 0,
+    browserRelayCalls: 0,
+  };
+}
+
 const PublishingInputSchema = z.object({
   integrationPath: z.string().min(1), registryPath: z.string().min(1), opportunityId: z.string().min(1), observedAt: z.string().datetime({ offset: true }), shadowMode: z.literal(true),
   authorityAllowed: z.boolean().optional(), effectState: z.enum(["none", "verified", "ambiguous", "duplicate"]).optional(), forcePolicyRejection: z.boolean().optional(), forceMissingCampaign: z.boolean().optional(), forceMalformedPayload: z.boolean().optional(),
@@ -144,12 +162,13 @@ const ResearchInputSchema = z.object({
 }).passthrough();
 const ResearchOutputSchema = z.object({ sourceCount: z.number().int(), claimCount: z.number().int(), unsupportedClaimIds: z.array(z.string()), rejectedSourceIds: z.array(z.string()), resultSetHash: z.string().regex(/^[a-f0-9]{64}$/), marginalInformationGain: z.number() }).strict();
 const LivePreparationOutputSchema = z.object({
-  status: z.enum(["previewed", "prepared"]),
-  projection: PublicationProjectionSchema,
+  status: z.enum(["previewed", "prepared", "blocked"]),
+  projection: PublicationProjectionSchema.nullable(),
   envelope: z.record(z.unknown()),
   envelopeHash: z.string().regex(/^[a-f0-9]{64}$/),
   providerWrites: z.literal(0),
 }).strict();
+type LivePreparationOutput = z.infer<typeof LivePreparationOutputSchema>;
 const LiveMutationOutputSchema = z.object({
   status: z.string(), providerResultId: z.string().nullable(), permalink: z.string().nullable(),
   generatedMediaUploadCalls: z.number().int().nonnegative(), instagramPublishCalls: z.number().int().nonnegative(), browserRelayCalls: z.literal(0),
@@ -177,6 +196,45 @@ function projectionFromValidation(value: Record<string, unknown>, input: LivePub
     claim: { ...graphAuthorization(context, input), status: "preview" }, providerResultId: null, permalink: null, status: "previewed", verification: null,
     generatedMediaUploadCalls: 0, instagramPublishCalls: 0, browserRelayCalls: 0,
   });
+}
+
+function recordFrom(value: unknown): Record<string, any> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, any> : {};
+}
+
+function instagramPreparationBlockedReason(entry: Record<string, any>): string {
+  const failureRecord = recordFrom(entry.executionFailure);
+  return String(
+    entry.reason
+      ?? failureRecord.rootCause
+      ?? failureRecord.errorCode
+      ?? failureRecord.category
+      ?? "instagram_preparation_blocked_before_provider_dispatch",
+  );
+}
+
+function instagramPreparationBlockResult(entry: Record<string, any>, context: NodeExecutionContext): NodeExecutionResult {
+  const reason = instagramPreparationBlockedReason(entry);
+  const providerWrites = Number(entry.generatedMediaUploadCalls ?? 0) + Number(entry.instagramPublishCalls ?? 0);
+  if (providerWrites !== 0 || Number(entry.browserRelayCalls ?? 0) !== 0) {
+    throw new Error(`instagram_graph_preparation_block_has_write_evidence:${reason}`);
+  }
+  const output: LivePreparationOutput = { status: "blocked", projection: null, envelope: {}, envelopeHash: sha256({}), providerWrites: 0 };
+  const target = entry.id ? String(entry.id) : "instagram:none";
+  return {
+    outcome: "failed_terminal",
+    output: output as unknown as Record<string, JsonValue>,
+    patches: [
+      { op: "set", path: "publicationLive", value: output as unknown as JsonValue },
+      { op: "set", path: "target", value: target },
+    ],
+    evidence: [
+      { kind: "candidate-claim", uri: `graph://${context.run.runId}/publication/claim`, sha256: sha256({ status: "blocked", target, reason }), summary: `Instagram preparation blocked before a durable candidate claim: ${reason}`, checker: "production.instagram-publication-prepare.v2" },
+      { kind: "zero-provider-writes", uri: `graph://${context.run.runId}/publication/preparation-writes`, sha256: sha256({ providerWrites: 0, browserRelayCalls: 0 }), summary: "Blocked Instagram preparation performed zero provider writes", checker: "production.instagram-publication-prepare.v2" },
+    ],
+    failure: failure("verification_failed", reason, { status: String(entry.status ?? "blocked"), target }),
+    progressFingerprint: sha256({ nodeId: context.node.id, status: "blocked", target, reason }),
+  };
 }
 
 export function createProductionAdapterRegistry(graphStore?: GraphStore, childRuns?: GraphChildRunCoordinator): ProductionAdapterRegistry {
@@ -298,6 +356,8 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
         status = "previewed";
       } else {
         const prepared = await runner.runOpportunity(input.jobId, input.kind, { prepareOnly: true, now: new Date(input.observedAt), graphAuthorization: graphAuthorization(context, input) });
+        const entry = recordFrom(prepared.entry);
+        if (String(entry.status ?? "") === "blocked") return instagramPreparationBlockResult(entry, context);
         projection = PublicationProjectionSchema.parse(await runner.instagramGraphPublicationProjection(prepared.entry));
         if (projection.status !== "render_validated" || projection.claim?.status !== "prepared") throw new Error("canonical_instagram_graph_prepare_incomplete");
         status = "prepared";
@@ -498,8 +558,14 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
     execute: async (inputValue, context) => {
       const input = MetaReplyGraphInputSchema.parse(inputValue);
       const runner = await loadMetaReplyRunner();
-      const prepared = await runner.runMonitor({ prepareOnly: true, now: new Date(input.observedAt) });
-      const output = socialPreparation(prepared.entry, input, "reply");
+      let output: z.infer<typeof SocialPreparationOutputSchema>;
+      try {
+        const prepared = await runner.runMonitor({ prepareOnly: true, now: new Date(input.observedAt) });
+        output = socialPreparation(prepared.entry, input, "reply");
+      } catch (error) {
+        if (!isReadSideProviderFailure(error)) throw error;
+        output = zeroWriteSocialSkip("provider_discovery_unavailable");
+      }
       return { outcome: "succeeded", output, patches: [{ op: "set", path: "socialEffect", value: output as unknown as JsonValue }, { op: "set", path: "target", value: output.targetId ?? output.outboxId ?? "meta-reply:none" }], evidence: [
         { kind: "social-preparation-receipt", uri: `graph://${context.run.runId}/meta-reply/preparation`, sha256: sha256(output), summary: `Meta reply preparation reached ${output.status}`, checker: "production.meta-reply-prepare.v1" },
         { kind: "payload-hash", uri: `graph://${context.run.runId}/meta-reply/payload`, sha256: output.payloadHash ?? sha256(null), summary: output.payloadHash ? "Exact reply payload frozen" : "No eligible reply payload", checker: "production.meta-reply-prepare.v1" },

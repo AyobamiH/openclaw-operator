@@ -18,6 +18,7 @@ import {
   resolveInputTemplate,
   resolveNaturalSlot,
 } from "../scripts/trigger-governed-graph-schedule.js";
+import { executePhaseGSchedule } from "../scripts/trigger-graph-schedule.js";
 
 function jobs() {
   const schedule = { kind: "cron", expr: "0 5,7,9,11,13 * * *", tz: "Europe/London", staggerMs: 0 };
@@ -91,6 +92,93 @@ describe("graph scheduler migration registry", () => {
     expect(result).toMatchObject({ outcome: "completed", providerWrites: 0, eventChainValid: true });
     const reopened = new GraphSchedulerStore(value.path);
     expect(reopened.triggers(item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: "run-readiness" }]);
+    reopened.close();
+  });
+
+  it("classifies a Phase G pre-envelope terminal graph failure as failed-safe instead of throwing", async () => {
+    const value = await fixture();
+    value.store.prepareMigration({ ...jobs(), actor: "test-instagram" });
+    value.store.activateMigration(PHASE_G_MIGRATION_ID, "test-instagram");
+    value.store.close();
+    let runInput: any;
+    const result = await executePhaseGSchedule({
+      now: new Date("2026-08-05T12:00:00.000Z"),
+      schedulerPath: value.path,
+      instagramOutboxPath: `${value.path}.missing-instagram-outbox.json`,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") {
+          runInput = JSON.parse(String(init.body));
+          return { run: { runId: "run-phase-g-pre-envelope", status: "failed" } };
+        }
+        if (route === "/api/graphs/runs/run-phase-g-pre-envelope") return {
+          run: { runId: "run-phase-g-pre-envelope", status: "failed", data: {}, lastError: { message: "Instagram image projection lacks a valid layout-verification binding" } },
+          approvals: [],
+          liveCapability: null,
+          externalEffects: [],
+          eventChainValid: true,
+          childRunReceiptChainValid: true,
+        };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(runInput).toMatchObject({
+      correlationId: expect.stringMatching(/^gst_/),
+      input: { observedAt: "2026-08-05T12:00:00.000Z", jobId: PHASE_G_SCHEDULE_ID, maximumProviderMutations: 1 },
+    });
+    expect(result).toMatchObject({
+      outcome: "completion_contract_failed",
+      providerWrites: 0,
+      publicationReport: {
+        policyOrSkipReason: "pre_envelope_terminal:Instagram image projection lacks a valid layout-verification binding",
+        recoveryResult: "failed_safe_recovery_available",
+        finalClassification: "failed",
+      },
+    });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(PHASE_G_MIGRATION_ID)).toMatchObject([{ status: "failed_safe", graphRunId: "run-phase-g-pre-envelope" }]);
+    expect(JSON.parse(reopened.triggers(PHASE_G_MIGRATION_ID)[0]!.failureReason!)).toMatchObject({ type: "graph_scheduler_pre_envelope_terminal", recoverySafe: true });
+    reopened.close();
+  });
+
+  it("replays a failed-safe Phase G trigger against the immutable original slot", async () => {
+    const value = await fixture();
+    value.store.prepareMigration({ ...jobs(), actor: "test-instagram" });
+    value.store.activateMigration(PHASE_G_MIGRATION_ID, "test-instagram");
+    const reserved = value.store.reserveTrigger(PHASE_G_MIGRATION_ID, `instagram:2026-08-05:13:00:${PHASE_G_SCHEDULE_ID}`, "2026-08-05T12:00:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-phase-g-old" });
+    value.store.updateTrigger(reserved.triggerId, "failed_safe", "test", { graphRunId: "run-phase-g-old", failureReason: "graph_scheduler_frozen_envelope_missing" });
+    value.store.close();
+    let recoveryInput: any;
+    const result = await executePhaseGSchedule({
+      now: new Date("2026-08-05T22:47:00.000Z"),
+      recoveryTriggerId: reserved.triggerId,
+      schedulerPath: value.path,
+      instagramOutboxPath: `${value.path}.missing-instagram-outbox.json`,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-phase-g-old") return { run: { runId: "run-phase-g-old", status: "failed", data: {} }, liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") {
+          recoveryInput = JSON.parse(String(init.body));
+          return { run: { runId: "run-phase-g-replayed", status: "failed" } };
+        }
+        if (route === "/api/graphs/runs/run-phase-g-replayed") return {
+          run: { runId: "run-phase-g-replayed", status: "failed", data: {}, lastError: { message: "Instagram image projection lacks a valid layout-verification binding" } },
+          liveCapability: null,
+          externalEffects: [],
+          eventChainValid: true,
+          childRunReceiptChainValid: true,
+        };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(recoveryInput).toMatchObject({
+      correlationId: `${reserved.triggerId}:attempt:2`,
+      input: { observedAt: "2026-08-05T12:00:00.000Z", jobId: PHASE_G_SCHEDULE_ID },
+    });
+    expect(result).toMatchObject({ outcome: "completion_contract_failed", providerWrites: 0 });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(PHASE_G_MIGRATION_ID)).toMatchObject([{ status: "failed_safe", graphRunId: "run-phase-g-replayed", attemptCount: 2 }]);
     reopened.close();
   });
 

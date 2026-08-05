@@ -146,7 +146,7 @@ function receiptIds(detail: any, key: "childRunReceipts" | "verifierReceipts"): 
 }
 
 function isLegitimateZeroWriteReason(reason: string): boolean {
-  return /not_ready_before_commit|no_eligible|duplicate|collision|cooldown|policy|confirmed_absent|skipped|shadow|approval_missing|already_published/i.test(reason);
+  return /not_ready_before_commit|no_eligible|duplicate|collision|cooldown|policy|confirmed_absent|skip:|skipped|shadow|approval_missing|already_published|discovery_unavailable/i.test(reason);
 }
 
 export function buildPublicationReport(args: { detail: any; outcome: string; providerWrites: number; maximumExternalWrites: 0 | 1; eventChainValid: boolean; childReceiptChainValid: boolean; providerOperationId?: string | null; deferredReason?: string; completionContract?: SchedulerCompletionContract; recoveryResult?: string }): PublicationReport {
