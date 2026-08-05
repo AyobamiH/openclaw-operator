@@ -1396,7 +1396,12 @@
   orchestrator typecheck passed; `git diff --check` passed before docs closeout.
   The production-shaped 23:00 Reel validate-only path completed dynamic
   allocation, local MP4 rendering and upload dry-run checks with zero provider
-  writes and zero Browser Relay calls.
+  writes and zero Browser Relay calls. After install, the first natural
+  graph-owned 23:00 slot ran as trigger
+  `gst_db342dabd0e3a7e7ebcfd1c27e09bdfa` /
+  `grzwcanary_df8ca03a-da9a-470f-bcbf-e6b67842f603`, exited the cron command
+  `ok`, recorded scheduler status `failed_safe`, and preserved zero provider
+  writes, zero Browser Relay calls, no approval and no live capability.
 - Remaining blocker: live Reel publication must still fail closed while
   unresolved prior Instagram image outbox row
   `instagram:image:2026-08-05:05:00:24afbb84-457c-41bb-92c9-24a19725e984`

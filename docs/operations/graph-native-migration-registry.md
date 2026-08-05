@@ -112,7 +112,7 @@ prepare/cutover event pair.
 | Task queue and market research | `governed-task-execution@1.0.0` / immutable lane bindings | scoped API, scheduler and child-handler ingress call `startGraphOwnedTask`; queue is effect transport only | queue retry disabled for graph children; injected market-research receipt chain passes | `graph_native` for the requested scope |
 | Git workflow | `governed-task-execution@1.0.0` / `git-monitor` | startup, five-minute scheduler and manual ingress are graph-owned | production monitor runs and child/verifier receipt pairs exist; commit/push authority remains separate | `graph_native` |
 | Campaign Factory | `governed-task-execution@1.0.0` / `campaign-factory` | cron `6fd3…a03` invokes `campaign-content-factory-shadow-v1` | recovered 07:00 trigger `gst_9611…6ca9`; child `gcr_abcc…1ddf` and verifier `gvr_fb7f…814e` chains pass with zero effects | `graph_native`; repaired trigger completed `completed_policy_skip`; natural unique canary proof remains pending and `self-id-1100` remains reserved |
-| Instagram Reel | `deterministic-social-publication@2.0.0` | cron `2c70…256e` invokes `instagram-reel-v1` | injected-clock approval/capability fixture passes; live cutover row is hash-chain valid; 23:00 production-shaped validate-only rendered and validated an MP4 with zero provider writes | `graph_native`; live publication is still blocked by unresolved prior Instagram image write ambiguity |
+| Instagram Reel | `deterministic-social-publication@2.0.0` | cron `2c70…256e` invokes `instagram-reel-v1` | injected-clock approval/capability fixture passes; live cutover row is hash-chain valid; 23:00 validate-only rendered and validated an MP4; natural 23:00 graph trigger failed closed with zero provider writes | `graph_native`; live publication is still blocked by unresolved prior Instagram image write ambiguity |
 
 The live production portfolio contains nine exact definitions. The original six
 transferred migrations, the existing Instagram image migration and the
@@ -417,6 +417,12 @@ Live cutover evidence:
   dynamic allocation, caption/material selection, local Reel rendering,
   measured layout audit, safe margins, contrast, reading-time and encoded MP4
   validation with zero provider writes and zero Browser Relay calls.
+- the first natural graph-owned Reel slot fired at 23:00 Europe/London through
+  trigger `gst_db342dabd0e3a7e7ebcfd1c27e09bdfa` and graph run
+  `grzwcanary_df8ca03a-da9a-470f-bcbf-e6b67842f603`; it terminalized as
+  `failed_safe` with `zero_write_terminal:verification_failed:initial_meta_readiness_failed`,
+  zero provider writes, zero Browser Relay calls, no approval, no live
+  capability and a chain-valid scheduler row.
 
 The remaining publication blocker is not graph ownership or Reel rendering.
 Admission still fails closed on unresolved prior Instagram provider-write
