@@ -141,6 +141,48 @@ describe("graph scheduler migration registry", () => {
     reopened.close();
   });
 
+  it("classifies a Phase G empty-envelope terminal graph failure as failed-safe", async () => {
+    const value = await fixture();
+    value.store.prepareMigration({ ...jobs(), actor: "test-instagram" });
+    value.store.activateMigration(PHASE_G_MIGRATION_ID, "test-instagram");
+    value.store.close();
+    const result = await executePhaseGSchedule({
+      now: new Date("2026-08-05T12:00:00.000Z"),
+      schedulerPath: value.path,
+      instagramOutboxPath: `${value.path}.missing-instagram-outbox.json`,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-phase-g-empty-envelope", status: "failed" } };
+        if (route === "/api/graphs/runs/run-phase-g-empty-envelope") return {
+          run: {
+            runId: "run-phase-g-empty-envelope",
+            status: "failed",
+            data: { publicationLive: { envelope: {}, envelopeHash: "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", providerWrites: 0, status: "blocked" } },
+            lastError: { message: "initial_meta_readiness_failed" },
+          },
+          approvals: [],
+          liveCapability: null,
+          externalEffects: [],
+          eventChainValid: true,
+          childRunReceiptChainValid: true,
+        };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(result).toMatchObject({
+      outcome: "completion_contract_failed",
+      providerWrites: 0,
+      publicationReport: {
+        policyOrSkipReason: "pre_envelope_terminal:initial_meta_readiness_failed",
+        recoveryResult: "failed_safe_recovery_available",
+      },
+    });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(PHASE_G_MIGRATION_ID)).toMatchObject([{ status: "failed_safe", graphRunId: "run-phase-g-empty-envelope" }]);
+    expect(JSON.parse(reopened.triggers(PHASE_G_MIGRATION_ID)[0]!.failureReason!)).toMatchObject({ reason: "initial_meta_readiness_failed", recoverySafe: true, effectCount: 0 });
+    reopened.close();
+  });
+
   it("replays a failed-safe Phase G trigger against the immutable original slot", async () => {
     const value = await fixture();
     value.store.prepareMigration({ ...jobs(), actor: "test-instagram" });

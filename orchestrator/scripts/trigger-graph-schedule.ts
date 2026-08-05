@@ -86,6 +86,19 @@ function hasUnsafeEffect(detail: any): boolean {
   return detail?.liveCapability?.status === "consumed" || (detail?.externalEffects ?? []).some((item: any) => ["request_sent", "provider_accepted", "ambiguous", "effect_observed", "effect_verified"].includes(item.state));
 }
 
+function hasCompleteFrozenEnvelope(detail: any): boolean {
+  const envelope = detail?.run?.data?.publicationLive?.envelope;
+  return Boolean(
+    envelope &&
+      typeof envelope === "object" &&
+      envelope.definitionHash &&
+      envelope.provider &&
+      envelope.accountId &&
+      envelope.mediaPath &&
+      envelope.canonicalPayload,
+  );
+}
+
 function parseJsonFile(path: string): any | null {
   try { return JSON.parse(readFileSync(path, "utf8")); } catch { return null; }
 }
@@ -154,7 +167,7 @@ async function createPhaseGRun(args: { request: HttpRequest; slot: { slotId: str
 function classifyMissingEnvelope(args: { store: GraphSchedulerStore; triggerId: string; migrationId: string; detail: any; actor: string; graphRunId?: string; instagramOutboxPath: string }): Record<string, unknown> | null {
   const run = args.detail?.run;
   const live = run?.data?.publicationLive;
-  if (run && live?.envelope) return null;
+  if (run && hasCompleteFrozenEnvelope(args.detail)) return null;
   const trigger = args.store.trigger(args.triggerId);
   const rawReason = run?.lastError?.message ?? args.detail?.run?.lastError?.message ?? "graph_scheduler_frozen_envelope_missing";
   const reason = refinePreEnvelopeReason(rawReason, trigger as unknown as Record<string, unknown> | null, args.instagramOutboxPath);
@@ -215,7 +228,7 @@ export async function executePhaseGSchedule(args: { now?: Date; schedulerPath?: 
       const prior = runId ? await activeRequest(`/api/graphs/runs/${runId}`) : null;
       if (hasUnsafeEffect(prior)) throw new Error("graph_scheduler_failed_safe_recovery_requires_zero_effects");
       store.updateTrigger(triggerId, "preparing", `graph-scheduler:${activeMigrationId}`, { graphRunId: runId, failureReason: undefined });
-      if (!prior?.run || ["failed", "cancelled"].includes(String(prior.run.status)) || !prior.run?.data?.publicationLive?.envelope) {
+      if (!prior?.run || ["failed", "cancelled"].includes(String(prior.run.status)) || !hasCompleteFrozenEnvelope(prior)) {
         const recovered = await createPhaseGRun({ request: activeRequest, slot, triggerId, migration, correlationId: `${triggerId}:attempt:${reservation.trigger.attemptCount + 1}` });
         runId = recovered.runId;
         detail = recovered.detail;
