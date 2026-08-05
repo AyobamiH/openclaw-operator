@@ -11,6 +11,7 @@ import {
 import { transferSchedulerOwnership } from "../src/graph/scheduler-cutover.js";
 import { buildGovernedGraphJob, GOVERNED_SCHEDULER_PORTFOLIO } from "../src/graph/scheduler-portfolio.js";
 import { metaReplyMonitorGraph } from "../src/graph/workflows.js";
+import { effectiveNodeTimeoutMs } from "../src/graph/engine.js";
 import {
   executeGovernedSchedule,
   formatGovernedScheduleOutput,
@@ -74,11 +75,17 @@ describe("graph scheduler migration registry", () => {
     expect(resolveGovernedSchedulerDatabasePath({ OPENCLAW_GRAPH_SCHEDULER_DATABASE_PATH: "/exact/scheduler.sqlite" })).toBe("/exact/scheduler.sqlite");
   });
 
-  it("keeps Meta reply monitor graph timeouts aligned with production adapter contracts", () => {
+  it("extends Meta reply monitor runtime timeouts without changing immutable graph definitions", () => {
     const definition = metaReplyMonitorGraph();
-    expect(definition.nodes.find((node) => node.id === "prepare_exact_effect")).toMatchObject({ timeoutMs: 10 * 60_000 });
-    expect(definition.nodes.find((node) => node.id === "perform_exact_effect")).toMatchObject({ timeoutMs: 5 * 60_000 });
-    expect(definition.nodes.find((node) => node.id === "reconcile_provider_state")).toMatchObject({ timeoutMs: 5 * 60_000 });
+    const prepare = definition.nodes.find((node) => node.id === "prepare_exact_effect")!;
+    const live = definition.nodes.find((node) => node.id === "perform_exact_effect")!;
+    const readback = definition.nodes.find((node) => node.id === "reconcile_provider_state")!;
+    expect(prepare).toMatchObject({ timeoutMs: 60_000 });
+    expect(live).toMatchObject({ timeoutMs: 60_000 });
+    expect(readback).toMatchObject({ timeoutMs: 60_000 });
+    expect(effectiveNodeTimeoutMs(prepare)).toBe(10 * 60_000);
+    expect(effectiveNodeTimeoutMs(live)).toBe(5 * 60_000);
+    expect(effectiveNodeTimeoutMs(readback)).toBe(5 * 60_000);
   });
 
   it("executes an injected-clock zero-write portfolio trigger through the graph API contract", async () => {

@@ -353,8 +353,10 @@ to ten minutes, while the graph node still used the default one-minute timeout.
 That produced terminal `failed_safe` scheduler rows with zero provider writes
 and a generic `zero_provider_writes_without_publication_reason`.
 
-The graph definition now gives social-effect preparation, live effect and
-readback nodes timeout budgets aligned with their production adapter contracts:
+To preserve graph-definition immutability, the persisted
+`threads-publication@1.0.0` and `meta-reply-monitor@1.0.0` definitions keep
+their original one-minute node timeout values. The graph executor now applies a
+runtime-only production-adapter timeout override while executing those nodes:
 ten minutes for preparation and five minutes for live/readback. The governed
 scheduler report also derives a specific `zero_write_terminal:*` reason from a
 failed graph run's terminal error when no provider write occurred, so future
@@ -363,8 +365,9 @@ generic missing-publication-reason fallback.
 
 Regression coverage:
 
-- `metaReplyMonitorGraph()` exposes the ten-minute prepare and five-minute
-  live/readback budgets;
+- `metaReplyMonitorGraph()` keeps immutable one-minute persisted node values
+  while `effectiveNodeTimeoutMs()` applies the ten-minute prepare and
+  five-minute live/readback runtime budgets;
 - a zero-write Meta reply preparation terminal failure reports
   `zero_write_terminal:invariant_violation:graph_transition_missing:prepare_exact_effect:timed_out`
   and no longer emits `zero_provider_writes_without_publication_reason`;

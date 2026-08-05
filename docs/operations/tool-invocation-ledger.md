@@ -1332,11 +1332,14 @@
   adapter contract allows ten minutes, but the graph node still had the default
   one-minute timeout, so the graph failed before a zero-write preparation
   receipt or publication reason could be persisted.
-- Repair: social-effect graph nodes now align timeout budgets to production
-  adapter contracts: ten minutes for preparation and five minutes for
-  live/readback. The governed scheduler publication report also derives an
-  explicit `zero_write_terminal:*` reason from failed zero-write graph runs
-  instead of falling back to
+- Repair: the first install attempt showed that changing persisted
+  `threads-publication@1.0.0` / `meta-reply-monitor@1.0.0` node timeout values
+  violates graph-definition immutability at startup. The roll-forward repair
+  therefore preserves immutable graph definition hashes and applies
+  production-adapter timeout budgets at graph execution time: ten minutes for
+  preparation and five minutes for live/readback. The governed scheduler
+  publication report also derives an explicit `zero_write_terminal:*` reason
+  from failed zero-write graph runs instead of falling back to
   `zero_provider_writes_without_publication_reason`.
 - Evidence: source files
   `orchestrator/src/graph/workflows.ts`,
@@ -1345,8 +1348,11 @@
   `docs/operations/graph-native-migration-registry.md`; live scheduler rows
   showed all seven scoped migrations as `graph_owned` before the patch.
 - Verification: focused scheduler migration suite passed `38/38`, typecheck
-  passed, and `git diff --check` passed before broader verification and
-  commit/install.
+  passed, `git diff --check` passed, and the protected `verify:main` gate
+  passed before commit/push. The first install of commit `9a0f66b` failed fast
+  with `graph_definition_version_immutable:threads-publication@1.0.0`; the
+  crash loop was stopped and the compatibility-safe roll-forward commit records
+  the final installable repair.
 - Next safe step: run the protected verification gate, commit/push the repair,
   restart `orchestrator.service` once under the explicit approval, verify
   health and inspect the next natural Meta reply-monitor slot or exact

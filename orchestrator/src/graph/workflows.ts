@@ -28,7 +28,6 @@ function node(args: {
   outcomes?: NodeOutcome[];
   retry?: boolean;
   maxAttempts?: number;
-  timeoutMs?: number;
   loopId?: string;
 }): GraphNodeDefinition {
   return {
@@ -42,7 +41,7 @@ function node(args: {
     requiredCapabilities: [],
     sideEffectClass: args.sideEffect ?? "read_only",
     authority: args.authority ?? args.sideEffect ?? "read_only",
-    timeoutMs: args.timeoutMs ?? 60_000,
+    timeoutMs: 60_000,
     retryEligible: args.retry ?? false,
     maxAttempts: args.maxAttempts ?? 1,
     idempotencyStrategy: (args.sideEffect && args.sideEffect !== "read_only") ? "external_operation" : "run_node_payload",
@@ -482,10 +481,10 @@ function socialEffectGraph(args: {
 }): GraphDefinition {
   const nodes = [
     node({ id: "schedule_ingress", type: "checkpoint", purpose: "Bind one injected or natural schedule slot" }),
-    node({ id: "prepare_exact_effect", type: "tool", handler: args.prepareHandler, purpose: "Select, validate, freeze and persist one exact zero-write candidate", mutations: ["socialEffect", "target"], evidence: ["social-preparation-receipt", "payload-hash", "zero-provider-writes"], authority: "local_persistent", sideEffect: "local_persistent", retry: true, maxAttempts: 2, timeoutMs: 10 * 60_000 }),
+    node({ id: "prepare_exact_effect", type: "tool", handler: args.prepareHandler, purpose: "Select, validate, freeze and persist one exact zero-write candidate", mutations: ["socialEffect", "target"], evidence: ["social-preparation-receipt", "payload-hash", "zero-provider-writes"], authority: "local_persistent", sideEffect: "local_persistent", retry: true, maxAttempts: 2 }),
     node({ id: "route_effect", type: "checkpoint", purpose: "Route skip, shadow or exact external effect from persisted preparation" }),
-    node({ id: "perform_exact_effect", type: "connector", handler: args.liveHandler, purpose: `Perform at most one exact provider ${args.effectAction}`, mutations: ["socialEffect"], evidence: [args.effectAction === "reply" ? "provider-reply" : "provider-publication", "official-provider-readback"], authority: "external_public", sideEffect: "external_public", outcomes: ["succeeded", "failed_repairable", "failed_terminal", "blocked"], timeoutMs: 5 * 60_000 }),
-    node({ id: "reconcile_provider_state", type: "verification", handler: args.readbackHandler, purpose: "Read provider state and reconcile an exact prior effect without retrying it", evidence: ["second-provider-readback", "social-terminal-receipt"], retry: true, maxAttempts: 2, timeoutMs: 5 * 60_000 }),
+    node({ id: "perform_exact_effect", type: "connector", handler: args.liveHandler, purpose: `Perform at most one exact provider ${args.effectAction}`, mutations: ["socialEffect"], evidence: [args.effectAction === "reply" ? "provider-reply" : "provider-publication", "official-provider-readback"], authority: "external_public", sideEffect: "external_public", outcomes: ["succeeded", "failed_repairable", "failed_terminal", "blocked"] }),
+    node({ id: "reconcile_provider_state", type: "verification", handler: args.readbackHandler, purpose: "Read provider state and reconcile an exact prior effect without retrying it", evidence: ["second-provider-readback", "social-terminal-receipt"], retry: true, maxAttempts: 2 }),
     node({ id: "package_terminal_receipt", type: "verification", handler: "graph.evidence-gate", purpose: "Close the graph from preparation and provider evidence" }),
     node({ id: "complete", type: "terminal", handler: "graph.terminal", purpose: "Terminal social effect state", outcomes: ["succeeded"] }),
   ];

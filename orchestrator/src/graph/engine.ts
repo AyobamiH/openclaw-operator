@@ -34,6 +34,18 @@ import {
 } from "./metrics.js";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled"]);
+const PRODUCTION_ADAPTER_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
+  "production.threads-publication-prepare.v1": 10 * 60_000,
+  "production.meta-reply-prepare.v1": 10 * 60_000,
+  "production.threads-publication-live.v1": 5 * 60_000,
+  "production.meta-reply-live.v1": 5 * 60_000,
+  "production.threads-publication-readback.v1": 5 * 60_000,
+  "production.meta-reply-readback.v1": 5 * 60_000,
+};
+
+export function effectiveNodeTimeoutMs(node: Pick<GraphNodeDefinition, "handler" | "timeoutMs">): number {
+  return Math.max(node.timeoutMs, PRODUCTION_ADAPTER_TIMEOUT_OVERRIDES_MS[node.handler] ?? node.timeoutMs);
+}
 
 export class NodeExecutorRegistry {
   private readonly handlers = new Map<string, NodeExecutor>();
@@ -337,7 +349,8 @@ export class GraphExecutor {
     const idempotencyKey = externalMutation
       ? sha256({ runId: run.runId, nodeId: node.id, target, payloadHash, operationType: node.handler })
       : attemptIdempotencyKey;
-    this.store.createAttempt({ attemptId, runId: run.runId, nodeId: node.id, attemptNumber, idempotencyKey: attemptIdempotencyKey, owner, leaseExpiresAt: new Date(Date.now() + node.timeoutMs).toISOString(), startedAt: new Date().toISOString(), run });
+    const nodeTimeoutMs = effectiveNodeTimeoutMs(node);
+    this.store.createAttempt({ attemptId, runId: run.runId, nodeId: node.id, attemptNumber, idempotencyKey: attemptIdempotencyKey, owner, leaseExpiresAt: new Date(Date.now() + nodeTimeoutMs).toISOString(), startedAt: new Date().toISOString(), run });
     if (externalMutation) {
       const effect: GraphRunState["externalEffects"][number] = existingEffect ?? {
         effectId: `gex_${randomUUID()}`,
@@ -364,7 +377,7 @@ export class GraphExecutor {
       }
     }
     const abortController = new AbortController();
-    const timer = setTimeout(() => abortController.abort(), node.timeoutMs);
+    const timer = setTimeout(() => abortController.abort(), nodeTimeoutMs);
     let result: NodeExecutionResult;
     try {
       const rawResult = node.type === "subgraph"
