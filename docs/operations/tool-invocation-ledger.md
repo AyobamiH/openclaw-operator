@@ -1494,3 +1494,34 @@
   slot. The pre-slot guarantee is bounded to the checks above; actual
   publication still depends on Meta accepting the single natural-slot provider
   write and readback succeeding.
+
+## 2026-08-06 — Imported Instagram live failure persistence repair
+
+- Requested task: finish Phase G after the natural Instagram Image run reached
+  the governed graph path but left the root outbox half-open when the connector
+  rejected live execution.
+- Workflow lane: product graph adapter repair.
+- Tools/source: Gateway journal diagnosis, root deterministic Instagram
+  outbox diagnostics, focused Vitest suites, TypeScript typecheck, and
+  `coding_validate_project`.
+- Root cause: the product graph adapter imports the canonical Instagram runner
+  as a module. When `runner.runOpportunity` threw during the live node, the
+  CLI-only committed-miss catch in the root runner was bypassed, so the
+  outbox could remain `publish_authorized` instead of recording the missed
+  committed slot.
+- Repair: `loadInstagramRunner` now requires
+  `recordUnhandledInstagramCommittedMiss`, and
+  `production.instagram-publication-live.v2` calls that recorder before
+  rethrowing imported runner errors. This preserves the graph completion
+  contract while ensuring canonical local publication state is not left
+  half-open after imported-runner failures.
+- Changed-state declaration: true for product source/tests/docs and local
+  product commit `01675d8`; false for provider writes, Browser Relay, cron
+  mutation, Gateway config, secrets, push, deploy, and forced scheduler runs.
+- Verification: `npm --prefix projects/openclaw-operator/orchestrator run
+  test:run -- test/graph-production-adapters.test.ts
+  test/graph-scheduler-migration.test.ts` passed `69/69`; orchestrator
+  typecheck passed; product `git diff --check` passed;
+  `coding_validate_project` passed.
+- Next safe step: observe the next natural graph-owned Instagram and Meta
+  slots with the root Relay approval refresh already loaded.
