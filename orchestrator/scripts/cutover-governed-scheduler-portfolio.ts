@@ -97,21 +97,30 @@ function payloadContract(payload: CronJob["payload"]): Record<string, unknown> {
   };
 }
 
-function verifyReadback(actual: CronJob, intended: CronJob, legacy: CronJob): void {
-  for (const field of ["id", "declarationKey", "displayName", "name", "description", "schedule", "delivery"] as const) {
+function metadataDrift(actual: CronJob, legacy: CronJob): string[] {
+  return (["displayName", "description"] as const).filter((field) => canonical(actual[field]) !== canonical(legacy[field]));
+}
+
+function verifyReadback(actual: CronJob, intended: CronJob, legacy: CronJob): string[] {
+  for (const field of ["id", "declarationKey", "name", "schedule", "delivery"] as const) {
     if (canonical(actual[field]) !== canonical(legacy[field])) throw new Error(`graph_scheduler_cutover_preservation_failed:${legacy.id}:${field}`);
   }
   if (canonical(actual.enabled) !== canonical(intended.enabled)) throw new Error(`graph_scheduler_cutover_enabled_failed:${legacy.id}`);
   if (canonical(payloadContract(actual.payload)) !== canonical(payloadContract(intended.payload))) throw new Error(`graph_scheduler_cutover_payload_failed:${legacy.id}`);
+  return metadataDrift(actual, legacy);
 }
 
-function classifyOwner(actual: CronJob, migration: { legacyJob: Record<string, unknown>; graphJob: Record<string, unknown> }): SchedulerOwner {
+function currentPortfolioGraphJob(migration: { migrationId: string; legacyJob: Record<string, unknown> }): CronJob {
+  return buildGovernedGraphJob(migration.legacyJob, migration.migrationId, triggerScript) as CronJob;
+}
+
+function classifyOwner(actual: CronJob, migration: { migrationId: string; legacyJob: Record<string, unknown>; graphJob: Record<string, unknown> }): SchedulerOwner {
   try {
     verifyReadback(actual, migration.legacyJob as CronJob, migration.legacyJob as CronJob);
     return "legacy";
   } catch { /* graph owner remains possible */ }
   try {
-    verifyReadback(actual, migration.graphJob as CronJob, migration.legacyJob as CronJob);
+    verifyReadback(actual, currentPortfolioGraphJob(migration), migration.legacyJob as CronJob);
     return "graph";
   } catch { return "unknown"; }
 }
@@ -140,7 +149,7 @@ try {
     for (const [migrationId] of selectedPortfolio) {
       const migration = store.migration(migrationId);
       if (!migration) throw new Error(`graph_scheduler_cutover_migration_missing:${migrationId}`);
-      const legacy = migration.legacyJob as CronJob, graph = migration.graphJob as CronJob;
+      const legacy = migration.legacyJob as CronJob, graph = currentPortfolioGraphJob(migration);
       const transferred = transferSchedulerOwnership({
         store,
         migrationId,
@@ -162,8 +171,8 @@ try {
     for (const [migrationId] of selectedPortfolio) {
       const migration = store.migration(migrationId);
       if (!migration || migration.status !== "graph_owned") throw new Error(`graph_scheduler_cutover_not_graph_owned:${migrationId}`);
-      verifyReadback(getJob(migration.scheduleId), migration.graphJob as CronJob, migration.legacyJob as CronJob);
-      results.push({ migrationId, status: migration.status, eventChainValid: store.eventChainValid(migrationId) });
+      const drift = verifyReadback(getJob(migration.scheduleId), currentPortfolioGraphJob(migration), migration.legacyJob as CronJob);
+      results.push({ migrationId, status: migration.status, eventChainValid: store.eventChainValid(migrationId), metadataDrift: drift });
     }
   } else {
     for (const [migrationId] of [...selectedPortfolio].reverse()) {

@@ -247,7 +247,7 @@ export class GraphSchedulerStore {
         graphNamespace: PHASE_G_GRAPH_NAMESPACE, provider: PHASE_G_PROVIDER, accountId: PHASE_G_ACCOUNT_ID,
         cronExpression: "0 5,7,9,11,13 * * *", timezone: "Europe/London",
       },
-      triggerScriptBasename: "trigger-graph-schedule.ts",
+      triggerScriptBasename: "trigger-governed-graph-schedule.ts",
     });
   }
 
@@ -268,8 +268,7 @@ export class GraphSchedulerStore {
     if (graph.id !== declaration.scheduleId || graph.declarationKey !== declaration.declarationKey || !Array.isArray(argv) || argv.at(-1) !== declaration.migrationId || String(argv.at(-2)) !== "--migration-id") throw new Error("graph_scheduler_graph_job_binding_mismatch");
     const triggerScriptBasename = args.triggerScriptBasename ?? "trigger-governed-graph-schedule.ts";
     if (String(argv[1]) !== "--import" || String(argv[2]) !== "tsx" || !String(argv[3]).endsWith(`/orchestrator/scripts/${triggerScriptBasename}`)) throw new Error("graph_scheduler_trigger_command_not_allowlisted");
-    const phaseGCompatibility = triggerScriptBasename === "trigger-graph-schedule.ts" && declaration.migrationId === PHASE_G_MIGRATION_ID;
-    if (!phaseGCompatibility && (!trigger || trigger.graphId !== declaration.graphId || trigger.graphVersion !== declaration.graphVersion || trigger.definitionHash !== declaration.graphDefinitionHash || !trigger.input || typeof trigger.input !== "object" || !trigger.authority || typeof trigger.authority !== "object")) throw new Error("graph_scheduler_graph_trigger_contract_mismatch");
+    if (!trigger || trigger.graphId !== declaration.graphId || trigger.graphVersion !== declaration.graphVersion || trigger.definitionHash !== declaration.graphDefinitionHash || !trigger.input || typeof trigger.input !== "object" || !trigger.authority || typeof trigger.authority !== "object") throw new Error("graph_scheduler_graph_trigger_contract_mismatch");
     const now = args.now ?? new Date();
     const record: GraphSchedulerMigration = {
       ...declaration,

@@ -35,7 +35,7 @@
     "campaign-factory:shadow-cycle": "tsx src/publishing/campaign-factory-shadow-cycle-cli.ts",
     "graph:live-capability": "tsx scripts/manage-one-run-live-capability.ts",
     "graph:scheduler-migration": "tsx scripts/manage-graph-scheduler-migration.ts",
-    "graph:scheduler-trigger": "tsx scripts/trigger-graph-schedule.ts",
+    "graph:scheduler-trigger": "tsx scripts/trigger-governed-graph-schedule.ts",
     "graph:audit:full": "tsx src/graph/full-runtime-audit-cli.ts"
   },
   "dependencies": {

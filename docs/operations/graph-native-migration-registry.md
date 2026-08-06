@@ -420,6 +420,31 @@ readiness valid, unresolved prior writes empty, layout verification passed,
 delivery upload dry-run only, provider writes `0`, external writes `0`, and
 Browser Relay calls `0`.
 
+## 2026-08-06 Phase G full scheduler hard cutover
+
+Phase G no longer keeps a second executable scheduler implementation. The old
+`trigger-graph-schedule.ts` entrypoint now exists only as a compatibility shim
+for historical Phase G callers and delegates immediately to
+`trigger-governed-graph-schedule.ts` with the exact
+`phase-g-instagram-image-v1` migration. New scheduler migrations must prepare
+against the governed trigger payload contract, including `graphTrigger`
+metadata; the previous Phase G-only allowance for the old trigger basename was
+removed.
+
+The orchestrator package alias `graph:scheduler-trigger` now points at
+`trigger-governed-graph-schedule.ts`. The live cron payloads for Instagram
+Image, Instagram Reel, Threads readiness, Threads early text, Threads daily
+image, Meta reply monitor, campaign-factory shadow and the continuous marketing
+digest all use the governed trigger with immutable migration IDs. After a clean
+official API validate-only check for the 2026-08-06 12:15 reply-monitor slot,
+the Meta reply monitor was re-enabled under the governed trigger.
+
+The portfolio verifier now checks the execution-critical contract: schedule
+identity, declaration key, cron schedule, delivery, enabled state and payload.
+Display name and description drift are reported as metadata drift rather than
+binding failure because the cron edit command does not own those presentation
+fields and they do not determine runtime execution.
+
 ## 2026-08-05 Instagram Reel graph hard cutover
 
 The Instagram Reel lane is no longer a disabled historical cron. Migration

@@ -10,7 +10,7 @@ const CREDENTIAL_FILE = "/home/oneclickwebsitedesignfactory/.openclaw/state/open
 export const PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/database/graph-scheduler.sqlite";
 const EVIDENCE_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers";
 
-type HttpRequest = (route: string, init?: RequestInit) => Promise<any>;
+export type HttpRequest = (route: string, init?: RequestInit) => Promise<any>;
 type PublicationClassification = "published" | "legitimate_skip" | "missed" | "failed" | "deferred";
 type SchedulerCompletionPredicate = {
   name: string;
@@ -322,7 +322,18 @@ async function waitForSchedulerCompletionContract(args: { request: HttpRequest; 
   return { detail, contract: { ...contract!, status: "terminal", transient: false, chainValidationReasons: [...contract!.chainValidationReasons, "sealed terminal state not observed before bounded polling limit"] } };
 }
 
-export async function executeGovernedSchedule(args: { migrationId: string; now?: Date; schedulerPath?: string; request?: HttpRequest; recoveryTriggerId?: string; completionPollAttempts?: number; completionPollIntervalMs?: number; preSlotSleep?: (ms: number) => Promise<void> }): Promise<Record<string, unknown>> {
+export type GovernedScheduleExecutionArgs = {
+  migrationId: string;
+  now?: Date;
+  schedulerPath?: string;
+  request?: HttpRequest;
+  recoveryTriggerId?: string;
+  completionPollAttempts?: number;
+  completionPollIntervalMs?: number;
+  preSlotSleep?: (ms: number) => Promise<void>;
+};
+
+export async function executeGovernedSchedule(args: GovernedScheduleExecutionArgs): Promise<Record<string, unknown>> {
   const portfolio = governedSchedulerPortfolioEntry(args.migrationId);
   const request = args.request ?? defaultRequest;
   const store = new GraphSchedulerStore(args.schedulerPath ?? resolveGovernedSchedulerDatabasePath());

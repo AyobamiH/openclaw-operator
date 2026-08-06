@@ -25,9 +25,10 @@ import { executePhaseGSchedule } from "../scripts/trigger-graph-schedule.js";
 function jobs() {
   const schedule = { kind: "cron", expr: "0 5,7,9,11,13 * * *", tz: "Europe/London", staggerMs: 0 };
   const base = { id: PHASE_G_SCHEDULE_ID, declarationKey: PHASE_G_DECLARATION_KEY, enabled: true, schedule, sessionTarget: "isolated", delivery: { mode: "announce" } };
+  const legacyJob = { ...base, payload: { kind: "command", argv: ["node", "/workspace/scripts/instagram-publisher-outbox-runner.mjs", "--job-id", PHASE_G_SCHEDULE_ID, "--kind", "image"] } };
   return {
-    legacyJob: { ...base, payload: { kind: "command", argv: ["node", "/workspace/scripts/instagram-publisher-outbox-runner.mjs", "--job-id", PHASE_G_SCHEDULE_ID, "--kind", "image"] } },
-    graphJob: { ...base, payload: { kind: "command", argv: ["node", "--import", "tsx", "/workspace/orchestrator/scripts/trigger-graph-schedule.ts", "--migration-id", PHASE_G_MIGRATION_ID] } },
+    legacyJob,
+    graphJob: buildGovernedGraphJob(legacyJob, PHASE_G_MIGRATION_ID, "/workspace/orchestrator/scripts/trigger-governed-graph-schedule.ts", "node"),
   };
 }
 
@@ -343,14 +344,14 @@ describe("graph scheduler migration registry", () => {
       outcome: "completion_contract_failed",
       providerWrites: 0,
       publicationReport: {
-        policyOrSkipReason: "pre_envelope_terminal:Instagram image projection lacks a valid layout-verification binding",
+        policyOrSkipReason: "zero_write_terminal:unknown:Instagram image projection lacks a valid layout-verification binding",
         recoveryResult: "failed_safe_recovery_available",
         finalClassification: "failed",
       },
     });
     const reopened = new GraphSchedulerStore(value.path);
     expect(reopened.triggers(PHASE_G_MIGRATION_ID)).toMatchObject([{ status: "failed_safe", graphRunId: "run-phase-g-pre-envelope" }]);
-    expect(JSON.parse(reopened.triggers(PHASE_G_MIGRATION_ID)[0]!.failureReason!)).toMatchObject({ type: "graph_scheduler_pre_envelope_terminal", recoverySafe: true });
+    expect(JSON.parse(reopened.triggers(PHASE_G_MIGRATION_ID)[0]!.failureReason!)).toMatchObject({ type: "graph_scheduler_completion_contract_classified", recoverySafe: true });
     reopened.close();
   });
 
@@ -386,13 +387,13 @@ describe("graph scheduler migration registry", () => {
       outcome: "completion_contract_failed",
       providerWrites: 0,
       publicationReport: {
-        policyOrSkipReason: "pre_envelope_terminal:initial_meta_readiness_failed",
+        policyOrSkipReason: "zero_write_terminal:unknown:initial_meta_readiness_failed",
         recoveryResult: "failed_safe_recovery_available",
       },
     });
     const reopened = new GraphSchedulerStore(value.path);
     expect(reopened.triggers(PHASE_G_MIGRATION_ID)).toMatchObject([{ status: "failed_safe", graphRunId: "run-phase-g-empty-envelope" }]);
-    expect(JSON.parse(reopened.triggers(PHASE_G_MIGRATION_ID)[0]!.failureReason!)).toMatchObject({ reason: "initial_meta_readiness_failed", recoverySafe: true, effectCount: 0 });
+    expect(JSON.parse(reopened.triggers(PHASE_G_MIGRATION_ID)[0]!.failureReason!)).toMatchObject({ type: "graph_scheduler_completion_contract_classified", recoverySafe: true, effectCount: 0 });
     reopened.close();
   });
 
@@ -1253,10 +1254,11 @@ describe("graph scheduler migration registry", () => {
     value.store.close();
   });
 
-  it("exposes no arbitrary graph or provider arguments on the cron trigger", async () => {
+  it("exposes no arbitrary graph or provider arguments on the compatibility cron trigger", async () => {
     const source = await readFile(new URL("../scripts/trigger-graph-schedule.ts", import.meta.url), "utf8");
     expect(source).toContain('process.argv.length !== 4');
-    expect(source).toContain('migrationId !== PHASE_G_MIGRATION_ID');
+    expect(source).toContain('process.argv[3] !== PHASE_G_MIGRATION_ID');
+    expect(source).toContain("executeGovernedSchedule");
     expect(source).not.toContain('args.get("--graph');
     expect(source).not.toContain('args.get("--provider');
     expect(source).not.toContain('args.get("--account');
