@@ -107,6 +107,7 @@ type InstagramRunnerModule = {
   instagramGraphPublicationProjection(entry: unknown): Promise<unknown>;
   bindInstagramGraphPublicationEnvelope(args: Record<string, unknown>): Promise<unknown>;
   releaseInstagramGraphPublicationClaim(args: Record<string, unknown>): Promise<unknown>;
+  recordUnhandledInstagramCommittedMiss(jobId: string, kind: "reel" | "image", now: Date, error: unknown): Promise<unknown>;
   reconcileInstagramOutboxEntry(outboxId: string): Promise<unknown>;
   readBackVerifiedInstagramGraphPublication(args: Record<string, unknown>): Promise<unknown>;
 };
@@ -123,6 +124,7 @@ export async function loadInstagramRunner(): Promise<InstagramRunnerModule> {
     "instagramGraphPublicationProjection",
     "bindInstagramGraphPublicationEnvelope",
     "releaseInstagramGraphPublicationClaim",
+    "recordUnhandledInstagramCommittedMiss",
     "reconcileInstagramOutboxEntry",
     "readBackVerifiedInstagramGraphPublication",
   ] as const) {

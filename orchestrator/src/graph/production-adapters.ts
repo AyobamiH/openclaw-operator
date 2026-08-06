@@ -427,7 +427,14 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
           actor: `adapter:${context.node.handler}`,
         }),
       };
-      const result = await runner.runOpportunity(input.jobId, input.kind, { now: new Date(input.observedAt), graphAuthorization: authorization, graphDispatchGate });
+      const observedAt = new Date(input.observedAt);
+      let result;
+      try {
+        result = await runner.runOpportunity(input.jobId, input.kind, { now: observedAt, graphAuthorization: authorization, graphDispatchGate });
+      } catch (error) {
+        await runner.recordUnhandledInstagramCommittedMiss(input.jobId, input.kind, observedAt, error);
+        throw error;
+      }
       const verified = PublicationProjectionSchema.parse(await runner.instagramGraphPublicationProjection(result.entry));
       const output = { status: verified.status ?? "unknown", providerResultId: verified.providerResultId, permalink: verified.permalink, generatedMediaUploadCalls: verified.generatedMediaUploadCalls, instagramPublishCalls: verified.instagramPublishCalls, browserRelayCalls: 0 as const };
       const correct = verified.status === "verified" && verified.providerResultId && verified.permalink && verified.instagramPublishCalls === 1 && verified.browserRelayCalls === 0;
