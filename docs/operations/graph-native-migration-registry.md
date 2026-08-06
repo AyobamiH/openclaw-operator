@@ -377,6 +377,49 @@ Regression coverage:
 - focused scheduler migration tests and orchestrator typecheck pass before
   commit/install.
 
+## 2026-08-06 Governed scheduler early-wake containment
+
+The Meta reply monitor remains declared and stored as the natural hourly
+`15 * * * *` Europe/London schedule. After an interrupted long-running
+21:15 slot on 2026-08-05, the live cron runner advanced subsequent job history
+to `HH:10:*`, causing the governed trigger to fail before it could bind the
+declared natural `HH:15` slot.
+
+The governed trigger now accepts only a narrow early wake inside five minutes
+of the declared cron expression, waits until the exact natural slot before
+reserving or executing the graph run, and rechecks graph runtime health after
+the wait. Late wakes still use the existing per-portfolio lateness tolerance.
+Calls outside those bounded windows continue to fail closed with
+`graph_scheduler_trigger_outside_natural_slot_window`.
+
+## 2026-08-06 Instagram Image governed scheduler completion
+
+The Instagram Image job `24afbb84-457c-41bb-92c9-24a19725e984` was still
+using the retained Phase G compatibility trigger even though the schedule was
+operationally described as graph-owned. That left the old natural-slot window
+logic reachable and caused repeated `trigger-graph-schedule.ts` failures after
+cron history drifted.
+
+`phase-g-instagram-image-v1` is now part of the governed scheduler portfolio.
+The binding uses `deterministic-social-publication@2.0.0`, namespace
+`production.instagram.single-image-feed`, exact account
+`17841453638630920`, cron `0 5,7,9,11,13 * * *`, prepared-payload approval,
+and one maximum provider write. Live cron readback now shows the job invoking
+`trigger-governed-graph-schedule.ts --migration-id
+phase-g-instagram-image-v1`; the next natural slot resolves to
+`instagram:2026-08-06:13:00:24afbb84-457c-41bb-92c9-24a19725e984`.
+
+The separate readiness blocker was a stale unresolved prior Image write,
+`instagram:image:2026-08-05:05:00:24afbb84-457c-41bb-92c9-24a19725e984`.
+Official read-only owned-feed reconciliation found no provider object after
+the settlement window and promoted the row to `confirmed_absent` /
+`confirmed_failure`, with provider writes `0` and Browser Relay calls `0`.
+
+Production-shaped validation for the 2026-08-06 13:00 Image slot passed:
+readiness valid, unresolved prior writes empty, layout verification passed,
+delivery upload dry-run only, provider writes `0`, external writes `0`, and
+Browser Relay calls `0`.
+
 ## 2026-08-05 Instagram Reel graph hard cutover
 
 The Instagram Reel lane is no longer a disabled historical cron. Migration

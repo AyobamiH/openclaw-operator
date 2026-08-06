@@ -1,6 +1,12 @@
 import { sha256 } from "./reducer.js";
 import type { AuthorityClass, JsonValue } from "./types.js";
-import type { GraphSchedulerMigrationDeclaration } from "./scheduler-store.js";
+import {
+  PHASE_G_ACCOUNT_ID,
+  PHASE_G_DECLARATION_KEY,
+  PHASE_G_MIGRATION_ID,
+  PHASE_G_SCHEDULE_ID,
+  type GraphSchedulerMigrationDeclaration,
+} from "./scheduler-store.js";
 import { digestDeliveryGraph, governedTaskExecutionGraph, liveCapableSocialPublicationGraph, metaReplyMonitorGraph, threadsPublicationGraph, threadsReadinessGraph } from "./workflows.js";
 
 export type SchedulerApprovalPolicy = "none" | "prepared_payload_only" | "standing_exact";
@@ -54,6 +60,7 @@ function entry(args: {
 }
 
 const portfolio = [
+  entry({ migrationId: PHASE_G_MIGRATION_ID, scheduleId: PHASE_G_SCHEDULE_ID, declarationKey: PHASE_G_DECLARATION_KEY, graphIdentity: "deterministic-social-publication@2.0.0", namespace: "production.instagram.single-image-feed", provider: "instagram", accountId: PHASE_G_ACCOUNT_ID, cronExpression: "0 5,7,9,11,13 * * *", authority: "external_public", approvalPolicy: "prepared_payload_only", maximumExternalWrites: 1, latenessToleranceMinutes: 10, graphJobEnabled: true, input: { provider: "instagram", accountKey: "instagram:owner", expectedAccountId: PHASE_G_ACCOUNT_ID, jobId: PHASE_G_SCHEDULE_ID, kind: "image", observedAt: "$scheduledAt", shadowMode: false, maximumProviderMutations: 1 } }),
   entry({ migrationId: "threads-readiness-v1", scheduleId: "abb3e214-0ff6-4813-a18d-6d8ffb9080ad", declarationKey: "threads-publication-readiness-preparer-v1", graphIdentity: "threads-readiness@1.0.0", namespace: "production.threads.readiness", provider: "threads", accountId: "threads:owner", cronExpression: "*/30 * * * *", authority: "local_persistent", input: { provider: "threads", accountKey: "threads:owner", jobId: "abb3e214-0ff6-4813-a18d-6d8ffb9080ad", observedAt: "$scheduledAt", shadowMode: true, maximumProviderMutations: 0 } }),
   entry({ migrationId: "threads-early-text-v1", scheduleId: "68b10c5c-f604-4567-9213-d0d1eab08106", declarationKey: "threads-confirmed-topic-tags-early-text-rotation-v1", graphIdentity: "threads-publication@1.0.0", namespace: "production.threads.early-text", provider: "threads", accountId: "threads:owner", cronExpression: "0 5,7 * * *", authority: "external_public", approvalPolicy: "prepared_payload_only", maximumExternalWrites: 1, input: { provider: "threads", accountKey: "threads:owner", jobId: "68b10c5c-f604-4567-9213-d0d1eab08106", observedAt: "$scheduledAt", shadowMode: false, maximumProviderMutations: 1 } }),
   entry({ migrationId: "threads-daily-image-v1", scheduleId: "083e3560-40fd-4487-9d78-674f64866ef7", declarationKey: "threads-confirmed-topic-tags-daily-image-rotation-v1", graphIdentity: "threads-publication@1.0.0", namespace: "production.threads.daily-image", provider: "threads", accountId: "threads:owner", cronExpression: "30 11,16,21 * * *", authority: "external_public", approvalPolicy: "prepared_payload_only", maximumExternalWrites: 1, input: { provider: "threads", accountKey: "threads:owner", jobId: "083e3560-40fd-4487-9d78-674f64866ef7", observedAt: "$scheduledAt", shadowMode: false, maximumProviderMutations: 1 } }),

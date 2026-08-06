@@ -1408,3 +1408,89 @@
   remains ambiguous after one prior upload and publish attempt. The next safe
   step is official read-only reconciliation of that row before any new
   Instagram image or Reel provider write.
+
+## 2026-08-06 — Governed graph scheduler early-wake repair
+
+- Requested task: investigate and fix
+  `graph_scheduler_trigger_outside_natural_slot_window` from
+  `orchestrator/scripts/trigger-governed-graph-schedule.ts`.
+- Workflow lane: coding/runtime scheduler repair for graph-owned Meta reply
+  monitor; no external publication or scheduler re-enable was authorized.
+- Tools/source: read-only `coding_repo_map` and `coding_validate_project`
+  from coding-agent-skills; OpenClaw `memory_search` attempted and timed out;
+  fallback exact reads used `memory/2026-08-06.md`, `memory/2026-08-05.md` and
+  `MEMORY.md`; read-only `openclaw cron get` and `openclaw cron runs`; local
+  `rg`, `sed`, `git`, `npm`, focused Vitest and TypeScript validation.
+- Changed-state declaration: true for source, focused tests, operations docs,
+  this ledger entry and daily memory checkpoints. False for cron enablement,
+  scheduler database mutation, service restart, commit, push, deployment,
+  provider writes, Browser Relay calls, migrations, secrets and config changes.
+- Root cause: the Meta reply monitor remains declared as
+  `15 * * * *` Europe/London, but after a long interrupted 21:15 run on
+  2026-08-05 the live cron runner advanced subsequent job history to
+  `HH:10:*`. The governed trigger treated those slightly early wakes as
+  outside the natural slot window and failed before reserving the declared
+  `HH:15` slot.
+- Repair: `resolveNaturalSlot` now preserves precise lateness bounds, accepts
+  only a five-minute early wake window, returns the future natural slot, waits
+  until the declared slot before reservation/execution, and rechecks graph
+  runtime health after the wait. Truly early or late triggers still fail closed
+  with `graph_scheduler_trigger_outside_natural_slot_window`.
+- Verification: focused scheduler migration suite passed `42/42`,
+  orchestrator typecheck passed, `git diff --check` passed, and project adapter
+  validation completed successfully. No live governed trigger was executed
+  because the disabled cron can perform an approved public reply if a candidate
+  is eligible.
+- Next safe step: review/commit the scoped patch, then separately approve any
+  orchestrator install/restart and explicit cron re-enable if John wants the
+  Meta reply monitor returned to service.
+
+## 2026-08-06 — Instagram Image graph-owned next-slot repair
+
+- Requested task: investigate and fix the repeated graph-owned Instagram Image
+  failure at trigger `gst_49fac02a20e751a3abf5918937391b4f` / run
+  `grzwcanary_100276d8-480f-49ed-8e71-868d4f554758`.
+- Workflow lane: coding/runtime scheduler repair plus API-only Instagram
+  reconciliation. User approval covered commit and immediate live loading for
+  this repair; provider publication was not forced outside the natural slot.
+- Tools/source: read-only `coding_repo_map`; OpenClaw cron get/runs; local
+  SQLite inspection of `graph-scheduler.sqlite`; protected graph run/health
+  API reads; root Instagram outbox read; `scripts/instagram-publisher-outbox-
+  runner.mjs --reconcile-outbox-id`; `scripts/instagram-publisher-outbox-
+  runner.mjs --validate-only`; focused Vitest and Node test validation; cron
+  CLI payload edit.
+- Changed-state declaration: true for operator source/tests/docs, root
+  Instagram runner/reconciliation state, diagnostic artifacts, and live cron
+  command payload for job `24afbb84-457c-41bb-92c9-24a19725e984`. False for
+  provider publication writes, Browser Relay, credentials, migrations, service
+  restart, deployment, and forced out-of-window live publication.
+- Root causes:
+  1. The Instagram Image cron still invoked the retained
+     `trigger-graph-schedule.ts` Phase G compatibility trigger, so the old
+     natural-window logic remained live.
+  2. The publication graph was blocked by one stale prior Image write,
+     `instagram:image:2026-08-05:05:00:24afbb84-457c-41bb-92c9-24a19725e984`,
+     which remained `publish_authorized` / `still_ambiguous`.
+  3. The readiness summary collapsed the exact blocker into
+     `initial_meta_readiness_failed` instead of surfacing
+     `unresolved_prior_provider_writes`.
+- Repair: added `phase-g-instagram-image-v1` to the governed scheduler
+  portfolio, repointed the live cron payload to
+  `trigger-governed-graph-schedule.ts`, promoted the settled official
+  no-match reconciliation case to `confirmed_absent`, and made readiness
+  failure reasons include the blocking check.
+- Evidence: patched reconciliation promoted the stale 2026-08-05 row to
+  `classification=confirmed_absent`, `status=confirmed_failure`,
+  `providerWrites=0`, `browserRelayCalls=0`, age `109538439` ms. The
+  production-shaped 2026-08-06 13:00 validate-only proof returned
+  `valid=true`, layout verification `passed`, no readiness failures,
+  `providerWrites=0`, `externalWrites=0`, `browserRelayCalls=0`, media SHA-256
+  `796fec4ea5be65e3abdc702bed4e61e52bfefac06e9656575f87179c303d43f6`.
+- Verification: `graph-scheduler-migration.test.ts` passed `43/43`; targeted
+  Node tests for reconciliation/no-unresolved-write behavior passed `3/3`.
+  A full root runner test file still has three unrelated pre-existing
+  creative-layout fixture failures and was not counted as green.
+- Next safe step: observe the natural 2026-08-06 13:00 Europe/London Image
+  slot. The pre-slot guarantee is bounded to the checks above; actual
+  publication still depends on Meta accepting the single natural-slot provider
+  write and readback succeeding.

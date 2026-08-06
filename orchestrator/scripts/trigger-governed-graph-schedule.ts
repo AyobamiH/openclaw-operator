@@ -49,6 +49,13 @@ type PublicationReport = {
   recoveryRequired: boolean;
   finalClassification: PublicationClassification;
 };
+type NaturalSlotResolution = {
+  slotId: string;
+  scheduledFor: string;
+  waitUntil?: string;
+};
+
+const EARLY_NATURAL_SLOT_TOLERANCE_MINUTES = 5;
 
 export function resolveGovernedSchedulerDatabasePath(env: NodeJS.ProcessEnv = process.env): string {
   const configured = env.OPENCLAW_GRAPH_SCHEDULER_DATABASE_PATH?.trim();
@@ -74,16 +81,29 @@ function isDefinitionConcurrencyExhausted(error: unknown, graph: string): boolea
   return message.includes(`graph_definition_concurrency_exhausted:${graph}`);
 }
 
-export function resolveNaturalSlot(args: { now: Date; cronExpression: string; timezone: string; scheduleId: string; provider: string; latenessToleranceMinutes: number }): { slotId: string; scheduledFor: string } {
+export function resolveNaturalSlot(args: { now: Date; cronExpression: string; timezone: string; scheduleId: string; provider: string; latenessToleranceMinutes: number }): NaturalSlotResolution {
   const [minuteField, hourField, dayField, monthField, weekdayField] = args.cronExpression.trim().split(/\s+/);
   if (!minuteField || !hourField || dayField !== "*" || monthField !== "*" || weekdayField !== "*") throw new Error("graph_scheduler_cron_expression_not_supported");
   const rounded = new Date(args.now); rounded.setSeconds(0, 0);
+  const nowMs = args.now.getTime();
   for (let offset = 0; offset <= args.latenessToleranceMinutes; offset += 1) {
     const candidate = new Date(rounded.getTime() - offset * 60_000);
+    const ageMs = nowMs - candidate.getTime();
+    if (ageMs < 0 || ageMs > args.latenessToleranceMinutes * 60_000) continue;
     const local = localParts(candidate, args.timezone);
     if (!fieldMatches(minuteField, local.minute) || !fieldMatches(hourField, local.hour)) continue;
     const time = `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}`;
     return { slotId: `${args.provider}:${local.date}:${time}:${args.scheduleId}`, scheduledFor: candidate.toISOString() };
+  }
+  const earlyToleranceMinutes = Math.min(EARLY_NATURAL_SLOT_TOLERANCE_MINUTES, args.latenessToleranceMinutes);
+  for (let offset = 1; offset <= earlyToleranceMinutes; offset += 1) {
+    const candidate = new Date(rounded.getTime() + offset * 60_000);
+    const waitMs = candidate.getTime() - nowMs;
+    if (waitMs <= 0 || waitMs > earlyToleranceMinutes * 60_000) continue;
+    const local = localParts(candidate, args.timezone);
+    if (!fieldMatches(minuteField, local.minute) || !fieldMatches(hourField, local.hour)) continue;
+    const time = `${String(local.hour).padStart(2, "0")}:${String(local.minute).padStart(2, "0")}`;
+    return { slotId: `${args.provider}:${local.date}:${time}:${args.scheduleId}`, scheduledFor: candidate.toISOString(), waitUntil: candidate.toISOString() };
   }
   throw new Error("graph_scheduler_trigger_outside_natural_slot_window");
 }
@@ -302,7 +322,7 @@ async function waitForSchedulerCompletionContract(args: { request: HttpRequest; 
   return { detail, contract: { ...contract!, status: "terminal", transient: false, chainValidationReasons: [...contract!.chainValidationReasons, "sealed terminal state not observed before bounded polling limit"] } };
 }
 
-export async function executeGovernedSchedule(args: { migrationId: string; now?: Date; schedulerPath?: string; request?: HttpRequest; recoveryTriggerId?: string; completionPollAttempts?: number; completionPollIntervalMs?: number }): Promise<Record<string, unknown>> {
+export async function executeGovernedSchedule(args: { migrationId: string; now?: Date; schedulerPath?: string; request?: HttpRequest; recoveryTriggerId?: string; completionPollAttempts?: number; completionPollIntervalMs?: number; preSlotSleep?: (ms: number) => Promise<void> }): Promise<Record<string, unknown>> {
   const portfolio = governedSchedulerPortfolioEntry(args.migrationId);
   const request = args.request ?? defaultRequest;
   const store = new GraphSchedulerStore(args.schedulerPath ?? resolveGovernedSchedulerDatabasePath());
@@ -319,6 +339,12 @@ export async function executeGovernedSchedule(args: { migrationId: string; now?:
     const slot = recoveryTrigger
       ? { slotId: recoveryTrigger.slotId, scheduledFor: recoveryTrigger.scheduledFor }
       : resolveNaturalSlot({ now: args.now ?? new Date(), cronExpression: migration.cronExpression, timezone: migration.timezone, scheduleId: migration.scheduleId, provider: migration.provider, latenessToleranceMinutes: portfolio.latenessToleranceMinutes });
+    if (!recoveryTrigger && slot.waitUntil) {
+      const waitMs = Math.max(0, Date.parse(slot.waitUntil) - (args.now?.getTime() ?? Date.now()));
+      await (args.preSlotSleep ?? sleep)(waitMs);
+      const postWaitHealth = await request("/api/graphs/health");
+      if (postWaitHealth?.status !== "healthy" || postWaitHealth?.zeroWriteOnly !== true) throw new Error("graph_scheduler_runtime_health_gate_failed_after_slot_wait");
+    }
     const reservation = recoveryTrigger
       ? { trigger: recoveryTrigger, created: false }
       : store.reserveTrigger(args.migrationId, slot.slotId, slot.scheduledFor, `graph-scheduler:${args.migrationId}`);

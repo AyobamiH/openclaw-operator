@@ -65,6 +65,8 @@ describe("graph scheduler migration registry", () => {
 
   it("resolves injected clocks only inside exact portfolio cron windows", () => {
     expect(resolveNaturalSlot({ now: new Date("2026-08-04T04:07:00.000Z"), cronExpression: "0 5,7 * * *", timezone: "Europe/London", scheduleId: "job", provider: "threads", latenessToleranceMinutes: 10 })).toMatchObject({ slotId: "threads:2026-08-04:05:00:job", scheduledFor: "2026-08-04T04:00:00.000Z" });
+    expect(resolveNaturalSlot({ now: new Date("2026-08-04T03:10:15.000Z"), cronExpression: "15 * * * *", timezone: "Europe/London", scheduleId: "job", provider: "meta", latenessToleranceMinutes: 20 })).toMatchObject({ slotId: "meta:2026-08-04:04:15:job", scheduledFor: "2026-08-04T03:15:00.000Z", waitUntil: "2026-08-04T03:15:00.000Z" });
+    expect(() => resolveNaturalSlot({ now: new Date("2026-08-04T03:09:59.000Z"), cronExpression: "15 * * * *", timezone: "Europe/London", scheduleId: "job", provider: "meta", latenessToleranceMinutes: 20 })).toThrow("graph_scheduler_trigger_outside_natural_slot_window");
     expect(() => resolveNaturalSlot({ now: new Date("2026-08-04T04:11:00.000Z"), cronExpression: "0 5,7 * * *", timezone: "Europe/London", scheduleId: "job", provider: "threads", latenessToleranceMinutes: 10 })).toThrow("graph_scheduler_trigger_outside_natural_slot_window");
     expect(resolveInputTemplate({ observedAt: "$scheduledAt", ingressId: "$slotId" }, { slotId: "slot-one", scheduledFor: "2026-08-04T04:00:00.000Z" })).toEqual({ observedAt: "2026-08-04T04:00:00.000Z", ingressId: "slot-one" });
   });
@@ -117,6 +119,45 @@ describe("graph scheduler migration registry", () => {
       kind: "command",
       noOutputTimeoutSeconds: 1800,
       timeoutSeconds: 2400,
+    });
+    expect(binding.graphJob.graphTrigger).toMatchObject({
+      graphId: "deterministic-social-publication",
+      graphVersion: "2.0.0",
+      approvalPolicy: "prepared_payload_only",
+      maximumExternalWrites: 1,
+      latenessToleranceMinutes: 10,
+    });
+  });
+
+  it("hard-cuts the retained Instagram Image job into the governed graph portfolio", () => {
+    const binding = governedJobs(PHASE_G_MIGRATION_ID);
+    expect(binding.item.declaration).toMatchObject({
+      migrationId: PHASE_G_MIGRATION_ID,
+      scheduleId: PHASE_G_SCHEDULE_ID,
+      declarationKey: PHASE_G_DECLARATION_KEY,
+      graphId: "deterministic-social-publication",
+      graphVersion: "2.0.0",
+      graphNamespace: "production.instagram.single-image-feed",
+      provider: "instagram",
+      accountId: "17841453638630920",
+      cronExpression: "0 5,7,9,11,13 * * *",
+      timezone: "Europe/London",
+    });
+    expect(binding.item.input).toMatchObject({
+      provider: "instagram",
+      accountKey: "instagram:owner",
+      expectedAccountId: "17841453638630920",
+      jobId: PHASE_G_SCHEDULE_ID,
+      kind: "image",
+      observedAt: "$scheduledAt",
+      shadowMode: false,
+      maximumProviderMutations: 1,
+    });
+    expect(binding.graphJob.payload).toMatchObject({
+      kind: "command",
+      argv: ["node", "--import", "tsx", "/workspace/orchestrator/scripts/trigger-governed-graph-schedule.ts", "--migration-id", PHASE_G_MIGRATION_ID],
+      noOutputTimeoutSeconds: 900,
+      timeoutSeconds: 1200,
     });
     expect(binding.graphJob.graphTrigger).toMatchObject({
       graphId: "deterministic-social-publication",
@@ -1095,6 +1136,7 @@ describe("graph scheduler migration registry", () => {
 
   it("executes every governed portfolio binding with injected natural clocks and zero effects", async () => {
     const clocks: Record<string, string> = {
+      "phase-g-instagram-image-v1": "2026-08-04T04:00:00.000Z",
       "threads-readiness-v1": "2026-08-04T03:30:00.000Z",
       "threads-early-text-v1": "2026-08-04T04:00:00.000Z",
       "threads-daily-image-v1": "2026-08-04T10:30:00.000Z",
@@ -1125,6 +1167,41 @@ describe("graph scheduler migration registry", () => {
       reopened.close();
     }
   }, 20_000);
+
+  it("waits before reserving when the cron engine wakes a governed job slightly early", async () => {
+    const binding = governedJobs("meta-reply-monitor-v1");
+    const value = await fixture();
+    const legacyJob = { id: binding.item.declaration.scheduleId, declarationKey: binding.item.declaration.declarationKey, enabled: true, schedule: { kind: "cron", expr: binding.item.declaration.cronExpression, tz: binding.item.declaration.timezone }, payload: { kind: "command", argv: ["node", "/workspace/legacy.mjs"] } };
+    const graphJob = buildGovernedGraphJob(legacyJob, binding.item.declaration.migrationId, "/workspace/orchestrator/scripts/trigger-governed-graph-schedule.ts", "node");
+    value.store.prepareBoundedMigration({ legacyJob, graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const slept: number[] = [];
+    const runId = "run-meta-early-wake";
+    let healthCalls = 0;
+    let runInput: any;
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T03:10:15.000Z"),
+      schedulerPath: value.path,
+      completionPollAttempts: 1,
+      completionPollIntervalMs: 0,
+      preSlotSleep: async (ms) => { slept.push(ms); },
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") { healthCalls += 1; return { status: "healthy", zeroWriteOnly: true }; }
+        if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId, status: "completed" } }; }
+        if (route === `/api/graphs/runs/${runId}`) return { run: { runId, status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(slept).toEqual([285_000]);
+    expect(healthCalls).toBe(2);
+    expect(runInput.input.observedAt).toBe("2026-08-04T03:15:00.000Z");
+    expect(result).toMatchObject({ outcome: "completed", migrationId: "meta-reply-monitor-v1", providerWrites: 0 });
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toMatchObject([{ slotId: "meta:2026-08-04:04:15:4de811aa-f213-4cc3-b1aa-6c2cffb6a847", scheduledFor: "2026-08-04T03:15:00.000Z", status: "completed" }]);
+    reopened.close();
+  });
 
   it("migrates empty with owner-only persistence and creates no authority", async () => {
     const value = await fixture();
