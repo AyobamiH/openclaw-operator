@@ -214,6 +214,15 @@ The product-owned publishing guard uses two paths:
 Both values must be configured together. Relative values are resolved against
 the directory containing `orchestrator_config.json`.
 
+Portable configs may still contain stale absolute paths from an installed
+workspace or container image. Config path fields beginning with `/workspace/`
+or containing `/.openclaw/workspace` are normalized to the active config root
+at load time. Runtime targets such as `mongo:<state-key>` and
+`sqlite:<database-path>` are treated as targets, not filesystem paths, and are
+left intact. Absolute source-controlled project paths under
+`/.openclaw/workspace/projects/` are preserved because they intentionally point
+at canonical repo assets rather than relocatable runtime state.
+
 When `OPENCLAW_OPERATOR_STATE_DIR` is set, the publishing database is forced to
 `$OPENCLAW_OPERATOR_STATE_DIR/database/deterministic-publishing.sqlite`
 regardless of the portable development fallback in the JSON file. Production

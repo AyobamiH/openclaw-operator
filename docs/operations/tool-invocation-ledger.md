@@ -1634,3 +1634,54 @@
 - Next safe step: commit this local repair set, load it through the approved
   service restart, then force exactly one approved graph-owned Threads
   early-text proof if preflight remains bounded to one provider write.
+
+## 2026-08-08 — Loaded scheduler repair and one Threads provider proof
+
+- Requested task: use John's explicit approval for commit, push, service
+  restart, scheduler mutation, deployment, and one provider write to complete
+  the repaired graph-owned Threads path without waiting for the Sunday natural
+  slot.
+- Workflow lane: approved production-safe runtime validation and one external
+  provider proof.
+- Tools/source: protected `git push` with `verify:main`; one
+  `systemctl --user restart orchestrator.service`; OpenClaw `cron get/run`;
+  read-only systemd, HTTP health, journal, SQLite graph scheduler/runtime
+  evidence; direct `executeGovernedSchedule` invocation with injected
+  `2026-08-09T06:00:00.000Z` slot time; memory guard checkpoints.
+- Changed-state declaration: true for pushed commit `f6a91d2`, one
+  `orchestrator.service` restart, one forced Meta cron run, one forced
+  graph-owned Threads provider write, graph scheduler/runtime SQLite state, and
+  evidence JSON. False for Browser Relay calls, secrets inspection, Gateway
+  restart, destructive cleanup, migrations, and any second provider write.
+- Protected push result: `verify:main` passed before push, including CI action
+  runtime check, build, docs drift, docs links, unit fixtures `97/97`,
+  integration `35/35`, operator UI `34/34`, typecheck, and docs-site build.
+  Push advanced `origin/main` to `f6a91d2`.
+- Service load proof: `orchestrator.service` restarted once at
+  2026-08-08 04:33 BST. Post-state was `active/running`, loopback `3312`
+  listened, `/health` and `/api/persistence/health` returned HTTP 200, graph
+  runtime initialized with nine definitions, and post-restart journal search
+  found no known startup failure signatures.
+- Scheduler proof: `threads-publication-readiness-preparer` was already back
+  to `ok` with `consecutiveErrors=0`; forced `meta-reply-monitor-v1` completed
+  `legitimate_skip` for trigger
+  `gst_6913663a2b95f1b030544eff69101749` / run
+  `grzwcanary_dc5e836a-bf32-403c-ba20-058c1d133463`, verifier
+  `meta-reply-monitor-receipted:passed`, `providerWrites=0`, and
+  `browserRelayCalls=0`, clearing its `consecutiveErrors` to `0`.
+- Provider proof: forced graph-owned `threads-early-text-v1` for the exact
+  Sunday 2026-08-09 07:00 Europe/London slot completed as published. Trigger
+  `gst_aacc0e41722aef474916ded77a12d69d`, run
+  `grzwcanary_060a23e8-296f-4406-984f-50431a07f8a1`, effect
+  `gex_4d0530f6-16da-44b0-81a2-1b4af3afee6d`, provider object
+  `18006808844978650`, permalink
+  `https://www.threads.com/@tailwaggingwebdesigns/post/Dbw7NeEDcgp`,
+  verifier `threads-publication-receipted:passed`, `providerWrites=1`,
+  `browserRelayCalls=0`, and `recoveryRequired=false`.
+- Evidence paths:
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers/gst_6913663a2b95f1b030544eff69101749.json`
+  and
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers/gst_aacc0e41722aef474916ded77a12d69d.json`.
+- Next safe step: commit and push this documentation/site sync. The broader
+  pre-graph capability reconstruction remains queued as a separate evidence
+  mission unless continued under the larger autonomous recovery objective.

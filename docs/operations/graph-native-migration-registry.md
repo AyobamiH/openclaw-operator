@@ -279,6 +279,17 @@ for sequence 5 `Northampton` with approval
 `browserRelayCalls=0`. The natural provider write is still pending until the
 scheduled graph-owned 2026-08-09 07:00 Europe/London slot executes.
 
+Operator-approved live proof: after commit `f6a91d2` was pushed and loaded, a
+single forced graph-owned proof consumed the exact 2026-08-09 07:00 slot early.
+Trigger `gst_aacc0e41722aef474916ded77a12d69d` completed with graph run
+`grzwcanary_060a23e8-296f-4406-984f-50431a07f8a1`, provider object
+`18006808844978650`, permalink
+`https://www.threads.com/@tailwaggingwebdesigns/post/Dbw7NeEDcgp`,
+`providerWrites=1`, `browserRelayCalls=0`, verifier
+`threads-publication-receipted:passed`, and no recovery required. The completed
+future slot is now durable scheduler state; the natural Sunday cron should
+duplicate-suppress that slot rather than publish again.
+
 ## 2026-08-08 Delayed cron outside-window containment
 
 Graph-owned cron commands can be invoked late after gateway restarts or long
@@ -293,6 +304,16 @@ This keeps cron health from turning a safe no-op catch-up into repeated command
 failure while preserving exact-slot write authority for normal graph-owned
 publication and reply schedules. Focused scheduler/config verification passed
 `49/49`; orchestrator typecheck and `git diff --check` passed.
+
+Loaded proof: `orchestrator.service` was restarted once after pushed
+`f6a91d2`; `/health` and `/api/persistence/health` returned HTTP 200, graph
+runtime loaded nine definitions, and no known startup failure signatures were
+present in the post-restart journal. A forced Meta reply-monitor run for the
+legitimate late 04:15 slot completed as `legitimate_skip` with trigger
+`gst_6913663a2b95f1b030544eff69101749`, graph run
+`grzwcanary_dc5e836a-bf32-403c-ba20-058c1d133463`, verifier
+`meta-reply-monitor-receipted:passed`, `providerWrites=0`, and
+`browserRelayCalls=0`, clearing `consecutiveErrors` to `0`.
 
 ## 2026-08-04 Digest concurrency-exhaustion closure
 
