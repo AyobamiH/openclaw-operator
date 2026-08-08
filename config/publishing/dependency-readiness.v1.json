@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "1.0.0",
+  "generatedAt": "2026-08-08T18:54:00+01:00",
+  "overallVerdict": "PRE_GRAPH_CONTRACT_GOVERNED_WITH_EXTERNAL_BLOCKERS",
+  "sourceState": {
+    "scope": "business-loop-lifecycle-repair",
+    "sourceImplemented": true,
+    "committed": true,
+    "pushed": true,
+    "runtimeLoaded": true,
+    "runtimeVerified": false,
+    "sourceCommit": "fa78945502f3b777594738bb7a9e65f879553e1c",
+    "remoteHead": "e99879bf1da5142dd74f585b2657026370761391",
+    "loadedAt": "2026-08-08T17:19:22+01:00",
+    "runtimeVerificationReason": "The governed-task-execution@1.1.0 definition loaded, but no natural Campaign Factory v3 trigger has yet exercised the final immutable scheduler binding."
+  },
+  "dependencies": [
+    {
+      "id": "phase-3-dated-self-identification-canary",
+      "capability": "Exact dated Self-Identification provider canary",
+      "phase": 3,
+      "categories": ["APPROVAL_REQUIRED", "EXTERNAL_CREDENTIAL_REQUIRED"],
+      "readiness": "TECHNICALLY_READY_APPROVAL_REQUIRED",
+      "exactMissingDecisionOrInput": "After the validated copy-normalization change is committed and loaded, regenerate and review one exact payload-bound Threads text candidate for 2026-08-09 15:00 Europe/London, then approve or reject its final candidate ID, content-spec ID, content hash and rendered-text hash.",
+      "whyRequired": "The technical path is proven, but provider mutation authority must bind the final target, slot and immutable content bytes.",
+      "runtimeBehaviourUnlocked": "One write maximum through the official Threads API, followed by owned-feed readback and permanent capability consumption.",
+      "acceptedSchemaOrChoices": {
+        "decision": ["approve_exact_candidate", "reject", "request_copy_revision"],
+        "requiredBindings": ["candidateId", "contentSpecId", "contentHash", "renderedTextHash", "platform", "accountId", "scheduledFor", "maxWrites", "expiresAt"],
+        "fixedValues": {
+          "platform": "threads",
+          "accountId": "tailwaggingwebdesigns",
+          "scheduledFor": "2026-08-09T15:00:00+01:00",
+          "maxWrites": 1
+        }
+      },
+      "evidenceAlreadyAvailable": [
+        "Canonical official-API worker, exactly-once barrier and owned-feed verification are proven.",
+        "The deterministic in-memory planner proved candidate generation with externalWrites=0; its pre-normalization hash is retained as superseded evidence and must not be approved for live use."
+      ],
+      "evidenceStillMissing": [
+        "Final copy QA approval; the current deterministic body needs punctuation/grammar repair before a live proposal is acceptable.",
+        "Fresh runtime readiness and exact one-run capability at dispatch time."
+      ],
+      "approvalScope": "One exact Threads provider write for the bound candidate only; no recurring authority, retry, media upload or other campaign publication.",
+      "technicalReadinessState": "SOURCE_READY_RUNTIME_PATH_PROVEN",
+      "nextExecutableActionOnceSupplied": "Regenerate the normalized payload, present its exact bindings for approval, then issue the one-use Graph capability, run the dated canary once, verify by official owned-feed readback and consume the capability permanently."
+    },
+    {
+      "id": "phase-6-recurring-official-provider-metrics",
+      "capability": "Recurring official provider metric refresh",
+      "phase": 6,
+      "categories": ["LOCALLY_IMPLEMENTABLE", "APPROVAL_REQUIRED"],
+      "readiness": "SOURCE_IMPLEMENTED_APPROVAL_BLOCKED",
+      "exactMissingDecisionOrInput": "Approve commit/push and immutable-runtime scheduler activation of the validated source; live reads then require an existing verified Campaign Factory provider object and the already configured official connector account.",
+      "whyRequired": "Publication-time capture alone does not refresh official metrics on later campaign cycles.",
+      "runtimeBehaviourUnlocked": "Read-only refresh of supported official provider metrics with unavailable values persisted as null rather than zero.",
+      "acceptedSchemaOrChoices": {
+        "metricRecord": ["publicationId", "metricDefinitionId", "value", "availability", "capturedAt", "providerEvidence"],
+        "availability": ["available", "unavailable"]
+      },
+      "evidenceAlreadyAvailable": ["Threads post_insights reader and publishing_metrics store exist."],
+      "evidenceStillMissing": ["A verified Campaign Factory provider object eligible for recurring refresh."],
+      "approvalScope": "Read-only official provider discovery; zero provider writes.",
+      "technicalReadinessState": "LOCAL_SOURCE_IMPLEMENTED_VALIDATED",
+      "nextExecutableActionOnceSupplied": "Commit and push the source, build a new immutable runtime, migrate the Graph-owned Campaign Factory schedule, then refresh metrics for the first eligible verified provider object."
+    },
+    {
+      "id": "phase-6-conversation-crm-website-attribution",
+      "capability": "Conversation, CRM and website evidence ingestion",
+      "phase": 6,
+      "categories": ["EVIDENCE_CONNECTOR_REQUIRED", "EXTERNAL_CREDENTIAL_REQUIRED"],
+      "readiness": "EXTERNAL_EVIDENCE_UNAVAILABLE",
+      "exactMissingDecisionOrInput": "Name the CRM and website analytics systems, provide provenance-bearing read scopes, and define the durable identifiers that join conversations or enquiries to provider publications.",
+      "whyRequired": "Attribution cannot be inferred without real conversion or conversation evidence and stable join keys.",
+      "runtimeBehaviourUnlocked": "Qualified-conversation and website-enquiry metrics plus evidence-threshold attribution edges.",
+      "acceptedSchemaOrChoices": {
+        "conversation": ["source", "externalId", "platformId", "providerPublicationId", "state", "observedAt", "evidenceHash"],
+        "conversion": ["source", "externalId", "occurredAt", "outcomeType", "value", "currency", "evidenceHash"],
+        "attribution": ["definitionId", "fromType", "fromId", "toType", "toId", "confidence", "evidenceIds"]
+      },
+      "evidenceAlreadyAvailable": ["Conversation and attribution tables enforce durable evidence and minimum evidence counts."],
+      "evidenceStillMissing": ["Named CRM", "Named website analytics source", "Connector credentials/read scopes", "Real records and join keys"],
+      "approvalScope": "Read-only connector access and provenance storage; no outreach, CRM mutation or fabricated attribution.",
+      "technicalReadinessState": "STORE_AND_REPORTING_READY_CONNECTORS_ABSENT",
+      "nextExecutableActionOnceSupplied": "Implement the named adapter, backfill only provider-supported history with provenance, and run correlation without treating unavailable evidence as zero."
+    },
+    {
+      "id": "phase-7-bounded-experiment",
+      "capability": "Bounded campaign experiment evaluation",
+      "phase": 7,
+      "categories": ["PRODUCT_DECISION_REQUIRED", "CAMPAIGN_DECISION_REQUIRED", "APPROVAL_REQUIRED", "READY_BUT_INTENTIONALLY_INACTIVE"],
+      "readiness": "READY_BUT_INTENTIONALLY_INACTIVE",
+      "exactMissingDecisionOrInput": "Provide and approve an exact hypothesis, primary metric, control and variant campaign sets, minimum sample size, stopping rule and maximum permitted adjustment.",
+      "whyRequired": "A generic hard-cutover approval does not establish a real experiment design or authorize performance-based selection changes.",
+      "runtimeBehaviourUnlocked": "Measurement-only evaluation first; a separately approved non-zero adjustment may later influence deterministic selection within the configured bound.",
+      "acceptedSchemaOrChoices": {
+        "experiment": ["hypothesis", "metricDefinitionId", "controlCampaignIds", "variantCampaignIds", "minimumSamples", "startsAt", "endsAt", "stoppingRule", "maxAdjustment", "approvalId"]
+      },
+      "evidenceAlreadyAvailable": ["The engine supports bounded adjustments, minimum samples, evidence-integrity stopping and zero adjustment."],
+      "evidenceStillMissing": ["Approved control and variant sets", "Approved hypothesis", "Approved metric and stopping rule"],
+      "approvalScope": "The exact experiment record; any non-zero selection adjustment requires a further explicit approval.",
+      "technicalReadinessState": "ENGINE_VALIDATED_EXPERIMENT_PAUSED",
+      "nextExecutableActionOnceSupplied": "Create the exact experiment record, validate replay and sample gates, then activate measurement-only evaluation."
+    },
+    {
+      "id": "phase-8-commercial-evidence",
+      "capability": "Commercial attribution in daily and weekly reports",
+      "phase": 8,
+      "categories": ["EVIDENCE_CONNECTOR_REQUIRED"],
+      "readiness": "OPERATIONAL_REPORTING_READY_COMMERCIAL_EVIDENCE_UNAVAILABLE",
+      "exactMissingDecisionOrInput": "Supply the Phase 6 CRM/website evidence connectors and real conversion records.",
+      "whyRequired": "Operational reports can run without commercial evidence, but conversion and revenue claims cannot.",
+      "runtimeBehaviourUnlocked": "Evidence-backed conversion and commercial attribution sections in existing deterministic reports.",
+      "acceptedSchemaOrChoices": {"inherits": "phase-6-conversation-crm-website-attribution"},
+      "evidenceAlreadyAvailable": ["Replay, recovery, safety, daily and weekly reports are implemented and explicitly render unavailable metrics."],
+      "evidenceStillMissing": ["Real conversion and commercial evidence"],
+      "approvalScope": "Read-only evidence ingestion; financial or CRM writes are excluded.",
+      "technicalReadinessState": "REPORTING_COMPLETE",
+      "nextExecutableActionOnceSupplied": "Ingest proven records and rerun the same reports; no report code change should be required."
+    }
+  ],
+  "campaignFamilies": [
+    {
+      "family": "problem-education",
+      "campaignId": "campaign-founder-problem-education",
+      "readinessStates": ["ACTIVE"],
+      "evidenceAlreadyAvailable": ["founder-rescue product", "approved founder audience", "problem/outcome record", "self-identification strategy allowing problem-education", "founder-rescue reconstruction evidence", "hard-cutover approval 3619"],
+      "evidenceStillMissing": [],
+      "nextExecutableAction": "Remain in deterministic shadow rotation; any provider publication still needs exact payload approval."
+    },
+    {
+      "family": "founder-observation",
+      "campaignId": "campaign-founder-observation",
+      "readinessStates": ["ACTIVE"],
+      "evidenceAlreadyAvailable": ["founder-rescue product", "approved founder audience", "problem/outcome record", "self-identification strategy allowing founder-observation", "founder-rescue reconstruction evidence", "hard-cutover approval 3619"],
+      "evidenceStillMissing": [],
+      "nextExecutableAction": "Remain in deterministic shadow rotation; new observations must cite fresh evidence."
+    },
+    {
+      "family": "product-update",
+      "campaignId": "campaign-social-agent-product-update",
+      "readinessStates": ["ACTIVE"],
+      "evidenceAlreadyAvailable": ["social-agent product", "governed-AI audience", "practical-proof strategy allowing product-update", "Meta outbox worker evidence", "hard-cutover approval 3619"],
+      "evidenceStillMissing": [],
+      "nextExecutableAction": "Generate only updates supported by registered source/runtime evidence."
+    },
+    {
+      "family": "community-discussion",
+      "campaignId": "campaign-openclaw-community-discussion",
+      "readinessStates": ["ACTIVE"],
+      "evidenceAlreadyAvailable": ["OpenClaw Operator product", "governed-AI audience", "practical-proof strategy allowing community-discussion", "OpenClaw source evidence", "hard-cutover approval 3619"],
+      "evidenceStillMissing": [],
+      "nextExecutableAction": "Remain helpful and evidence-led; provider publication remains payload-approval gated."
+    },
+    {
+      "family": "research-insight",
+      "campaignId": "campaign-coding-agent-research-insight",
+      "readinessStates": ["ACTIVE"],
+      "evidenceAlreadyAvailable": ["coding-agent-skills product", "engineering-team audience", "practical-proof strategy allowing research-insight", "coding-agent source evidence", "hard-cutover approval 3619"],
+      "evidenceStillMissing": [],
+      "nextExecutableAction": "Generate only insights traceable to the registered repository evidence."
+    }
+  ]
+}

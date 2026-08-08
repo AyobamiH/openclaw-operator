@@ -418,6 +418,7 @@ describe("deterministic self-identification publishing engine", () => {
     expect(rendered.text).toContain(plan.contentSpec!.renderedIntent.hook);
     expect(rendered.text).toContain(plan.contentSpec!.renderedIntent.body);
     expect(rendered.text).toContain(plan.contentSpec!.renderedIntent.cta);
+    expect(rendered.text).not.toMatch(/\.\./);
     store.close();
   });
 

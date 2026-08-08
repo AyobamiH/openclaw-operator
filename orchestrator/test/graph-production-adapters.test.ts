@@ -325,6 +325,32 @@ describe("production adapter registry", () => {
     expect(runtime.store.externalEffects(run.runId)).toMatchObject([{ state: "effect_verified", providerOperationId: "provider-one" }]);
   });
 
+  it("reconciles an ambiguous Meta reply to confirmed absent without losing the original effect identity", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-meta-reply-reconciliation-"));
+    const runnerPath = join(root, "meta-reply-reconciliation-fixture.mjs");
+    await writeFile(runnerPath, `const prepared={id:"meta-reply-monitor-20260804T0115Z",runId:"meta-reply-monitor-20260804T0115Z",status:"prepared_reply",draft:"Exact prepared reply fixture",selectedCandidate:{id:"candidate-one",platform:"threads"},externalWriteCount:0};\nexport async function runMonitor(){return{entry:prepared};}\nexport async function executePreparedReply(_runId,options){await options.graphDispatchGate.reserve("provider_effect","production.meta-reply-live.v1");await options.graphDispatchGate.complete("provider_effect","ambiguous",{outcome:"blocked"});return{entry:{...prepared,status:"blocked",externalWriteCount:1}};}\nexport async function reconcileReceiptOnly(){return{entry:{...prepared,status:"confirmed_failure",providerReconciled:true,externalWriteCount:0,reconciliationReceiptPath:"/canonical/meta-reconciliation.json",reconciliationReceiptSha256:"${"b".repeat(64)}"}};}\n`);
+    const prior = process.env.OPENCLAW_META_REPLY_RUNNER_PATH;
+    process.env.OPENCLAW_META_REPLY_RUNNER_PATH = runnerPath;
+    cleanups.push(async () => { if (prior === undefined) delete process.env.OPENCLAW_META_REPLY_RUNNER_PATH; else process.env.OPENCLAW_META_REPLY_RUNNER_PATH = prior; await rm(root, { recursive: true, force: true }); });
+    const runtime = await testRuntime();
+    const run = runtime.engine.start({ graphId: "meta-reply-monitor", version: "1.0.0", objective: "Exact Meta reply reconciliation fixture", input: { provider: "meta", accountKey: "meta:owner", jobId: "4de811aa-f213-4cc3-b1aa-6c2cffb6a847", observedAt: "2026-08-04T01:15:00+01:00", shadowMode: false, maximumProviderMutations: 1 }, authority: { maximum: "external_public", grantedBy: "fixture" } });
+    const waiting = await runtime.engine.runUntilSettled(run.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    const approval = runtime.store.approvals(run.runId)[0]!;
+    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
+    runtime.engine.decideApproval(run.runId, approval.approvalId, "granted", "fixture", expiresAt);
+    issueOneRunLiveCapability({ store: runtime.store, runId: run.runId, approvalId: approval.approvalId, issuedBy: "fixture", expiresAt, globalZeroWrite: true });
+    runtime.engine.resume(run.runId, "fixture");
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(runtime.store.externalEffects(run.runId)).toMatchObject([{
+      nodeId: "perform_exact_effect",
+      operationType: "production.meta-reply-live.v1",
+      state: "confirmed_absent",
+      evidenceRefs: ["/canonical/meta-reconciliation.json", "b".repeat(64)],
+    }]);
+  });
+
   it("binds exact Threads Image media and canonical creative proof into Graph v1 authority", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-threads-image-capability-"));
     const mediaPath = join(root, "threads-image.png");
@@ -479,7 +505,7 @@ describe("production-bound graph decisions", () => {
     expect(completed.status).toBe("completed");
     expect(completed.externalEffects).toHaveLength(0);
     expect(comparison.equivalent).toBe(true);
-    expect(graph.payloadHash).toBe("ca767a979c2069199c40e6ede36058ed85dfac667e93efb214a958573bbbbfe3");
+    expect(graph.payloadHash).toBe("7df6c0494ceb5b4be46c92db88490a1c884ebd4a2afe7dd54b67eb2f81a08774");
     expect(graph.payloadHash).toBe(legacy.payloadHash);
     expect(graph.idempotencyKey).toBe(legacy.idempotencyKey);
     expect(graph.externalWrites).toBe(0);

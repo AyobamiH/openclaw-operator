@@ -14,6 +14,10 @@ function firstOrFail<T extends { id: string }>(records: T[], id: string, label: 
   return value;
 }
 
+function sentenceFragment(value: string): string {
+  return value.trim().replace(/[.!?]+$/u, "");
+}
+
 function templateVariables(
   registry: PublishingRegistryBundle,
   candidate: PublishingCandidate,
@@ -27,10 +31,10 @@ function templateVariables(
   return {
     product_name: product.name,
     audience_name: audience.name,
-    problem: problem.problem,
-    outcome: problem.outcome,
+    problem: sentenceFragment(problem.problem),
+    outcome: sentenceFragment(problem.outcome),
     identity_signal: identitySignal.signal,
-    evidence_summary: evidence.summary,
+    evidence_summary: sentenceFragment(evidence.summary),
     cta_text: cta.text,
   };
 }

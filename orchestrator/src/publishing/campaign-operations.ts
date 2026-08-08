@@ -2,6 +2,13 @@ import { createHash } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
+import {
+  gatewayToolInvoker,
+  OpenClawOfficialApiWorkerClient,
+  type ProductionToolInvoker,
+} from "./official-worker.js";
+import { loadCampaignDependencyReadiness } from "./dependency-readiness.js";
+import { loadProductionIntegration } from "./production-integration.js";
 import { loadRegistryBundle } from "./registry.js";
 import { PublishingStore } from "./store.js";
 
@@ -13,6 +20,16 @@ type MetricSummary = {
   unavailableSamples: number;
   value: number | null;
   aggregation: "sum" | "average";
+};
+
+type MetricRefreshSummary = {
+  status: "not_requested" | "completed";
+  eligibleProviderObjects: number;
+  officialReadCalls: number;
+  recordedMetrics: number;
+  unavailableMetrics: number;
+  skipped: Array<{ publicationId: string; reason: string }>;
+  externalWrites: 0;
 };
 
 function londonDate(at: Date): string {
@@ -106,6 +123,100 @@ function reportMarkdown(report: Record<string, unknown>): string {
     "Unavailable values are not treated as zero. No attribution is inferred without the configured evidence threshold.",
     "",
   ].join("\n");
+}
+
+async function refreshOfficialProviderMetrics(input: {
+  registry: Awaited<ReturnType<typeof loadRegistryBundle>>;
+  store: PublishingStore;
+  integrationPath: string;
+  observedAt: Date;
+  toolInvoker?: ProductionToolInvoker;
+  openclawBin?: string;
+  workspace?: string;
+}): Promise<MetricRefreshSummary> {
+  const integration = await loadProductionIntegration(resolve(input.integrationPath), input.registry);
+  const invoker = input.toolInvoker ?? gatewayToolInvoker({
+    openclawBin: input.openclawBin ?? "/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.18.0/bin/openclaw",
+    workspace: input.workspace ?? process.cwd(),
+    agentId: integration.workerAgentId,
+  });
+  const providerDefinitions = input.registry.metricDefinitions.filter(
+    (definition) => definition.status === "active" && definition.source === "provider",
+  );
+  const publications = input.store.publications(500).filter(
+    (publication) => publication.state === "verified" && typeof publication.provider_id === "string" && publication.provider_id,
+  );
+  const summary: MetricRefreshSummary = {
+    status: "completed",
+    eligibleProviderObjects: publications.length,
+    officialReadCalls: 0,
+    recordedMetrics: 0,
+    unavailableMetrics: 0,
+    skipped: [],
+    externalWrites: 0,
+  };
+  for (const publication of publications) {
+    const publicationId = String(publication.id);
+    const spec = input.store.contentSpec(String(publication.content_spec_id));
+    if (!spec) {
+      summary.skipped.push({ publicationId, reason: "content-spec-missing" });
+      continue;
+    }
+    const opportunity = integration.opportunities.find(
+      (candidate) => candidate.platformId === spec.platformId && candidate.accountId === spec.accountId,
+    );
+    const policy = input.registry.platformPolicies.find(
+      (candidate) => candidate.status === "active" && candidate.platformId === spec.platformId && candidate.accountId === spec.accountId,
+    );
+    if (!opportunity || !policy) {
+      summary.skipped.push({ publicationId, reason: "official-provider-route-missing" });
+      continue;
+    }
+    const worker = new OpenClawOfficialApiWorkerClient({
+      connectorId: policy.connectorId,
+      integration,
+      opportunity,
+      scheduledFor: input.observedAt,
+      mode: "shadow",
+      allowProviderWrite: false,
+      invoker,
+      openclawBin: input.openclawBin,
+    });
+    try {
+      if (spec.platformId === "threads") summary.officialReadCalls += 1;
+      const metrics = await worker.fetchMetrics(String(publication.provider_id));
+      for (const metric of metrics) {
+        if (!providerDefinitions.some((definition) => definition.id === metric.metricDefinitionId)) continue;
+        input.store.recordMetric(
+          publicationId,
+          metric.metricDefinitionId,
+          metric.value,
+          metric.availability,
+          { ...metric.evidence, refreshMode: "recurring-official-read" },
+          metric.capturedAt,
+        );
+        summary.recordedMetrics += 1;
+        if (metric.availability === "unavailable") summary.unavailableMetrics += 1;
+      }
+    } catch (error) {
+      for (const definition of providerDefinitions) {
+        input.store.recordMetric(
+          publicationId,
+          definition.id,
+          null,
+          "unavailable",
+          {
+            reason: "recurring-provider-metrics-fetch-failed",
+            error: error instanceof Error ? error.message : String(error),
+          },
+          input.observedAt.toISOString(),
+        );
+        summary.recordedMetrics += 1;
+        summary.unavailableMetrics += 1;
+      }
+    }
+  }
+  return summary;
 }
 
 function buildReport(input: {
@@ -212,11 +323,42 @@ export async function runCampaignOperationsCycle(input: {
   databasePath: string;
   artifactRoot: string;
   observedAt?: Date;
+  integrationPath?: string;
+  toolInvoker?: ProductionToolInvoker;
+  openclawBin?: string;
+  workspace?: string;
+  dependencyReadinessPath?: string;
 }): Promise<Record<string, unknown>> {
   const observedAt = input.observedAt ?? new Date();
   const registry = await loadRegistryBundle(resolve(input.registryPath));
+  const dependencyReadinessPath = resolve(
+    input.dependencyReadinessPath ?? join(dirname(input.registryPath), "dependency-readiness.v1.json"),
+  );
+  const dependencyReadiness = await loadCampaignDependencyReadiness(dependencyReadinessPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return null;
+    throw error;
+  });
   const store = new PublishingStore(resolve(input.databasePath));
   try {
+    const metricRefresh = input.integrationPath
+      ? await refreshOfficialProviderMetrics({
+          registry,
+          store,
+          integrationPath: input.integrationPath,
+          observedAt,
+          toolInvoker: input.toolInvoker,
+          openclawBin: input.openclawBin,
+          workspace: input.workspace,
+        })
+      : {
+          status: "not_requested",
+          eligibleProviderObjects: 0,
+          officialReadCalls: 0,
+          recordedMetrics: 0,
+          unavailableMetrics: 0,
+          skipped: [],
+          externalWrites: 0,
+        } satisfies MetricRefreshSummary;
     const outputRoot = join(resolve(input.artifactRoot), "campaign-commercial-reports");
     const reports = [];
     for (const [cadence, period] of [["daily", dailyPeriod(observedAt)], ["weekly", weeklyPeriod(observedAt)]] as const) {
@@ -228,7 +370,29 @@ export async function runCampaignOperationsCycle(input: {
       await replaceFile(markdownPath, reportMarkdown(report));
       reports.push({ cadence, periodId: period.id, jsonPath, markdownPath, sha256: sha256(json) });
     }
-    return { outcome: "completed", reports, externalWrites: 0 };
+    return {
+      outcome: "completed",
+      dependencyReadiness: dependencyReadiness
+        ? {
+            overallVerdict: dependencyReadiness.overallVerdict,
+            sourceState: dependencyReadiness.sourceState,
+            dependencies: dependencyReadiness.dependencies.map((item) => ({
+              id: item.id,
+              phase: item.phase,
+              readiness: item.readiness,
+              categories: item.categories,
+            })),
+            campaignFamilies: dependencyReadiness.campaignFamilies.map((item) => ({
+              family: item.family,
+              campaignId: item.campaignId,
+              readinessStates: item.readinessStates,
+            })),
+          }
+        : null,
+      metricRefresh,
+      reports,
+      externalWrites: 0,
+    };
   } finally {
     store.close();
   }

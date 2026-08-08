@@ -1901,3 +1901,139 @@
   schedules, source migration registry/tests and this ledger. False for
   provider writes, uploads, Browser Relay, service restart, secrets, installs,
   releases and deployments.
+
+## 2026-08-08 — Business-loop state correction and dependency closeout
+
+- Requested task: independently establish source, commit, push, runtime-load
+  and runtime-verification state for the business-loop lifecycle repair; stop
+  repeating completed pre-Graph archaeology; finish locally implementable
+  Phase 3/6/7/8 work; persist machine-readable campaign and connector
+  dependencies without inventing evidence or approval.
+- Workflow lane: read-only Git/runtime/scheduler audit followed by bounded
+  local source, tests and documentation changes. Risk class: local reversible
+  product work; commit, push, immutable-runtime activation, scheduler migration,
+  restart and provider write remain separately approval controlled.
+- Tools/source: semantic memory recall; `coding_repo_map`,
+  `coding_deployment_preflight`, `coding_github_handoff` and
+  `coding_validate_project`; core `git`, `systemctl --user`, loopback health
+  probes and journal inspection; OpenClaw cron list/get/runs; `apply_patch`;
+  focused Vitest/typecheck and protected `npm run verify:main`.
+- Fallback reason: deployment-preflight and GitHub-handoff returned partial
+  metadata because the coding adapter exposes only repository mapping. Core
+  read-only Git and runtime inspection supplied the missing state evidence;
+  no credentials or secret-bearing configuration were read.
+- Business-loop lifecycle repair state: `SOURCE_IMPLEMENTED=yes`,
+  `COMMITTED=yes` (`fa78945`), `PUSHED=yes` (local, tracked `origin/main` and
+  remote `refs/heads/main` all at `e99879b`), `RUNTIME_LOADED=yes` (service
+  recovery at 17:19:22 BST reported ten Graph definitions including
+  `governed-task-execution@1.1.0`), `RUNTIME_VERIFIED=no` for the final
+  immutable Campaign Factory v3 natural-cycle path. Schedule
+  `cb58654b-9136-4f75-8b4f-c7431c7fd3de` remains enabled with zero runs and
+  its first natural v3 trigger is 05:00 Europe/London on 2026-08-09.
+- Local engineering completed: added structured
+  `dependency-readiness.v1.json` plus validation; added official read-only
+  recurring Threads metric refresh for already verified Campaign Factory
+  provider objects while keeping unsupported metrics null; exposed dependency
+  summary in deterministic campaign operations; included dependency evidence
+  in immutable runtime provenance; hardened deterministic copy against doubled
+  sentence punctuation; and corrected the unapproved baseline experiment from
+  active/approved to paused/unapproved.
+- Phase boundary: Phase 3 is technically ready but requires an exact dated,
+  payload-bound live-canary approval after regenerating the candidate with the
+  copy correction. Phase 6 official metrics are locally supported where an
+  existing provider object/API permits; CRM, website, conversation and
+  conversion attribution require named connector/evidence contracts. Phase 7
+  is technically ready but intentionally inactive without an approved
+  hypothesis, metric, variants and stopping rule. Phase 8 deterministic
+  operational reports tolerate and label unavailable commercial evidence.
+- Campaign-family readiness: problem education, founder observation, product
+  update, community discussion and research insight now have actual registry
+  records tied to existing products, audiences, evidence and strategies, so
+  their machine-readable state is `ACTIVE`. This does not grant any provider
+  publication capability.
+- Validation: focused suite passed 93/93; protected verification passed builds,
+  documentation drift, 110-file link validation, 97/97 unit simulations,
+  35/35 live middleware integrations, 34/34 operator UI tests, both
+  typechecks and the docs-site build; `git diff --check` and project adapter
+  validation passed.
+- Runtime exceptions at closeout: the 18:15 local Meta reply cycle reached the
+  repaired service but again prepared a reply and failed the terminal
+  completion contract; recovery refused an ambiguous write. The latest Reel
+  Graph cycle failed safely on its canonical layout audit. Both recorded
+  provider writes `0`; the prior Meta connection refusal was confined to the
+  approved restart window. Threads readiness and image schedules are healthy.
+- Meta root cause and local repair: read-only graph-database evidence showed
+  the exact failure was `state_patch_not_permitted:socialEffect.status` after
+  an ambiguous provider attempt reached canonical readback. Source now returns
+  the reconciled external-effect state from the readback adapter, preserves the
+  original effect node/idempotency identity in the engine and does not issue a
+  retry. A focused end-to-end fixture proves ambiguous-to-confirmed-absent
+  reconciliation; the wider focused suite passed 113/113. This repair is part
+  of the uncommitted, unloaded change set below, so the live ambiguous effect
+  remains quarantined pending approved rollout and canonical reconciliation.
+- Current change-set state: `SOURCE_IMPLEMENTED=yes`; `COMMITTED=no`;
+  `PUSHED=no`; `RUNTIME_LOADED=no`; `RUNTIME_VERIFIED=no` for every change in
+  this section. The worktree is preserved. No commit, push, runtime-bundle
+  build/activation, scheduler mutation, restart, provider write, Browser Relay
+  call or external evidence mutation occurred.
+- Next safe step: with fresh approval, commit and push this validated packet,
+  build a new immutable runtime identity, migrate the v3 schedule to that
+  identity and observe its natural execution. A service restart should occur
+  only if post-build load inspection proves it necessary. Live publication,
+  any experiment activation and each external evidence connector require
+  their own exact scope.
+
+## 2026-08-08 — Approved dependency/Meta packet deployment preflight
+
+- Claim and authority: operator message `3640` authorizes commit, canonical
+  push, a new immutable Campaign Factory runtime, scheduler migration and
+  exactly one orchestrator restart when required. It does not authorize any
+  Meta/Threads/Instagram provider write, experiment activation or fabricated
+  external evidence.
+- Repository identity at `2026-08-08T20:13:34+01:00`: local `HEAD`, tracked
+  `origin/main` and remote `refs/heads/main` were all
+  `e99879bf1da5142dd74f585b2657026370761391`. The ancestry check
+  `git merge-base --is-ancestor fa78945 origin/main` passed, proving that the
+  historical lifecycle-repair commit is actually contained by remote main.
+- Runtime identity before deployment: `orchestrator.service` PID `167625`,
+  active since `2026-08-08 17:19:22 BST`, restart counter `36`, result
+  `success`. Loopback `/health` and `/api/persistence/health` returned HTTP
+  `200`; ten Graph definitions were loaded. The enabled Campaign Factory v3
+  schedule `cb58654b-9136-4f75-8b4f-c7431c7fd3de` still targeted immutable
+  runtime `20260808-full-pregraph-v2` and had zero natural runs.
+- Meta ambiguity evidence: run
+  `grzwcanary_dd1c9129-42a1-4510-9853-615346ba2687` consumed capability
+  `glc_9991d64437526a4155dcdac8972ba4fe` once, retained effect
+  `gex_aeec36b6-d67f-4706-bc1d-a7b139af3072` as `ambiguous`, then failed at
+  `reconcile_provider_state` with
+  `state_patch_not_permitted:socialEffect.status`. The original effect
+  identity/idempotency key is quarantined and is not eligible for a fresh
+  dispatch.
+- Scope inspection: the packet contains only the approved Graph effect-state
+  reconciliation, Phase 6 official read-only Threads metrics, paused Phase 7
+  experiment state, Phase 8 deterministic reporting, dependency readiness,
+  deterministic copy normalization, immutable runtime provenance, Campaign
+  Factory successor binding, tests and operational documentation. `git diff
+  --check` passed; no unrelated refactor was found.
+- Immutable scheduler handling: the already-recorded v3 migration cannot be
+  rebound in place. A disabled rollback placeholder was created as schedule
+  `2df05813-93e1-4d3f-8731-a5c2de3625d5`; source binds its immutable v4
+  migration successor to runtime identity `20260808-full-pregraph-v3` and
+  explicitly enables it only during governed cutover. Rollback restores the
+  disabled `/usr/bin/true` placeholder and the previous v3 job remains intact
+  until the successor is verified.
+- Validation: focused Campaign Factory, dependency, Graph receipt, scheduler,
+  publishing and Meta adapter suites passed `128/128`; orchestrator typecheck
+  passed; protected `verify:main` passed builds, documentation drift, 110-file
+  link validation, `97/97` unit simulations, `35/35` live middleware
+  integrations, `34/34` operator UI tests, both typechecks and the docs-site
+  build.
+- Tool source and fallback: coding evidence adapters mapped and validated the
+  repository but deployment/GitHub adapters were not enabled for mutation.
+  Core Git, SQLite, loopback health, systemd and OpenClaw cron inspection were
+  therefore used for the missing read-only and explicitly approved deployment
+  steps. No secret-bearing files or process arguments were read.
+- Changed-state declaration so far: true only for the disabled rollback cron
+  placeholder and the local portable packet. Provider writes `0`; Browser
+  Relay calls `0`; no commit, push, runtime bundle, active schedule migration
+  or restart has yet occurred in this approved deployment pass.

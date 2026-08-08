@@ -34,6 +34,14 @@ The public repo direction is now explicit.
 
 ## Recently Finished
 
+0. Full pre-Graph business-loop status is now stage-separated and dependency-addressable.
+   - `content-generate`, `qa-verification` and `system-monitor` are source-implemented, committed, pushed and loaded through `governed-task-execution@1.1.0`
+   - the final Campaign Factory v3 scheduler is Graph-owned and bound to immutable runtime `20260808-full-pregraph-v2`, but it has not yet completed its first natural trigger
+   - `config/publishing/dependency-readiness.v1.json` records Phase 3/6/7/8 blockers and all five recovered campaign-family readiness states without inventing CRM, website, conversion or live-write evidence
+   - recurring official metric refresh is source-implemented for verified Campaign Factory provider objects; unsupported or failed metrics remain explicitly unavailable
+   - the generic baseline experiment is paused in source until an exact hypothesis, control/variant set, metric and stopping rule receive approval
+   - these latest readiness and metric changes are local source only until separately committed, pushed and loaded
+
 0. Canonical pre-Graph social proof was restored at the Graph live boundary.
    - Threads Graph v1 binds exact image bytes, topic tag, complete creative fingerprint, layout receipt and canonical renderer source digest into approval and one-run capability state
    - the Threads host runner re-hashes the frozen file immediately before delivery upload and fails closed on any creative, renderer or layout drift

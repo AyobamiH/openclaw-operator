@@ -756,11 +756,27 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const result = await runner.reconcileReceiptOnly(prepared.outboxId);
       const output = { status: String(result.entry?.status ?? "unknown"), outboxId: prepared.outboxId, verified: result.entry?.status === "verified", providerResultId: result.entry?.providerResultId ? String(result.entry.providerResultId) : null, permalink: result.entry?.permalink ? String(result.entry.permalink) : null, providerWrites: 0 as const, browserRelayCalls: 0 as const };
       const confirmedAbsent = output.status === "confirmed_failure";
-      if (!output.verified && !confirmedAbsent) return { outcome: "failed_terminal", output, patches: [{ op: "set", path: "socialEffect.status", value: output.status }], failure: failure("idempotency_conflict", "Meta reply readback did not prove one exact reply") };
+      if (!output.verified && !confirmedAbsent) return { outcome: "failed_terminal", output, failure: failure("idempotency_conflict", "Meta reply readback did not prove one exact reply") };
+      const priorEffect = graphStore?.externalEffects(context.run.runId).find((effect) => effect.nodeId === "perform_exact_effect" && effect.operationType === "production.meta-reply-live.v1");
+      if (!priorEffect) return { outcome: "failed_terminal", output, failure: failure("invariant_violation", "Meta reply readback lacks the exact prior effect to reconcile") };
+      const evidenceRefs = [
+        typeof result.entry?.reconciliationReceiptPath === "string" ? result.entry.reconciliationReceiptPath : null,
+        typeof result.entry?.reconciliationReceiptSha256 === "string" ? result.entry.reconciliationReceiptSha256 : null,
+        output.permalink,
+      ].filter((value): value is string => Boolean(value));
       return { outcome: "succeeded", output, evidence: [
         { kind: "second-provider-readback", uri: output.permalink ?? `graph://${context.run.runId}/meta-reply/confirmed-absent`, sha256: sha256(output), summary: output.verified ? "Second Meta reply readback passed" : "Complete provider readback confirmed the authorized reply is absent", checker: "production.meta-reply-readback.v1" },
         { kind: "social-terminal-receipt", uri: `graph://${context.run.runId}/meta-reply/terminal`, sha256: sha256(output), summary: output.verified ? "Meta reply terminal state verified" : "Meta reply ambiguity was safely quarantined as confirmed absent", checker: "production.meta-reply-readback.v1" },
-      ], patches: [{ op: "set", path: "socialEffect.status", value: output.status }], progressFingerprint: sha256(output) };
+      ], externalEffect: {
+        idempotencyKey: priorEffect.idempotencyKey,
+        operationType: priorEffect.operationType,
+        target: priorEffect.target,
+        payloadHash: priorEffect.payloadHash,
+        state: output.verified ? "effect_verified" : "confirmed_absent",
+        providerOperationId: output.providerResultId ?? undefined,
+        lastObservedAt: new Date().toISOString(),
+        evidenceRefs,
+      }, progressFingerprint: sha256(output) };
     },
   });
   registry.register({

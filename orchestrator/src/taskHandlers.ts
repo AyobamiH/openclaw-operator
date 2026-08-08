@@ -4303,9 +4303,12 @@ const campaignContentFactoryHandler: TaskHandler = async (task, context) => {
   if (!Number.isFinite(observedAt.getTime())) throw new Error("campaign-content-factory observedAt is invalid");
   const operations = await runCampaignOperationsCycle({
     registryPath: String(task.payload.registryPath),
+    integrationPath: String(task.payload.integrationPath),
     databasePath: String(task.payload.databasePath),
     artifactRoot: String(task.payload.artifactRoot),
     observedAt,
+    openclawBin: typeof task.payload.openclawBin === "string" ? task.payload.openclawBin : undefined,
+    workspace: typeof task.payload.workspace === "string" ? task.payload.workspace : undefined,
   });
   if (operations.externalWrites !== 0) throw new Error("campaign operations detected an external write");
   const result = await runCampaignFactoryShadowCycle({

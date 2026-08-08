@@ -6,15 +6,33 @@ summary: "Evidence-backed reconstruction of pre-Graph social rendering and publi
 # Social Rendering Pre-Graph Migration Investigation
 
 Status: expanded full-estate reconstruction complete; hard-cutover source
-implementation approved and verified; runtime activation evidence is recorded
-in the tool ledger.
+implementation approved, committed and pushed; the business-loop Graph
+definition loaded at 17:19 BST, while final Campaign Factory v3 natural-cycle
+verification is still pending and must not be collapsed into source status.
 
 The initial investigation was read-only. The subsequent approved social repair
-was deployed and is recorded below. This expanded pass changed only portable
-source and documentation: it did not change a service, schedule, provider
-payload, upload, publication, approval, campaign activation, or external
-account. All checks in this pass recorded zero provider writes and zero Browser
-Relay calls.
+was loaded and exercised in the running orchestrator and is recorded below.
+The later business-loop repair passed through separate source, commit, push and
+runtime-load stages; runtime exercise is reported separately. All cutover checks
+recorded zero provider writes and zero Browser Relay calls.
+
+## Current state separation
+
+The business-loop lifecycle repair has the following independently evidenced
+state:
+
+- source implemented: yes (`governed-task-execution@1.1.0` and three bindings);
+- committed: yes (`fa78945`);
+- pushed: yes (remote `main` now reaches `e99879b`);
+- loaded by the running orchestrator: yes (10 definitions at 17:19 BST);
+- runtime verified: not yet for the final immutable Campaign Factory v3
+  schedule, which has zero completed triggers and next runs at the next natural
+  05:00 opportunity.
+
+The machine-readable dependency and activation record is
+`config/publishing/dependency-readiness.v1.json`. It keeps technical readiness,
+campaign decisions, evidence connectors, credentials and provider approval as
+separate states.
 
 ## Executive verdict
 
@@ -46,7 +64,9 @@ receipts. The focused receipt suite passes `10/10` and TypeScript passes.
 The hard-cutover follow-up activated the five missing campaign-family records
 using only existing products, audiences, problems, claims and evidence. It also
 added a Graph-owned campaign operations cycle that writes distinct daily and
-weekly commercial reports and evaluates an approved zero-adjustment experiment.
+weekly commercial reports. The generic zero-adjustment experiment is now paused
+in source: Phase 7 remains technically ready but intentionally inactive until
+an exact hypothesis, metric, control/variant set and stopping rule are approved.
 Unavailable provider/CRM/website evidence remains unavailable rather than zero,
 and attribution still requires the configured evidence threshold. The one
 remaining authority boundary is an exact dated live Self-Identification canary:
@@ -299,7 +319,8 @@ identities and strengthened their v1/v2 adapter contracts in place:
 
 Validation after implementation:
 
-- focused Graph contract, capability, adapter and scheduler tests: `93/93`;
+- focused Graph contract, capability, adapter, scheduler and dependency tests:
+  `113/113`;
 - focused Threads tests: `26/26`;
 - combined focused host social receipt/state tests: `46/46`;
 - TypeScript build: passed;
@@ -315,18 +336,31 @@ The three stale host Instagram fixtures were upgraded to layout contract
 engine sources required by the canonical publisher are tracked in the host
 operations repository.
 
-The first post-deployment Meta natural cycle also exposed stale Graph effect
-states from earlier ambiguous receipts. Complete canonical provider readback
-classified one historical effect as `effect_verified` and three as
-`confirmed_absent`, leaving zero unresolved Meta `request_sent`,
-`provider_accepted` or `ambiguous` effects. The live adapter now performs this
-receipt-bound reconciliation before reserving a new same-target dispatch, and
-the regression is covered by a focused Graph adapter test.
+The first post-cutover Meta cycle reconciled the stale historical effects, but
+the 18:15 local cycle exposed a second contract defect after a newly ambiguous
+provider attempt: canonical readback reached the reconciliation node, then
+Graph rejected its state patch as
+`state_patch_not_permitted:socialEffect.status`. The local source repair no
+longer patches unrelated state; it returns the reconciled external-effect
+state and the engine preserves the original effect node and idempotency
+identity. The focused fixture proves ambiguous-to-confirmed-absent closure
+without a retry. This repair is not committed, pushed or loaded, so the current
+runtime effect remains quarantined as ambiguous pending approved rollout and
+canonical reconciliation.
+
+The exact local deployment packet comprises the dependency-readiness registry
+and validator; Phase 6 recurring official-metric refresh; Phase 7 paused-state
+correction; deterministic copy punctuation hardening; immutable-runtime
+provenance binding; Meta effect reconciliation; associated tests; and the
+workboard, investigation and invocation-ledger updates. `git status` is the
+authoritative file manifest until the packet receives a commit identity.
 
 ## Boundary
 
-The investigation and the explicitly approved repair are complete. No second
-manual provider write was inferred from the already-consumed one-time Threads
-proof authority. Runtime activation, commit and push use the explicit approval
-recorded in the 2026-08-08 operator conversation; provider publication remains
-limited to natural scheduled authority.
+The historical investigation and previously approved hard cutover are
+complete. The subsequent dependency, metrics, copy, experiment-state and Meta
+reconciliation packet is only locally implemented and validated. It is
+`COMMITTED=no`, `PUSHED=no`, `RUNTIME_LOADED=no` and `RUNTIME_VERIFIED=no` and
+therefore requires fresh approval for commit/push and immutable-runtime /
+scheduler activation. No provider retry or new provider write is authorized by
+that packet.

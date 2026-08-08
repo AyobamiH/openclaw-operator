@@ -494,7 +494,7 @@ export class GraphExecutor {
           ...result.externalEffect,
           effectId: existing?.effectId ?? `gex_${randomUUID()}`,
           runId: run.runId,
-          nodeId: node.id,
+          nodeId: existing?.nodeId ?? node.id,
           evidenceRefs: result.externalEffect.evidenceRefs ?? existing?.evidenceRefs ?? [],
         }];
       })() : run.externalEffects,
