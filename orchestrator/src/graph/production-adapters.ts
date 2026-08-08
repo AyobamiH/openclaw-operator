@@ -47,7 +47,16 @@ const CommandOutputSchema = z.object({ action: z.string(), exitCode: z.number().
 const ChildRunInputSchema = z.object({ repositoryPath: z.string().min(1), childPayload: z.record(z.unknown()).optional(), verifierPayload: z.record(z.unknown()).optional() }).passthrough();
 const ChildRunOutputSchema = z.object({ status: z.string(), childRunId: z.string(), childReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), verifierRunId: z.string().optional(), verifierReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable().optional(), chainValid: z.boolean().optional() }).passthrough();
 const GovernedTaskInputSchema = z.object({
-  lane: z.enum(["business-value", "market-research", "git-monitor", "campaign-factory", "digest"]),
+  lane: z.enum([
+    "business-value",
+    "market-research",
+    "git-monitor",
+    "campaign-factory",
+    "content-generation",
+    "qa-verification",
+    "system-monitor",
+    "digest",
+  ]),
   taskType: z.string().min(1),
   agentId: z.string().min(1),
   payload: z.record(z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(z.unknown()), z.record(z.unknown())])).default({}),

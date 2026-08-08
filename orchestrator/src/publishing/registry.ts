@@ -154,6 +154,8 @@ const bundleSchema = z.object({
     adjustment: z.number().min(-0.15).max(0.15),
     startsAt: ISO_DATE,
     endsAt: ISO_DATE,
+    minimumSamples: z.number().int().positive().optional(),
+    stoppingRule: z.string().min(1).optional(),
   })),
   approvals: z.array(versioned.extend({
     scope: z.string().min(1),

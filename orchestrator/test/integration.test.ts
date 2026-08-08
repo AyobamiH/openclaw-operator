@@ -1242,7 +1242,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       slotTimes?: string[];
       auditChainValid?: boolean;
     }>('/api/publishing/overview');
-    expect(overview.registryVersion).toBe('2026-07-30.1');
+    expect(overview.registryVersion).toBe('2026-08-08.1');
     expect(overview.slotTimes).toEqual(['05:00', '07:00', '11:00', '15:00', '17:00']);
     expect(overview.auditChainValid).toBe(true);
 

@@ -1765,3 +1765,77 @@
 - Next safe step: run the full protected gate, push the preventive code, and
   observe the next natural Meta and Instagram Reel cycles. No additional
   manual provider write or second service restart is required.
+
+## 2026-08-08 — Full pre-Graph campaign estate and business-loop ownership recovery
+
+- Requested task: reconstruct the week and final two to three days before the
+  Graph cutover; recover every social lane, Self-Identification campaign
+  family, business-value loop and original campaign phase; move confirmed
+  deterministic lifecycle ownership into Graph where it had escaped.
+- Workflow lane: read-only repository/history audit, bounded portable source
+  repair, tests and documentation. Provider publication, campaign activation,
+  experiment activation and runtime lifecycle changes remained out of scope.
+- Tools/source: OpenClaw memory search/get; `coding_repo_map`,
+  `coding_migration_review` and `coding_validate_project` from
+  `coding-agent-skills`; Git history and narrow source/document inspection;
+  standard-library DOCX XML extraction; `rg`, Vitest, TypeScript and the
+  repository `npm run verify` gate.
+- Fallback reason: the project coding adapter validates and maps metadata but
+  does not expose file-level migration analysis or edits. Bounded core
+  inspection and `apply_patch` therefore completed the historical trace and
+  source change. No archive reader was installed locally, so the original DOCX
+  was read with the language standard library without writing or installing
+  anything.
+- Changed-state declaration: true for portable Graph lane bindings, their
+  focused receipt test and the linked product documentation. False for provider
+  writes, Browser Relay, campaign/experiment activation, approvals, secrets,
+  scheduler state, services, restarts, installs, commits, pushes, releases,
+  deployments and migrations.
+- Evidence/result: the full estate report recovers Threads text/image,
+  Instagram Image/Reel, replies, five Self-Identification opportunities, eight
+  campaign families and phases 0–8. One new regression was confirmed and fixed:
+  business-value-selected `content-generate`, `qa-verification` and
+  `system-monitor` tasks now have immutable governed Graph lanes rather than
+  direct queue lifecycle ownership. Focused Graph receipt tests passed `10/10`;
+  the full protected gate passed 97 unit simulations, 35 live middleware
+  integrations, 34 operator UI tests, builds, TypeScript, documentation drift
+  and 110-file link validation. Adapter validation reported no finding, warning
+  or risk.
+- Remaining boundary: the Self-Identification lane is still deliberately
+  zero-write shadow. Phases 6–8 still need official read-only metrics and
+  conversation/CRM/website evidence adapters, an attribution evaluator,
+  bounded experiment approval/evaluation and distinct daily/weekly campaign
+  review outputs. Activating the five declared-but-inactive campaign families
+  requires product/campaign records and explicit approval; they were not
+  invented by this migration.
+- Next safe step: review the source diff and phase matrix. Commit/push/runtime
+  activation of this new business-loop repair, a dated Self-Identification
+  canary, new campaign activation or any new external evidence connector each
+  remain separate approval boundaries.
+
+## 2026-08-08 — Approved full pre-Graph business-loop hard cutover
+
+- Requested task: implement and activate the recovered deterministic business
+  loop, five missing campaign families and Phases 3, 6, 7 and 8; commit, push
+  and restart the orchestrator under Telegram approval `3619`.
+- Workflow lane: approval-bounded product/runtime change, Graph governance,
+  deterministic publishing operations and deployment closeout.
+- Tools/source: `coding_repo_map`, `coding_deployment_preflight` and
+  `coding_github_handoff` first; bounded source/SQLite/journal inspection and
+  `apply_patch` fallback; TypeScript, Vitest and protected project validation;
+  credential-isolated GitHub push; one approved user-service restart and health
+  probes.
+- Fallback reason: the coding evidence adapter is metadata-only and does not
+  implement deployment preflight, handoff or source mutation. Core tools were
+  therefore used inside the approved repository and service scope.
+- Changed-state declaration: registry `2026-08-08.1` activates thirteen
+  campaigns covering all eight families; `governed-task-execution@1.1.0`
+  closes the three business follow-on lifecycle escapes while preserving the
+  scheduler-bound v1 hash; the Campaign Factory child writes evidence-only
+  daily/weekly reports and evaluates an approved zero-adjustment experiment;
+  the immutable runtime bundle includes the canonical Reel finishing module.
+- Safety: unavailable metrics remain null, attribution retains its evidence
+  threshold, experiment selection adjustment remains zero, Browser Relay is
+  forbidden, and this cutover grants no dated payload-bound provider write.
+- Verification and activation evidence: recorded below after the protected
+  gate, commit, push, runtime build and single restart complete.

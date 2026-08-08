@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
 import { verifyGraphChildTaskAuthority } from "../src/graph/task-authority.js";
 import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
-import { digestDeliveryGraph, governedCodingChangeGraph, governedTaskExecutionGraph } from "../src/graph/workflows.js";
+import { digestDeliveryGraph, governedCodingChangeGraph, governedTaskExecutionGraph, governedTaskExecutionGraphV1_1 } from "../src/graph/workflows.js";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
 const cleanups: Array<() => Promise<void>> = [];
@@ -121,6 +121,41 @@ describe("graph child-run and verifier receipts", () => {
     expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining(["child-run-receipt", "verifier-receipt", "child-run-audit-chain"]));
     expect(dispatches).toEqual(["market-research"]);
     expect(value.runtime.store.verifyEventChain(run.runId)).toBe(true);
+    expect(value.runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
+    value.runtime.scheduler.close();
+    value.runtime.store.close();
+  });
+
+  it.each([
+    ["content-generation", "content-generate", "content-agent"],
+    ["qa-verification", "qa-verification", "qa-verification-agent"],
+    ["system-monitor", "system-monitor", "system-monitor-agent"],
+  ] as const)("governs the %s business-value follow-on lane", async (lane, taskType, agentId) => {
+    const value = await fixture();
+    const definition = governedTaskExecutionGraphV1_1();
+    const dispatches: string[] = [];
+    value.runtime.attachChildDispatcher((request) => {
+      dispatches.push(`${request.taskType}:${request.agentId}`);
+      return {
+        taskId: `${request.taskType}-task`,
+        completion: Promise.resolve({
+          status: "succeeded",
+          outcome: `${request.taskType}_completed`,
+          output: { verified: true },
+          evidence: { receipt: "fixture" },
+        }),
+      };
+    });
+    const run = value.runtime.engine.start({
+      graphId: definition.graphId,
+      version: definition.version,
+      objective: `Run governed ${taskType}`,
+      input: { lane, taskType, agentId, payload: { source: "business-value" }, shadowMode: false },
+      authority: { maximum: "local_persistent", grantedBy: "receipt-test" },
+    });
+    const completed = await value.runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(dispatches).toEqual([`${taskType}:${agentId}`]);
     expect(value.runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
     value.runtime.scheduler.close();
     value.runtime.store.close();

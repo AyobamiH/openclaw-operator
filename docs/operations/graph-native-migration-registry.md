@@ -1,7 +1,7 @@
 ---
 title: "Graph-Native Workflow Migration Registry"
 status: "active"
-updated: "2026-08-05"
+updated: "2026-08-08"
 ---
 
 # Graph-Native Workflow Migration Registry
@@ -21,8 +21,8 @@ Statuses: `graph_native`, `graph_wrapped_legacy`, `obsolete`, `unknown`.
 | Instagram Reel publisher | graph scheduler migration `instagram-reel-v1`; cron `2c70…256e` | cron | external public | graph claim/effect/capability chain, full local Reel renderer/MP4 validation, SQLite outbox and official provider readback | `deterministic-social-publication@2.0.0` | `graph_native` | High. Hard cutover activated the retained disabled schedule through the governed graph trigger. Exact prepared-payload approval, one-use capability and unresolved-prior-write admission still fail closed before a new Instagram provider write. |
 | Continuous social hourly cycle | cron `7985…a9`, disabled | hourly cron | mixed external | historical cron state | no immediate target | `obsolete` | Low. Retain historical evidence; do not migrate wasteful loop. |
 | Queue admission activation one-shot | cron `ceb7…df39`, disabled/completed | one-shot | local persistent | cron receipt | none | `obsolete` | Low. Preserve receipt only. |
-| Business-value cycle | graph-owned scheduler/manual ingress; deterministic planner child | cron/manual | local planning; external actions gated | graph state, checkpoints, idempotent ingress, bounded retry, child/verifier receipts | `governed-task-execution@1.0.0` with immutable `business-value` lane contract | `graph_native` | Medium. Financial and public actions remain separate ToolGate approval boundaries. |
-| Existing task queue | graph ingress for the scoped business-value, market-research, Git-monitor, Factory and digest task types; queue is a child-effect transport only | API/scheduler/recovery | mixed | graph is retry owner (`maxRetries=0` for child tasks); durable queue attempt evidence is bound into child/verifier receipts | governed task and digest graphs | `graph_native` for the migration scope; deliberately retained transport for other task types | Medium. The queue cannot become an alternate owner for scoped types because every scheduler, manual API, replay and child-handler entry point is routed through `startGraphOwnedTask`. |
+| Business-value cycle | graph-owned scheduler/manual ingress; deterministic planner child; all selected content-generation, market-research, QA-verification and system-monitor children return through immutable Graph lane bindings | cron/manual | local planning; external actions gated | graph state, checkpoints, idempotent ingress, bounded retry, child/verifier receipts | immutable `governed-task-execution@1.0.0` original lanes plus `@1.1.0` follow-on lanes for content generation, QA and system monitoring | `graph_native` | Medium. The 2026-08-08 full-estate review closed three downstream queue-owner escapes without mutating the active v1 scheduler definition. Financial and public actions remain separate ToolGate approval boundaries. |
+| Existing task queue | graph ingress for business-value, content generation, market research, QA verification, system monitoring, Git monitor, Campaign Factory and digest task types; queue is a child-effect transport only | API/scheduler/recovery | mixed | graph is retry owner (`maxRetries=0` for child tasks); durable queue attempt evidence is bound into child/verifier receipts | governed task and digest graphs | `graph_native` for the migration scope; deliberately retained transport for other task types | Medium. The queue cannot become an alternate owner for scoped types because every scheduler, manual API, replay and child-handler entry point is routed through `startGraphOwnedTask`. |
 | Market research task | graph-owned manual/API/child-handler ingress; deterministic market-research child | API/task | read-only network | graph state/checkpoints/retry, ToolGate, child/verifier receipts, source evidence | `governed-task-execution@1.0.0` with immutable `market-research` lane contract; `research-to-action@1.1.0` retained as evidence graph | `graph_native` | Low/medium. The task handler remains the narrow source-fetch/evidence adapter; graph lifecycle cannot be bypassed by scoped entry points. |
 | Git workflow monitor and governed Git task lane | graph-owned startup, five-minute scheduler and manual ingress; deterministic Git monitor child | startup/scheduler/manual | read-only monitor; commit/push/release/deploy remain external persistent | graph idempotency, ToolGate, bounded retry, child/verifier receipts | `governed-task-execution@1.0.0` with immutable `git-monitor` lane contract | `graph_native` | High. Monitor runs are proven. Commit, push, release, deploy and destructive Git operations remain payload-bound ToolGate approvals and are not implied by monitor ownership. |
 
@@ -41,8 +41,11 @@ The first autonomous-closure implementation increment adds
 It owns ingress, immutable lane/task/agent payload binding, durable graph state,
 checkpoints, reconciliation, bounded graph retries, child effect receipts,
 deterministic verifier receipts and terminal event-chain verification. The
-allowlist currently covers business-value, market-research, Git monitor and
-Campaign Factory task lanes. Queue children continue to pass through the
+immutable v1 allowlist covers business-value, market research, Git monitor and
+Campaign Factory. The 2026-08-08 `governed-task-execution@1.1.0` increment
+adds content generation, QA verification and system monitoring without changing
+the active scheduler-bound v1 definition hash.
+Queue children continue to pass through the
 durable ToolGate, while queue-local retry is disabled for graph child attempts
 so retry ownership cannot split.
 
@@ -256,7 +259,8 @@ Exact active scheduled ownership is now:
 | `instagram-reel-v1` | `2c7071ff-35dd-40d0-bf77-b1ed53de256e` | graph scheduler | `graph_owned` |
 
 Business value, scoped task queue, market research and Git monitor remain
-graph-owned ingress lanes under `governed-task-execution@1.0.0`. Disabled or
+graph-owned ingress lanes under `governed-task-execution@1.0.0`; selected
+content generation, QA verification and system monitoring use `@1.1.0`. Disabled or
 completed historical crons are `obsolete`; there is no remaining active legacy,
 graph-wrapped or unknown owner in the canonical scope.
 

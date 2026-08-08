@@ -182,7 +182,7 @@ export function researchToActionGraph(): GraphDefinition {
 export function representativeGraphDefinitions(): GraphDefinition[] {
   return [
     codingChangeGraph(), socialPublicationGraph(), researchToActionGraph(),
-    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(), digestDeliveryGraph(), threadsReadinessGraph(), threadsPublicationGraph(), metaReplyMonitorGraph(),
+    boundCodingChangeGraph(), governedCodingChangeGraph(), boundSocialPublicationGraph(), liveCapableSocialPublicationGraph(), boundResearchToActionGraph(), governedTaskExecutionGraph(), governedTaskExecutionGraphV1_1(), digestDeliveryGraph(), threadsReadinessGraph(), threadsPublicationGraph(), metaReplyMonitorGraph(),
   ];
 }
 
@@ -192,6 +192,7 @@ export const PRODUCTION_GRAPH_DEFINITION_IDENTITIES = Object.freeze([
   "deterministic-social-publication@2.0.0",
   "research-to-action@1.1.0",
   "governed-task-execution@1.0.0",
+  "governed-task-execution@1.1.0",
   "digest-delivery@1.0.0",
   "threads-readiness@1.0.0",
   "threads-publication@1.0.0",
@@ -401,6 +402,24 @@ export function governedTaskExecutionGraph(): GraphDefinition {
   definition.stateSchema = { type: "object", properties: { governedTask: { type: "object" } }, additionalProperties: true };
   definition.retryPolicy = { defaultMaxAttempts: 3, retryableFailures: ["network_transient", "provider_rate_limited", "timeout", "state_conflict", "verification_failed"] };
   definition.concurrency = { maxRuns: 4, resourceKeys: ["governed-task:{runId}"], leaseMs: 30 * 60_000, priority: 80 };
+  return definition;
+}
+
+export function governedTaskExecutionGraphV1_1(): GraphDefinition {
+  const definition = structuredClone(governedTaskExecutionGraph());
+  definition.version = "1.1.0";
+  definition.description = "Graph-owned governed task execution with immutable business-value follow-on lanes for content generation, QA verification and system monitoring.";
+  definition.migrationCompatibility.compatibleFromVersions = ["1.0.0"];
+  const lane = (definition.inputSchema.properties as Record<string, Record<string, unknown>>).lane!;
+  lane.enum = [
+    "business-value",
+    "market-research",
+    "git-monitor",
+    "campaign-factory",
+    "content-generation",
+    "qa-verification",
+    "system-monitor",
+  ];
   return definition;
 }
 

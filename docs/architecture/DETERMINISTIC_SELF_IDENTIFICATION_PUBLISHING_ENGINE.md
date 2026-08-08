@@ -52,6 +52,7 @@ are enforced in code and durable state:
 | Proof lineage | `orchestrator/src/publishing/proof.ts` | Exact, recompressed, derivative and unknown asset relationships |
 | Operator routes | `orchestrator/src/publishing/routes.ts` | Authenticated planning and evidence reads; no provider-write endpoint |
 | Product harness | `orchestrator/src/publishing/cli.ts` | Registry validation, initialization, planning, overview and non-writing diagnostics |
+| Campaign operations | `orchestrator/src/publishing/campaign-operations.ts` | Evidence-only daily/weekly commercial reports and zero-adjustment experiment evaluation |
 
 ## Registry Contract
 
@@ -102,10 +103,22 @@ is eligible at a particular opportunity, another approved family may proceed;
 the next opportunity re-evaluates the primary requirement. Slots can still end
 in an auditable skip when cooldowns or quotas leave no candidate.
 
-The existing host schedules do not yet match this product contract. They are
-not silently replaced by this implementation. Cutover requires an explicit
-host migration, reconciliation of existing outboxes and an approved service
-restart.
+The Campaign Factory shadow schedule now matches these five opportunities and
+is owned by the immutable `campaign-factory` lane in
+`governed-task-execution@1.0.0`. Existing Threads and Instagram publication
+schedules remain separate campaigns; the Factory does not silently replace or
+borrow their provider authority. Moving the Self-Identification campaign from
+shadow to an exact live canary still requires a dated payload approval,
+shared-admission reconciliation and any separately approved runtime lifecycle
+action.
+
+Registry version `2026-08-08.1` has thirteen active campaigns spanning all
+eight declared campaign families. The five recovered families reuse existing
+approved claims and evidence; they do not create new customer-outcome claims.
+The scheduled Campaign Factory child also produces daily and weekly commercial
+reports. Missing metrics remain null/unavailable, and the active baseline
+experiment has adjustment zero until its evidence threshold is met and a
+separate approval authorises any change.
 
 ## Selection
 
@@ -250,6 +263,14 @@ Attribution is a durable evidence edge, not a revenue claim. Each definition
 controls endpoint types, allowed confidence and minimum evidence count. The
 current publication-to-conversation definition requires at least two evidence
 records.
+
+Provider metrics are captured when a product-owned publication verifies or
+reconciles. The Campaign Factory Graph child now owns evidence-only daily and
+weekly aggregation across provider metrics, conversations and attribution
+edges. Missing CRM/website/provider evidence remains null/unavailable, and no
+attribution is created by the reporting cycle. The active approved experiment
+is a zero-adjustment baseline with a ten-sample threshold and stop rule; it
+cannot change selection without a separate approved registry revision.
 
 ## Operational Harness
 

@@ -30,7 +30,7 @@ export function verifyGraphChildTaskAuthority(store: GraphStore, task: Task, now
   if (phase !== "child") return { allowed: false, reason: "graph_task_authority_not_child_phase" };
   const run = store.getRun(parentRunId);
   const codingGraph = run?.graphId === "coding-change" && run.graphVersion === "1.2.0";
-  const governedTaskGraph = run?.graphId === "governed-task-execution" && run.graphVersion === "1.0.0";
+  const governedTaskGraph = run?.graphId === "governed-task-execution" && ["1.0.0", "1.1.0"].includes(run.graphVersion);
   const digestGraph = run?.graphId === "digest-delivery" && run.graphVersion === "1.0.0";
   if (!run || (!codingGraph && !governedTaskGraph && !digestGraph)) {
     return { allowed: false, reason: "graph_task_authority_unsupported_graph" };

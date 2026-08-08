@@ -163,7 +163,7 @@ Approval column:
 | `startup` | `internal-only` | `dynamic-only` | `startupHandler` | none | no | Internal boot path; not publicly triggerable; do not present as user-runnable. |
 | `doc-change` | `internal-only` | `dynamic-only` | `docChangeHandler` | none | no | Internal doc-watch buffer path; not publicly triggerable. When buffered drift reaches the runtime threshold (`25` pending paths), the orchestrator uses shared coordination to claim a doc-repair lock, then rechecks both active repair execution and cooldown inside the lock before attempting the deterministic `drift-repair` admission. A centrally suppressed duplicate does not create a queued repair record; an admitted repair records bounded repair state and applies a same-doc-set cooldown. |
 | `doc-sync` | `public-triggerable`; `confirmed working` | `dynamic-only` | `docSyncHandler` | none | no | Public schema allows it, and the current operator task profile treats it as a confirmed control-plane path. Most useful when pending doc changes exist. |
-| `business-value-cycle` | `public-triggerable`; `confirmed working` | `dynamic-only` | `businessValueCycleHandler` | planner + allowlisted workers | no | Loads canonical schema-v2 business strategy, pipeline, project, KPI, risk, and coverage-gap evidence; scores bounded candidates; and may enqueue one safe internal worker task. External sends, publishing, deployment, secret/private-source access, and commercial commitments remain approval-gated. |
+| `business-value-cycle` | `public-triggerable`; `confirmed working` | `dynamic-only` | `businessValueCycleHandler` | planner + allowlisted workers | no | Loads canonical schema-v2 business strategy, pipeline, project, KPI, risk, and coverage-gap evidence; scores bounded candidates; and may enqueue one safe internal worker task. The parent and all currently selectable content-generation, market-research, QA-verification and system-monitor children are Graph-owned with child/verifier receipts; the queue is effect transport only. External sends, publishing, deployment, secret/private-source access, and commercial commitments remain approval-gated. |
 | `drift-repair` | `public-triggerable`; `confirmed working (2026-03-29 live repair refresh)` | `dynamic-only` | `driftRepairHandler` | `doc-specialist` | yes | Custom helper spawn path with manifest-bound `documentParser` preflight. `POST /api/tasks/trigger` produced a first-class run record, verified a knowledge pack on disk, and surfaced repair evidence in `/api/tasks/runs`, `/api/dashboard/overview.selfHealing`, and `/api/health/extended.repairs`. The live `2026-03-29` repair refresh now also persists doc-specialist runtime-signal highlights into the operator readiness surface, and the service-expected `doc-specialist.service` user unit has been synced so host service coverage can be proven from the operator overview. Normal trigger calls fall back to the task id as the run id unless a payload supplies `idempotencyKey`; reused pending, running, successful, or failed keys are suppressed before queue telemetry, while same-key retries require matching persisted recovery evidence and receive a distinct durable queue-attempt identity. Phase 2 adaptation also standardizes operator-summary, next-action, and specialist-contract output on top of the existing knowledge-pack, contradiction, and repair-draft rails. |
 | `control-plane-brief` | `public-triggerable`; `confirmed working (2026-04-02 focused contract proof)` | `dynamic-only` | `controlPlaneBriefHandler` | `operations-analyst-agent` | yes | Focused public synthesis lane. The handler fuses queue, approval, incident, service, and public-proof truth into one bounded control-plane brief, emits explicit operator summary and next actions, and now powers the companion `/api/companion/overview` surface instead of forcing external clients to scrape operator-only routes. |
 | `incident-triage` | `public-triggerable`; `confirmed working (2026-04-02 focused contract proof)` | `dynamic-only` | `incidentTriageHandler` | `system-monitor-agent` | yes | Focused public triage lane. The worker turns open-incident pressure into a ranked queue with ownership, acknowledgement, remediation, and verification posture, and the same bounded triage contract now feeds the companion incident summary surface. |
@@ -309,11 +309,15 @@ durable graph completion.
 - `legacy_approved_for_temporary_use`: the current task path remains active
   while graph equivalence is proved.
 
-The exact supported production portfolio is `coding-change@1.2.0`,
-`deterministic-social-publication@1.1.0`,
-`deterministic-social-publication@2.0.0`, and
-`research-to-action@1.1.0`. `coding-change@1.2.0` routes implementation and
-repair through governed `build-refactor` child tasks and independent
-`qa-verification` receipts. Existing task types are not silently rerouted by
-source registration; production migration and service cutover remain
-separately approved.
+The current supported production portfolio is version-pinned in the
+Graph-native migration registry and production definition allowlist. It
+includes the coding, deterministic social publication, Threads readiness and
+publication, Meta replies, governed task execution, digest delivery and
+research definitions recorded there. `coding-change@1.2.0` routes
+implementation and repair through governed `build-refactor` child tasks and
+independent `qa-verification` receipts. `governed-task-execution@1.0.0` retains
+the immutable original business-value, market-research, Git-monitor and
+Campaign Factory lanes; `governed-task-execution@1.1.0` owns the added
+content-generation, QA-verification and system-monitor task lifecycles. Existing
+task types are not silently rerouted merely by source registration; production
+migration and service cutover remain separately approved.

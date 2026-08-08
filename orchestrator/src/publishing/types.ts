@@ -205,6 +205,8 @@ export interface ExperimentRecord extends VersionedRegistryRecord {
   adjustment: number;
   startsAt: string;
   endsAt: string;
+  minimumSamples?: number;
+  stoppingRule?: string;
 }
 
 export interface ApprovalRegistryRecord extends VersionedRegistryRecord {

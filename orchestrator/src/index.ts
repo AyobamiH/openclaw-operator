@@ -11249,6 +11249,9 @@ async function bootstrap() {
     "market-research": { lane: "market-research", agentId: "market-research-agent", graphId: "governed-task-execution", version: "1.0.0", authority: "local_persistent" },
     "github-workflow-monitor": { lane: "git-monitor", agentId: "operations-analyst-agent", graphId: "governed-task-execution", version: "1.0.0", authority: "local_persistent" },
     "campaign-content-factory": { lane: "campaign-factory", agentId: "content-agent", graphId: "governed-task-execution", version: "1.0.0", authority: "local_persistent" },
+    "content-generate": { lane: "content-generation", agentId: "content-agent", graphId: "governed-task-execution", version: "1.1.0", authority: "local_persistent" },
+    "qa-verification": { lane: "qa-verification", agentId: "qa-verification-agent", graphId: "governed-task-execution", version: "1.1.0", authority: "local_persistent" },
+    "system-monitor": { lane: "system-monitor", agentId: "system-monitor-agent", graphId: "governed-task-execution", version: "1.1.0", authority: "local_persistent" },
     "send-digest": { lane: "digest", agentId: "operations-analyst-agent", graphId: "digest-delivery", version: "1.0.0", authority: "external_reversible" },
   } as const);
   type GraphOwnedTaskType = keyof typeof graphOwnedTaskBindings;

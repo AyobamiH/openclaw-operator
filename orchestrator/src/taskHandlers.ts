@@ -54,6 +54,7 @@ import { normalizeApprovedIntake } from "./autonomy/runtime-hardening.js";
 import { readProviderRateLimitBridge } from "./autonomy/runtime-hardening.js";
 import type { ApprovedIntakeRecord, AutonomousWorkItem, ContextSnapshot, ControllerCheckpoint, ProviderRateLimitEvent, ToolResult } from "./autonomy/types.js";
 import { runCampaignFactoryShadowCycle } from "./publishing/campaign-factory-shadow-cycle.js";
+import { runCampaignOperationsCycle } from "./publishing/campaign-operations.js";
 
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
@@ -4300,6 +4301,13 @@ const campaignContentFactoryHandler: TaskHandler = async (task, context) => {
   for (const key of required) if (typeof task.payload[key] !== "string" || !String(task.payload[key]).trim()) throw new Error(`campaign-content-factory requires ${key}`);
   const observedAt = typeof task.payload.observedAt === "string" ? new Date(task.payload.observedAt) : new Date();
   if (!Number.isFinite(observedAt.getTime())) throw new Error("campaign-content-factory observedAt is invalid");
+  const operations = await runCampaignOperationsCycle({
+    registryPath: String(task.payload.registryPath),
+    databasePath: String(task.payload.databasePath),
+    artifactRoot: String(task.payload.artifactRoot),
+    observedAt,
+  });
+  if (operations.externalWrites !== 0) throw new Error("campaign operations detected an external write");
   const result = await runCampaignFactoryShadowCycle({
     registryPath: String(task.payload.registryPath), integrationPath: String(task.payload.integrationPath), databasePath: String(task.payload.databasePath),
     artifactRoot: String(task.payload.artifactRoot), rendererEntrypoint: String(task.payload.rendererEntrypoint), observedAt,
@@ -4310,7 +4318,7 @@ const campaignContentFactoryHandler: TaskHandler = async (task, context) => {
   });
   if (result.externalWrites !== 0) throw new Error("campaign-content-factory graph effect adapter detected an external write");
   const terminalOutcome = typeof result.terminalOutcome === "string" ? result.terminalOutcome : "completed_unique_opportunity";
-  recordTaskExecutionResultSummary(context, task, { success: true, terminalOutcome, campaignContentFactory: result });
+  recordTaskExecutionResultSummary(context, task, { success: true, terminalOutcome, campaignContentFactory: result, campaignOperations: operations });
   return `campaign-content-factory ${terminalOutcome} for ${String(result.localDate ?? "unknown-date")} with zero external writes`;
 };
 

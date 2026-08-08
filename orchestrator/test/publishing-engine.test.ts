@@ -103,7 +103,7 @@ describe("deterministic self-identification publishing engine", () => {
   it("loads the authoritative versioned registry", async () => {
     const bundle = await registry();
     expect(bundle.schemaVersion).toBe("1.0.0");
-    expect(bundle.registryVersion).toBe("2026-07-30.1");
+    expect(bundle.registryVersion).toBe("2026-08-08.1");
     expect(registryBundleHash(bundle)).toMatch(/^[a-f0-9]{64}$/);
   });
 

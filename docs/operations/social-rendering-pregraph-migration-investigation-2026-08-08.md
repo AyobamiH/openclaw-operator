@@ -5,37 +5,149 @@ summary: "Evidence-backed reconstruction of pre-Graph social rendering and publi
 
 # Social Rendering Pre-Graph Migration Investigation
 
-Status: complete — evidence reconstruction and migration verdict only.
+Status: expanded full-estate reconstruction complete; hard-cutover source
+implementation approved and verified; runtime activation evidence is recorded
+in the tool ledger.
 
-No production behaviour, service, schedule, provider payload, upload, or
-publication was changed by this investigation. The live-shaped checks were
-validate-only and recorded zero provider writes, zero external writes, and zero
-Browser Relay calls.
+The initial investigation was read-only. The subsequent approved social repair
+was deployed and is recorded below. This expanded pass changed only portable
+source and documentation: it did not change a service, schedule, provider
+payload, upload, publication, approval, campaign activation, or external
+account. All checks in this pass recorded zero provider writes and zero Browser
+Relay calls.
 
 ## Executive verdict
 
-The Graph migration retained most of the canonical social pipeline by
-delegating preparation and publication to the existing deterministic workers.
-The current image and Reel renderers still prove local generation, deterministic
-selection, complete copy, measured layout and contrast, reading-time checks,
-creative fingerprints, and media hashes.
+The week before Graph contained four canonical provider-publication lanes,
+plus replies, preparation/readiness, reporting and a separate product campaign:
 
-Full equivalence is not proven, however. Two Graph-boundary regressions remain:
+1. Threads text;
+2. Threads image;
+3. Instagram feed image;
+4. Instagram Reel;
+5. Meta reply monitoring;
+6. deterministic readiness, rendering, delivery, readback and recovery; and
+7. the five-opportunity Self-Identification Campaign Factory.
 
-1. `threads-publication@1.0.0` binds approval and capability to the text hash,
-   but not the prepared image bytes, topic tag, creative fingerprint, or layout
-   receipt. The worker stores a media hash, but the Graph capability exposes
-   `mediaHash: undefined` and does not recompute the file hash immediately
-   before upload. Splitting preparation from live execution therefore widened a
-   time-of-check/time-of-use gap.
-2. Instagram Reel preparation still enforces storyboard, layout, contrast, and
-   reading-time requirements, but `deterministic-social-publication@2.0.0`
-   permits nullable Reel proof lineage and does not freeze or compare the full
-   Reel layout/readability evidence before live publication.
+The Graph migration did not replace these deterministic workers. It moved
+scheduler and lifecycle ownership into Graph while retaining the workers as
+narrow effect adapters. The two initially confirmed media-boundary regressions
+and the missing Threads image replenisher were subsequently repaired. The
+renderer and stale-fixture defects were also closed, as documented under
+"Implemented repair outcome".
 
-The other visible defects are not primarily Graph scheduler defects. They are
-renderer installation/version drift, stale host-level integration fixtures,
-and an unproven Threads image-inventory replenishment capability.
+The expanded reconstruction found one additional Graph ownership regression:
+`business-value-cycle` itself entered `governed-task-execution@1.0.0`, but its
+selected `content-generate`, `qa-verification` and `system-monitor` children
+could still enter the task queue as lifecycle owners. Source now binds all
+three to immutable governed lanes with Graph-owned retry and child/verifier
+receipts. The focused receipt suite passes `10/10` and TypeScript passes.
+
+The hard-cutover follow-up activated the five missing campaign-family records
+using only existing products, audiences, problems, claims and evidence. It also
+added a Graph-owned campaign operations cycle that writes distinct daily and
+weekly commercial reports and evaluates an approved zero-adjustment experiment.
+Unavailable provider/CRM/website evidence remains unavailable rather than zero,
+and attribution still requires the configured evidence threshold. The one
+remaining authority boundary is an exact dated live Self-Identification canary:
+no provider write is implied by this source/runtime cutover.
+
+## Pre-Graph estate timeline
+
+| Date | Estate state | Canonical outcome retained |
+|---|---|---|
+| 2026-07-27 | Publication-path audit | Every reachable Threads write converged on `threads-outbox-runner.mjs`; Instagram Image/Reel on `instagram-publisher-outbox-runner.mjs`; replies on `meta-reply-monitor-outbox-runner.mjs`. Raw Meta tools, Browser Relay and retired publishers were unreachable from the conversational agent. |
+| 2026-07-28 | Reel pipeline reconstruction | Deterministic storyboard preparation, local renderer, upload barrier, one publish attempt, readback reconciliation and replenished creative inventory were proven. |
+| 2026-07-29 | Threads/Instagram image convergence and Reel layout hardening | Threads Image and Instagram Image joined the same prepared-media contract: complete copy, creative fingerprint, measured DOM fit, contrast, safe margins, exact delivery checksum and provider readback. Reels gained a versioned five-scene layout/readability receipt. |
+| 2026-07-30 | Self-Identification Engine and shadow lane | The 18-family registry, deterministic selector, immutable content specification, five global opportunities, exactly-once state, proof lineage, metrics and attribution contracts were committed. The production integration remained a distinct zero-write shadow campaign. |
+| 2026-07-31 | Image readiness and reuse hardening | Transient readiness gained one bounded retry; permanent identity/configuration failures still failed immediately. Reuse became rolling and material-identity based, with exact caption/media rechecks before upload. |
+| 2026-08-01 to 2026-08-03 | Graph adapter and Campaign Factory preparation | Graph definitions, shadow equivalence, live-capability controls, campaign media delivery receipts and durable runtime persistence were added before scheduler ownership transferred on 2026-08-04. |
+
+The original pre-Graph publication topology was:
+
+| Lane | Scheduler identity | Canonical worker before Graph | Current Graph owner |
+|---|---|---|---|
+| Threads text | `68b10c5c-f604-4567-9213-d0d1eab08106` | `threads-outbox-runner.mjs --kind text` | `threads-publication@1.0.0` |
+| Threads image | `083e3560-40fd-4487-9d78-674f64866ef7` | `threads-outbox-runner.mjs --kind image` | `threads-publication@1.0.0` plus `threads-readiness@1.0.0` |
+| Instagram feed image | `24afbb84-457c-41bb-92c9-24a19725e984` | `instagram-publisher-outbox-runner.mjs --kind image` | `deterministic-social-publication@1.1.0` |
+| Instagram Reel | `2c7071ff-35dd-40d0-bf77-b1ed53de256e` | `instagram-publisher-outbox-runner.mjs --kind reel` | `deterministic-social-publication@2.0.0` |
+| Meta replies | `4de811aa-f213-4cc3-b1aa-6c2cffb6a847` | `meta-reply-monitor-outbox-runner.mjs` | `meta-reply-monitor@1.0.0` |
+| Self-Identification shadow | `6fd37958-b450-400e-8c06-a781670f3a03` | deterministic Campaign Factory and publishing engine | `governed-task-execution@1.0.0`, lane `campaign-factory` |
+
+The disabled hourly "continuous social" loop is historical waste, not a
+missing campaign phase. It intentionally remains `obsolete`; restoring it
+would recreate overlapping authority and unnecessary activity.
+
+## Complete campaign taxonomy recovered
+
+The original knowledge base is retained at
+`media/inbound/openclaw-staged-db0b8f58-ac4a-4769-9713-aeac21d86790/Deterministic_Self_Identification_Publishing_Engine_Full_KB_---c1f6fc89-4ea7-421c-ae35-37aee3dd2b3e.docx`
+with SHA-256
+`9b01a2a9f32a2e9b89525c2fe4808b4711c97424265421337ca93199600cb862`.
+It declares eight campaign families:
+
+- self-identification;
+- problem-education;
+- practical-diagnostic;
+- founder-observation;
+- proof-and-evidence;
+- product-update;
+- community-discussion; and
+- research-insight.
+
+All eight remain accepted by the content templates and campaign schema. Registry
+version `2026-08-08.1` now contains active, approved records for every family.
+The five new records reuse existing truth anchors: Founder Rescue owns problem
+education and founder observation, Social Agent owns product update, OpenClaw
+Operator owns community discussion, and Coding Agent Skills owns research
+insight. No new performance or customer-outcome claim was introduced.
+
+The original five opportunity roles are also recovered and retained:
+
+| Europe/London slot | Intended role |
+|---|---|
+| 05:00 | early discovery |
+| 07:00 | morning recognition |
+| 11:00 | problem insight |
+| 15:00 | practical outcome |
+| 17:00 | conversation starter |
+
+They are global deterministic selection opportunities, not promises to publish
+on every platform.
+
+## Original phase backlog and present Graph truth
+
+| Phase | Original objective | What exists now | Graph/runtime verdict | Required next boundary |
+|---|---|---|---|---|
+| 0 — Reconnaissance | Inventory products, evidence, accounts, policies and old publishers | Complete registry and pre-Graph path audit | Complete; evidence retained | Keep registry/evidence current |
+| 1 — Deterministic core | Registry, validation, selection, immutable content, state and audit chain | Implemented and covered by replay/harness tests | Complete; executed behind Campaign Factory Graph lane | None for shadow operation |
+| 2 — Threads production path | Governed text/image preparation and official publication | Text and image are Graph-native; exact media/proof and replenishment repairs are deployed | Complete for the existing Threads lanes | New campaign payloads still require exact approval |
+| 3 — Portfolio activation | Rotate products over five opportunities without conflicting with existing publishers | Seven products, thirteen active campaigns covering all eight families, and the five-slot schedule | Graph-native shadow; product/campaign activation complete, live provider authority still separate | Exact dated payload-bound Self-Identification canary and one-run Graph capability |
+| 4 — Asset intelligence | Track source proof and exact/recompressed/derivative relationships | Proof-lineage classifier, registered 42-second master and campaign media receipts exist | Deterministic contract is present and Graph-receipted in shadow | Live campaign use awaits Phase 3 authority; new assets need evidence registration |
+| 5 — Cross-platform renderers | Render the selected content contract per approved platform | Threads text/image and Instagram image/Reel are implemented with local canonical rendering | Complete for connected Meta surfaces | LinkedIn/X or any new platform needs an official connector, readback contract and explicit activation; Reddit remains prohibited |
+| 6 — Metrics and attribution | Capture honest provider metrics, conversations and evidence-backed outcome links | Provider metrics capture, conversation records and evidence-threshold attribution stores exist; the Campaign Factory Graph child now reads them into operational reports | Runtime owner complete. Missing connector evidence is explicitly unavailable; no attribution is inferred | Add new CRM/website evidence only through provenance-bearing adapters when those systems supply records |
+| 7 — Experimentation | Apply bounded, approved measurement adjustments | Active approved baseline experiment has a zero adjustment, ten-sample minimum and stop rule | Graph-owned evaluation complete; selection cannot change from this baseline | Separate approval remains mandatory before any non-zero adjustment |
+| 8 — Operational hardening | Replay, kill switches, reports, alerts and recovery | Exactly-once/reconciliation, hash-chain audit, capability gates, plus distinct daily and weekly campaign commercial reports | Complete for evidence-only operations | Keep provider writes and future experiment changes separately capability-gated |
+
+## Business-value loop ownership repair
+
+The business-value planner can select four task families from durable business
+evidence: `content-generate`, `market-research`, `qa-verification` and
+`system-monitor`. Before this expanded investigation only market research was
+in the Graph binding map. The planner parent therefore had a Graph receipt but
+three selected child lifecycles could be owned directly by the queue.
+
+Source adds immutable governed lanes in the new
+`governed-task-execution@1.1.0` definition for:
+
+- `content-generation` → `content-generate` / `content-agent`;
+- `qa-verification` → `qa-verification` / `qa-verification-agent`; and
+- `system-monitor` → `system-monitor` / `system-monitor-agent`.
+
+Every scheduler, API, approval replay and child-handler ingress already uses
+the shared Graph-owned binding map, so these additions close the lifecycle
+escape without changing task authority. The queue remains only the bounded
+child-effect transport with Graph owning retry and terminal verification.
 
 ## Evidence reconstructed
 
@@ -53,7 +165,11 @@ the 2026-07-28 through 2026-08-05 daily records. The strongest sources were:
 - the current production adapters, live publication envelope, capability
   builder, workflow definitions, and their focused tests.
 
-## Migration ledger
+## Initial migration ledger (pre-repair snapshot)
+
+This table preserves the findings that caused the approved repair. Rows marked
+regressed, missing or risky below are historical at the investigation point;
+their final disposition is in "Implemented repair outcome".
 
 | Canonical capability | Original implementation | Evidence/tests | Current graph equivalent | Migrated / missing / changed / regressed | Consequence | Recommended repair |
 |---|---|---|---|---|---|---|
@@ -74,7 +190,7 @@ the 2026-07-28 through 2026-08-05 daily records. The strongest sources were:
 | Autonomous Threads image replenishment | Finite prepared image cycle; no independent proven replenisher | Historical queue reconstruction and current validate-only inventory failure | Readiness preparer can generate future text, but not new image creatives | Missing before and after Graph; not a migration regression | The daily-image schedule eventually skips when inventory is exhausted | Design a separate deterministic image replenisher under product approval |
 | Portable source ownership | Canonical connector source plus root operational workers | Repository history and current git inventory | Product adapters use intentional absolute root worker paths | Changed and risky | Dynamic engine files are presently untracked host assets and the product is not self-contained | Canonicalize ownership without moving installed/runtime paths during this report |
 
-## Classification
+## Initial classification (pre-repair snapshot)
 
 ### Proven migrated
 
@@ -86,10 +202,11 @@ the 2026-07-28 through 2026-08-05 daily records. The strongest sources were:
 - deterministic provider payloads, official readback, exactly-once state and
   ambiguity-safe reconciliation.
 
-### Missing behaviour
+### Behaviour missing at the initial snapshot
 
 - autonomous replenishment of prepared Threads image inventory was not proven
-  in the pre-Graph system and is still absent.
+  in the pre-Graph system and was absent at the initial Graph snapshot. It was
+  subsequently implemented and zero-write proven.
 
 ### Changed but acceptable
 
@@ -97,7 +214,7 @@ the 2026-07-28 through 2026-08-05 daily records. The strongest sources were:
   adapters while deliberately retaining the deterministic workers as the
   execution owners.
 
-### Changed and risky
+### Initially changed and risky
 
 - Threads and Instagram invoke different renderer byte builds while reporting
   the same package version;
@@ -106,21 +223,23 @@ the 2026-07-28 through 2026-08-05 daily records. The strongest sources were:
 - the portable product depends on host-root dynamic engines whose current files
   are not all tracked in the host operations repository.
 
-### Confirmed regressions
+### Confirmed regressions at the initial snapshot
 
 - Threads Image Graph approval/capability does not bind media bytes or full
   image proof lineage;
 - three host-level Instagram integration tests have stale fixtures and contract
   hashes, even though the canonical connector tests pass.
 
-### Open questions
+Both were subsequently repaired and validated.
 
-- whether Threads image replenishment should share Instagram's dynamic Image
-  engine or retain a separately governed creative contract;
-- whether the next publication-envelope version should be format-specific or
-  use a common media-proof schema;
-- which repository should canonically own the host operational dynamic engines
-  before any portability cutover.
+### Initial design questions and disposition
+
+- Threads replenishment now uses the canonical source renderer while retaining
+  a separately governed slot-bound Threads creative contract;
+- the existing Graph identities were strengthened in place with the proof
+  fields required by their media format;
+- the required host dynamic-engine sources are now tracked in the host
+  operations repository; installed/runtime copies remain non-canonical.
 
 ## Zero-write validation evidence
 

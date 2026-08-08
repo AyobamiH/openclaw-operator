@@ -35,7 +35,15 @@ export type GovernedChildRunInput = {
 };
 
 export type GovernedWorkflowTaskInput = {
-  lane: "business-value" | "market-research" | "git-monitor" | "campaign-factory" | "digest";
+  lane:
+    | "business-value"
+    | "market-research"
+    | "git-monitor"
+    | "campaign-factory"
+    | "content-generation"
+    | "qa-verification"
+    | "system-monitor"
+    | "digest";
   taskType: string;
   agentId: string;
   payload: Record<string, JsonValue>;
@@ -46,6 +54,9 @@ const GOVERNED_TASK_BINDINGS: Readonly<Record<GovernedWorkflowTaskInput["lane"],
   "market-research": { taskType: "market-research", agentId: "market-research-agent" },
   "git-monitor": { taskType: "github-workflow-monitor", agentId: "operations-analyst-agent" },
   "campaign-factory": { taskType: "campaign-content-factory", agentId: "content-agent" },
+  "content-generation": { taskType: "content-generate", agentId: "content-agent" },
+  "qa-verification": { taskType: "qa-verification", agentId: "qa-verification-agent" },
+  "system-monitor": { taskType: "system-monitor", agentId: "system-monitor-agent" },
   "digest": { taskType: "send-digest", agentId: "operations-analyst-agent" },
 });
 
