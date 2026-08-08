@@ -64,6 +64,33 @@ describe("graph scheduler migration registry", () => {
     }
   });
 
+  it("versions the full-pregraph Campaign Factory binding without mutating the historical v1 migration", () => {
+    const v1 = governedJobs("campaign-content-factory-shadow-v1");
+    const v2 = governedJobs("campaign-content-factory-full-pregraph-v2");
+    expect(v1.item.declaration).toMatchObject({
+      migrationId: "campaign-content-factory-shadow-v1",
+      graphNamespace: "production.campaign-factory.shadow",
+    });
+    expect(v1.item.input.payload).toMatchObject({
+      registryPath: expect.stringContaining("/11a8067b299505e7a942791b0d902b1fa16a871b/"),
+      integrationPath: expect.stringContaining("/11a8067b299505e7a942791b0d902b1fa16a871b/"),
+      rendererEntrypoint: expect.stringContaining("/11a8067b299505e7a942791b0d902b1fa16a871b/"),
+    });
+    expect(v2.item.declaration).toMatchObject({
+      migrationId: "campaign-content-factory-full-pregraph-v2",
+      scheduleId: v1.item.declaration.scheduleId,
+      declarationKey: v1.item.declaration.declarationKey,
+      graphNamespace: "production.campaign-factory.full-pregraph",
+    });
+    expect(v2.item.input.payload).toMatchObject({
+      registryPath: expect.stringContaining("/20260808-full-pregraph-v2/"),
+      integrationPath: expect.stringContaining("/20260808-full-pregraph-v2/"),
+      rendererEntrypoint: expect.stringContaining("/20260808-full-pregraph-v2/"),
+    });
+    expect(v1.graphJob).toMatchObject({ payload: { argv: expect.arrayContaining(["campaign-content-factory-shadow-v1"]) } });
+    expect(v2.graphJob).toMatchObject({ payload: { argv: expect.arrayContaining(["campaign-content-factory-full-pregraph-v2"]) } });
+  });
+
   it("resolves injected clocks only inside exact portfolio cron windows", () => {
     expect(resolveNaturalSlot({ now: new Date("2026-08-04T04:07:00.000Z"), cronExpression: "0 5,7 * * *", timezone: "Europe/London", scheduleId: "job", provider: "threads", latenessToleranceMinutes: 10 })).toMatchObject({ slotId: "threads:2026-08-04:05:00:job", scheduledFor: "2026-08-04T04:00:00.000Z" });
     expect(resolveNaturalSlot({ now: new Date("2026-08-04T03:10:15.000Z"), cronExpression: "15 * * * *", timezone: "Europe/London", scheduleId: "job", provider: "meta", latenessToleranceMinutes: 20 })).toMatchObject({ slotId: "meta:2026-08-04:04:15:job", scheduledFor: "2026-08-04T03:15:00.000Z", waitUntil: "2026-08-04T03:15:00.000Z" });
@@ -1177,6 +1204,7 @@ describe("graph scheduler migration registry", () => {
       "threads-daily-image-v1": "2026-08-04T10:30:00.000Z",
       "meta-reply-monitor-v1": "2026-08-04T04:15:00.000Z",
       "campaign-content-factory-shadow-v1": "2026-08-04T04:00:00.000Z",
+      "campaign-content-factory-full-pregraph-v2": "2026-08-04T04:00:00.000Z",
       "continuous-marketing-digest-v1": "2026-08-04T07:30:00.000Z",
       "instagram-reel-v1": "2026-08-04T22:00:00.000Z",
     };
