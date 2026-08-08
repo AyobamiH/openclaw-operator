@@ -78,10 +78,12 @@ describe("graph scheduler migration registry", () => {
     });
     expect(v2.item.declaration).toMatchObject({
       migrationId: "campaign-content-factory-full-pregraph-v2",
-      scheduleId: v1.item.declaration.scheduleId,
-      declarationKey: v1.item.declaration.declarationKey,
+      scheduleId: "4e85ad8c-b253-40d6-adad-4c8cde39ad67",
+      declarationKey: "deterministic-self-identification-full-pregraph-v2",
       graphNamespace: "production.campaign-factory.full-pregraph",
     });
+    expect(v2.item.declaration.scheduleId).not.toBe(v1.item.declaration.scheduleId);
+    expect(v2.item.declaration.declarationKey).not.toBe(v1.item.declaration.declarationKey);
     expect(v2.item.input.payload).toMatchObject({
       registryPath: expect.stringContaining("/20260808-full-pregraph-v2/"),
       integrationPath: expect.stringContaining("/20260808-full-pregraph-v2/"),
