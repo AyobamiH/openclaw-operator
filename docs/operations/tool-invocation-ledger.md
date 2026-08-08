@@ -1525,3 +1525,112 @@
   `coding_validate_project` passed.
 - Next safe step: observe the next natural graph-owned Instagram and Meta
   slots with the root Relay approval refresh already loaded.
+
+## 2026-08-08 — Threads readiness preparer attempt evidence schema
+
+- Requested task: continue the interrupted Graph/Meta repairs and make
+  `threads-early-text-v1` work through the graph-owned path.
+- Workflow lane: product graph adapter contract alignment for root
+  deterministic Threads readiness repair.
+- Tools/source: root deterministic Threads repair evidence, product
+  `production-adapters.ts`, TypeScript typecheck, `git diff --check`, and
+  root-focused Threads tests.
+- Changed-state declaration: true for
+  `orchestrator/src/graph/production-adapters.ts`,
+  `docs/operations/graph-native-migration-registry.md`, and this ledger.
+  False for provider writes, Browser Relay, service lifecycle, scheduler
+  mutation, secrets, commit, push, deployment, and migration.
+- Repair: `production.threads-readiness-prepare.v1` output validation now
+  accepts optional per-slot `attempts[]` evidence from the root preparer while
+  preserving the strict `providerWrites=0` and `browserRelayCalls=0`
+  contract.
+- Evidence/result: root preparer committed the future early-text slot
+  `threads:2026-08-09:07:00:68b10c5c-f604-4567-9213-d0d1eab08106`;
+  product `npm --prefix orchestrator run typecheck` passed; product
+  `git diff --check` passed.
+- Next safe step: observe the natural 2026-08-09 07:00 Europe/London
+  graph-owned Threads early-text run for the one provider write and official
+  readback.
+
+## 2026-08-08 — Root orchestrator stranded-code audit
+
+- Requested task: find coding accidentally placed under root
+  `workspace/orchestrator` that may be missing from the canonical
+  `projects/openclaw-operator/orchestrator` source.
+- Workflow lane: repo hygiene and bounded product config repair.
+- Tools/source: `coding_repo_map` read-only repo evidence, memory fallback via
+  `memory_get` after `memory_search` timed out, core git/filesystem comparison
+  of root `orchestrator` against canonical `projects/openclaw-operator`,
+  focused Vitest, and TypeScript typecheck.
+- Fallback reason: `coding_repo_map` reported boundaries and dirty/divergent
+  state but cannot compare ignored installed-runtime mirrors; core read-only
+  shell comparison was required to inspect the root runtime tree safely.
+- Findings: root `orchestrator/` is ignored as an installed runtime surface
+  except five tracked test files. Four tracked tests already exist in canonical
+  source. `orchestrator/test/state.persistence.test.ts` is present only in the
+  ops-root history but is superseded by canonical
+  `orchestrator/test/state-store-fallback.test.ts`. The useful missing
+  behavior was from ops-root commit `2781767`: stale `/workspace/...` and
+  `/.openclaw/workspace/...` config-path normalization.
+- Changed-state declaration: true for
+  `orchestrator/src/config.ts`, `orchestrator/test/config.test.ts`,
+  `docs/guides/configuration.md`, and this ledger. False for root
+  `workspace/orchestrator` mutation, deletes, repo moves, service lifecycle,
+  secrets, provider writes, Browser Relay, commits, pushes, deployments, and
+  migrations.
+- Repair: ported the stranded config-path normalization into canonical
+  `orchestrator/src/config.ts` while preserving runtime targets such as
+  `mongo:` and `sqlite:` and current `OPENCLAW_OPERATOR_STATE_DIR` behavior.
+- Verification: `npm --prefix orchestrator run test:run --
+  test/config.test.ts` passed `5/5`; `npm --prefix orchestrator run
+  typecheck` passed.
+- Next safe step: keep the root `workspace/orchestrator` installed-runtime
+  duplicate untouched until a separately approved retirement or cutover plan;
+  do not copy the obsolete `state.persistence.test.ts` into canonical source.
+
+## 2026-08-08 — Delayed governed cron outside-window containment
+
+- Requested task: after operator approval for commit, push, service restart,
+  scheduler mutation, deployment and one provider write, continue completion
+  of the graph recovery mission and repair the current cron failures.
+- Workflow lane: product graph scheduler/runtime repair.
+- Tools/source: `coding_repo_map`, `coding_deployment_preflight`,
+  `coding_validate_project`, `project_deployment_status`, OpenClaw `cron`
+  read-only runs/status, systemd read-only service state, local focused Vitest,
+  TypeScript typecheck, `git diff --check`, and direct source inspection.
+- Fallback reason: `coding_deployment_preflight` was partial because the
+  project adapter enables only `repo-map`; deployment connector status reported
+  GitHub and Cloudflare lanes blocked, so local service validation and normal
+  Git/runtime commands remain the actionable approved path.
+- Root cause: delayed cron invocations after gateway restart or long runner
+  interruption could execute outside every declared natural slot window. The
+  pure resolver correctly throws
+  `graph_scheduler_trigger_outside_natural_slot_window`, but the command path
+  treated that safe no-op condition as a failed cron command.
+- Changed-state declaration: true for
+  `orchestrator/scripts/trigger-governed-graph-schedule.ts`,
+  `orchestrator/test/graph-scheduler-migration.test.ts`,
+  `docs/operations/graph-native-migration-registry.md`, and this ledger. False
+  at this stage for provider writes, Browser Relay calls, service lifecycle,
+  scheduler mutation, push, deployment, and migrations.
+- Repair: the governed execution wrapper now converts outside-window cron
+  invocations into `deferred:outside_natural_slot_window` with zero provider
+  writes, no Browser Relay calls, no scheduler trigger reservation, and no
+  graph run creation. `resolveNaturalSlot` itself still throws for callers that
+  need strict resolver behavior.
+- Verification: `npm --prefix orchestrator run test:run --
+  test/graph-scheduler-migration.test.ts test/config.test.ts` passed `49/49`;
+  `npm --prefix orchestrator run typecheck` passed; `git diff --check` passed;
+  `coding_validate_project` completed successfully.
+- Protected-push follow-up: the first protected `git push` attempt was blocked
+  by `verify:main` because generic `/.openclaw/workspace` normalization
+  redirected an intentional source-controlled
+  `projects/openclaw-operator/config/publishing/registry.v1.json` path into a
+  temporary integration root. The config repair was narrowed to preserve
+  absolute `/.openclaw/workspace/projects/...` source paths while retaining
+  stale root/runtime normalization. Regression proof:
+  `npm --prefix orchestrator run test:run -- test/config.test.ts` passed `6/6`
+  and `npm --prefix orchestrator run test:integration` passed `35/35`.
+- Next safe step: commit this local repair set, load it through the approved
+  service restart, then force exactly one approved graph-owned Threads
+  early-text proof if preflight remains bounded to one provider write.

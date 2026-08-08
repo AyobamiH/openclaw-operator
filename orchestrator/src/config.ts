@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { OrchestratorConfig } from "./types.js";
 
@@ -7,6 +7,9 @@ const DEFAULT_CONFIG_URL = new URL(
   "../../orchestrator_config.json",
   import.meta.url,
 );
+const WORKSPACE_ROOT_PREFIX = "/workspace/";
+const OPENCLAW_WORKSPACE_MARKER = "/.openclaw/workspace";
+const OPENCLAW_PROJECTS_PREFIX = "/projects/";
 
 function parseCsvEnv(name: string): string[] | undefined {
   const raw = process.env[name];
@@ -61,13 +64,42 @@ function isRuntimeTarget(value: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/.test(value);
 }
 
-function resolveConfigValue(configDir: string, value: unknown): unknown {
+function getWorkspaceRoot(configPath: string): string {
+  const configDir = dirname(configPath);
+  return basename(configDir) === "orchestrator" ? dirname(configDir) : configDir;
+}
+
+function resolveConfigValue(
+  configDir: string,
+  workspaceRoot: string,
+  value: unknown,
+): unknown {
   if (typeof value !== "string") {
     return value;
   }
 
   const trimmed = value.trim();
-  if (!trimmed || isAbsolute(trimmed) || isRuntimeTarget(trimmed)) {
+  if (!trimmed || isRuntimeTarget(trimmed)) {
+    return value;
+  }
+  if (trimmed.startsWith(WORKSPACE_ROOT_PREFIX)) {
+    return resolve(workspaceRoot, trimmed.slice(WORKSPACE_ROOT_PREFIX.length));
+  }
+
+  const workspaceMarkerIndex = trimmed.indexOf(OPENCLAW_WORKSPACE_MARKER);
+  if (workspaceMarkerIndex !== -1) {
+    const suffix = trimmed.slice(
+      workspaceMarkerIndex + OPENCLAW_WORKSPACE_MARKER.length,
+    );
+    if (suffix.startsWith(OPENCLAW_PROJECTS_PREFIX)) {
+      return value;
+    }
+    return suffix.length === 0
+      ? workspaceRoot
+      : resolve(workspaceRoot, suffix.replace(/^\/+/, ""));
+  }
+
+  if (isAbsolute(trimmed)) {
     return value;
   }
 
@@ -85,6 +117,7 @@ export async function loadConfig(
   const raw = await readFile(path, "utf-8");
   const parsed = JSON.parse(raw);
   const configDir = dirname(path);
+  const workspaceRoot = getWorkspaceRoot(path);
 
   // Allow env-var overrides for local dev (config bakes in Docker paths)
   if (process.env.STATE_FILE) parsed.stateFile = process.env.STATE_FILE;
@@ -150,7 +183,7 @@ export async function loadConfig(
   }
 
   for (const key of CONFIG_PATH_KEYS) {
-    parsed[key] = resolveConfigValue(configDir, parsed[key]);
+    parsed[key] = resolveConfigValue(configDir, workspaceRoot, parsed[key]);
   }
 
   if (!parsed.docsPath) {

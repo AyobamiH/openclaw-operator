@@ -200,6 +200,20 @@ function isLegitimateZeroWriteReason(reason: string): boolean {
   return /not_ready_before_commit|no_eligible|duplicate|collision|cooldown|policy|confirmed_absent|skip:|skipped|shadow|approval_missing|already_published|discovery_unavailable/i.test(reason);
 }
 
+function isOutsideNaturalSlotWindow(error: unknown): boolean {
+  return error instanceof Error && error.message === "graph_scheduler_trigger_outside_natural_slot_window";
+}
+
+function syntheticSkipTrigger(migrationId: string, now: Date, reason: string): Record<string, unknown> {
+  const compactTimestamp = now.toISOString().replace(/[^0-9TZ]/g, "");
+  return {
+    triggerId: `gst_skip_${migrationId.replace(/[^a-z0-9]+/gi, "_")}_${compactTimestamp}`,
+    migrationId,
+    status: "skipped",
+    failureReason: reason,
+  };
+}
+
 export function buildPublicationReport(args: { detail: any; outcome: string; providerWrites: number; maximumExternalWrites: 0 | 1; eventChainValid: boolean; childReceiptChainValid: boolean; providerOperationId?: string | null; deferredReason?: string; completionContract?: SchedulerCompletionContract; recoveryResult?: string }): PublicationReport {
   const socialEffect = socialEffectFrom(args.detail);
   const result = resultFrom(socialEffect);
@@ -337,6 +351,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
   const portfolio = governedSchedulerPortfolioEntry(args.migrationId);
   const request = args.request ?? defaultRequest;
   const store = new GraphSchedulerStore(args.schedulerPath ?? resolveGovernedSchedulerDatabasePath());
+  const observedNow = args.now ?? new Date();
   let triggerId: string | undefined;
   let runId: string | undefined;
   try {
@@ -347,9 +362,37 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
     const recoveryTrigger = args.recoveryTriggerId ? store.trigger(args.recoveryTriggerId) : null;
     if (args.recoveryTriggerId && (!recoveryTrigger || recoveryTrigger.migrationId !== args.migrationId)) throw new Error("graph_scheduler_recovery_trigger_not_found_or_mismatched");
     if (recoveryTrigger && !["failed_safe", "completed"].includes(recoveryTrigger.status)) throw new Error(`graph_scheduler_recovery_trigger_not_terminal_or_failed_safe:${recoveryTrigger.status}`);
-    const slot = recoveryTrigger
-      ? { slotId: recoveryTrigger.slotId, scheduledFor: recoveryTrigger.scheduledFor }
-      : resolveNaturalSlot({ now: args.now ?? new Date(), cronExpression: migration.cronExpression, timezone: migration.timezone, scheduleId: migration.scheduleId, provider: migration.provider, latenessToleranceMinutes: portfolio.latenessToleranceMinutes });
+    let slot: NaturalSlotResolution | { slotId: string; scheduledFor: string };
+    if (recoveryTrigger) {
+      slot = { slotId: recoveryTrigger.slotId, scheduledFor: recoveryTrigger.scheduledFor };
+    } else {
+      try {
+        slot = resolveNaturalSlot({ now: observedNow, cronExpression: migration.cronExpression, timezone: migration.timezone, scheduleId: migration.scheduleId, provider: migration.provider, latenessToleranceMinutes: portfolio.latenessToleranceMinutes });
+      } catch (error) {
+        if (!isOutsideNaturalSlotWindow(error)) throw error;
+        const reason = "outside_natural_slot_window";
+        return {
+          outcome: "deferred",
+          reason,
+          migrationId: args.migrationId,
+          graph: `${migration.graphId}@${migration.graphVersion}`,
+          definitionHash: migration.graphDefinitionHash,
+          trigger: syntheticSkipTrigger(args.migrationId, observedNow, reason),
+          providerWrites: 0,
+          publicationReport: buildPublicationReport({
+            detail: { run: { status: "completed" }, childReceiptChainValid: true },
+            outcome: "deferred",
+            providerWrites: 0,
+            maximumExternalWrites: portfolio.maximumExternalWrites,
+            eventChainValid: store.eventChainValid(args.migrationId),
+            childReceiptChainValid: true,
+            deferredReason: reason,
+          }),
+          eventChainValid: store.eventChainValid(args.migrationId),
+          childReceiptChainValid: true,
+        };
+      }
+    }
     if (!recoveryTrigger && slot.waitUntil) {
       const waitMs = Math.max(0, Date.parse(slot.waitUntil) - (args.now?.getTime() ?? Date.now()));
       await (args.preSlotSleep ?? sleep)(waitMs);

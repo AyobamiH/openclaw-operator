@@ -72,6 +72,40 @@ describe("graph scheduler migration registry", () => {
     expect(resolveInputTemplate({ observedAt: "$scheduledAt", ingressId: "$slotId" }, { slotId: "slot-one", scheduledFor: "2026-08-04T04:00:00.000Z" })).toEqual({ observedAt: "2026-08-04T04:00:00.000Z", ingressId: "slot-one" });
   });
 
+  it("defers delayed cron invocations outside the natural slot without creating a graph run", async () => {
+    const binding = governedJobs("meta-reply-monitor-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const seenRoutes: string[] = [];
+
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T03:09:59.000Z"),
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        seenRoutes.push(`${init?.method ?? "GET"} ${route}`);
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+
+    expect(result).toMatchObject({
+      outcome: "deferred",
+      reason: "outside_natural_slot_window",
+      providerWrites: 0,
+      publicationReport: {
+        finalClassification: "deferred",
+        policyOrSkipReason: "deferred:outside_natural_slot_window",
+      },
+    });
+    expect(seenRoutes).toEqual(["GET /api/graphs/health"]);
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toEqual([]);
+    reopened.close();
+  });
+
   it("pins cron execution to the production scheduler database outside the service environment", () => {
     expect(resolveGovernedSchedulerDatabasePath({})).toBe(PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH);
     expect(resolveGovernedSchedulerDatabasePath({ OPENCLAW_OPERATOR_STATE_DIR: "/state" })).toBe("/state/database/graph-scheduler.sqlite");

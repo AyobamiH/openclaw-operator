@@ -70,7 +70,7 @@ const ThreadsReadinessInputSchema = z.object({
   jobId: z.literal("abb3e214-0ff6-4813-a18d-6d8ffb9080ad"),
   observedAt: z.string().datetime({ offset: true }), shadowMode: z.literal(true), maximumProviderMutations: z.literal(0),
 }).strict();
-const ThreadsReadinessOutputSchema = z.object({ outcome: z.literal("complete"), preparationHorizonHours: z.number().int().positive(), repairAttemptsMaximum: z.number().int().nonnegative(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0), opportunity: z.record(z.unknown()), runnerSummary: z.string() }).strict();
+const ThreadsReadinessOutputSchema = z.object({ outcome: z.literal("complete"), preparationHorizonHours: z.number().int().positive(), repairAttemptsMaximum: z.number().int().nonnegative(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0), opportunity: z.record(z.unknown()), attempts: z.array(z.record(z.unknown())).optional(), runnerSummary: z.string() }).strict();
 const SocialPreparationOutputSchema = z.object({
   status: z.string(), action: z.enum(["publish", "reply", "skip", "shadow"]), outboxId: z.string().nullable(), payloadHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
   targetId: z.string().nullable(), approvalId: z.string().nullable(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0),

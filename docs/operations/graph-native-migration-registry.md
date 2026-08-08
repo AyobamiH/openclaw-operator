@@ -260,6 +260,40 @@ graph-owned ingress lanes under `governed-task-execution@1.0.0`. Disabled or
 completed historical crons are `obsolete`; there is no remaining active legacy,
 graph-wrapped or unknown owner in the canonical scope.
 
+## 2026-08-08 Threads early text readiness repair
+
+`threads-early-text-v1` remained graph-owned, but the cycle-3 early-text
+publication path skipped because no fresh exact text payload was committed
+before the natural slot. The root deterministic preparer now creates local
+slot-bound fresh-copy text approvals for later-cycle `TEXT_POST` slots, skips
+duplicate precommit text candidates with zero provider writes, skips missing
+image-payload slots without advancing the cursor, and returns per-slot attempt
+evidence. The graph production adapter accepts that attempts evidence while
+preserving the strict zero-write readiness output schema.
+
+Post-repair evidence: the root preparer committed
+`threads:2026-08-09:07:00:68b10c5c-f604-4567-9213-d0d1eab08106`
+for sequence 5 `Northampton` with approval
+`ttpa_3cdb1ee93204ddbeec68bdc890c993a1`, allocation
+`talloc_36fb09ece2babc3e`, `providerWrites=0`, and
+`browserRelayCalls=0`. The natural provider write is still pending until the
+scheduled graph-owned 2026-08-09 07:00 Europe/London slot executes.
+
+## 2026-08-08 Delayed cron outside-window containment
+
+Graph-owned cron commands can be invoked late after gateway restarts or long
+runner interruption. The governed scheduler trigger still rejects non-natural
+slots at the pure resolver boundary, but the execution wrapper now classifies a
+cron invocation outside every bounded natural slot window as a zero-write
+`deferred:outside_natural_slot_window` outcome. It does not reserve a scheduler
+trigger, create a graph run, issue a live capability, publish, reply, upload,
+or call Browser Relay.
+
+This keeps cron health from turning a safe no-op catch-up into repeated command
+failure while preserving exact-slot write authority for normal graph-owned
+publication and reply schedules. Focused scheduler/config verification passed
+`49/49`; orchestrator typecheck and `git diff --check` passed.
+
 ## 2026-08-04 Digest concurrency-exhaustion closure
 
 The 08:30 Europe/London digest slot
