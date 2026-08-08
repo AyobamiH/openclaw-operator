@@ -91,6 +91,15 @@ describe("graph scheduler migration registry", () => {
     });
     expect(v1.graphJob).toMatchObject({ payload: { argv: expect.arrayContaining(["campaign-content-factory-shadow-v1"]) } });
     expect(v2.graphJob).toMatchObject({ payload: { argv: expect.arrayContaining(["campaign-content-factory-full-pregraph-v2"]) } });
+    const v3 = governedJobs("campaign-content-factory-full-pregraph-v3");
+    expect(v3.item.declaration).toMatchObject({
+      migrationId: "campaign-content-factory-full-pregraph-v3",
+      scheduleId: "cb58654b-9136-4f75-8b4f-c7431c7fd3de",
+      declarationKey: "deterministic-self-identification-full-pregraph-v3",
+      graphNamespace: "production.campaign-factory.full-pregraph",
+    });
+    expect(v3.item.input).toEqual(v2.item.input);
+    expect(v3.graphJob).toMatchObject({ enabled: true, payload: { argv: expect.arrayContaining(["campaign-content-factory-full-pregraph-v3"]) } });
   });
 
   it("resolves injected clocks only inside exact portfolio cron windows", () => {
@@ -1207,6 +1216,7 @@ describe("graph scheduler migration registry", () => {
       "meta-reply-monitor-v1": "2026-08-04T04:15:00.000Z",
       "campaign-content-factory-shadow-v1": "2026-08-04T04:00:00.000Z",
       "campaign-content-factory-full-pregraph-v2": "2026-08-04T04:00:00.000Z",
+      "campaign-content-factory-full-pregraph-v3": "2026-08-04T04:00:00.000Z",
       "continuous-marketing-digest-v1": "2026-08-04T07:30:00.000Z",
       "instagram-reel-v1": "2026-08-04T22:00:00.000Z",
     };

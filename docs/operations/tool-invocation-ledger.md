@@ -1864,3 +1864,40 @@
   and the existing automatic retry recovered the service at 17:19:22 BST with
   active/running state, loopback port 3312 and both health endpoints HTTP 200.
   The checked-in drop-in now has an exact code-portfolio regression test.
+
+## 2026-08-08 — Immutable Campaign Factory scheduler binding completion
+
+- Requested task: finish the approved hard cutover by proving that the live
+  Campaign Factory schedule—not only canonical source—uses the complete
+  pre-Graph runtime bundle.
+- Discovery: the live immutable `campaign-content-factory-shadow-v1` migration
+  still referenced runtime `11a8067b...`; changing source under the same
+  migration identity could not update that frozen scheduler receipt. The
+  schema also correctly rejected reuse of its declaration key.
+- Repair: preserve v1 as `rolled_back`, retain the disabled v2 preparation as
+  failed-safe audit evidence, and activate the separately identified
+  `campaign-content-factory-full-pregraph-v3` migration on schedule
+  `cb58654b-9136-4f75-8b4f-c7431c7fd3de`. Its immutable graph job binds the
+  registry, integration and renderer to runtime
+  `20260808-full-pregraph-v2`; the historical v1 and unused v2 schedules are
+  disabled.
+- Verification: scheduler ownership is `graph_owned`, the event chain is
+  valid, metadata drift is empty, the graph job is enabled, and the live cron
+  command targets only `campaign-content-factory-full-pregraph-v3`. The v3
+  migration has zero triggers at cutover, proving no provider or external
+  write was dispatched. Focused scheduler tests passed `45/45`; protected
+  verification passed 97 unit simulations, 35 middleware integrations, 34 UI
+  tests, builds, typechecks, documentation drift and 110-file link validation.
+- Runtime state: `orchestrator.service` remained active/running without a
+  restart, `NRestarts=36` remained stable, port 3312 listened on loopback, both
+  health endpoints returned HTTP 200, and the post-recovery journal contained
+  no fatal/load-policy/renderer/recovery failure.
+- Rollback evidence: the pre-cutover scheduler database and generated job
+  snapshots are retained under
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/backups/20260808-full-pregraph-v2-cutover.iA28Xl/`;
+  the database backup SHA-256 is
+  `da959b12e97160b4ea2d6d7931a79f5b3f66008364837ffa39327b05a8106c01`.
+- Changed-state declaration: true for scheduler ownership, two disabled audit
+  schedules, source migration registry/tests and this ledger. False for
+  provider writes, uploads, Browser Relay, service restart, secrets, installs,
+  releases and deployments.
