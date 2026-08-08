@@ -50,6 +50,7 @@ async function makeReadOnly(path: string): Promise<void> {
 async function main(): Promise<void> {
   const projectRoot = argument("--project-root");
   const rendererRoot = argument("--renderer-root");
+  const rendererPackageRoot = resolve(rendererRoot, "..");
   const target = inside(ALLOWED_RUNTIME_ROOT, argument("--target"));
   try {
     await stat(target);
@@ -62,6 +63,8 @@ async function main(): Promise<void> {
   await mkdir(join(target, "dist", "src"), { recursive: true });
   await cp(join(projectRoot, "config", "publishing", "registry.v1.json"), join(target, "config", "publishing", "registry.v1.json"));
   await cp(join(projectRoot, "config", "publishing", "production-integration.v1.json"), join(target, "config", "publishing", "production-integration.v1.json"));
+  await cp(join(rendererPackageRoot, "package.json"), join(target, "package.json"));
+  await cp(join(rendererPackageRoot, "package-lock.json"), join(target, "package-lock.json"));
   await cp(rendererRoot, join(target, "renderer"), { recursive: true, force: false, errorOnExist: true });
   const reelMediaSource = resolve(rendererRoot, "..", "dist", "src", "reel-media.js");
   await cp(reelMediaSource, join(target, "dist", "src", "reel-media.js"));
@@ -75,6 +78,8 @@ async function main(): Promise<void> {
     files: {
       registry: await sha256(join(target, "config", "publishing", "registry.v1.json")),
       integration: await sha256(join(target, "config", "publishing", "production-integration.v1.json")),
+      rendererPackage: await sha256(join(target, "package.json")),
+      rendererPackageLock: await sha256(join(target, "package-lock.json")),
       rendererEntrypoint: await sha256(join(target, "renderer", "bin", "local-media-renderer.mjs")),
       reelMedia: await sha256(join(target, "dist", "src", "reel-media.js")),
     },

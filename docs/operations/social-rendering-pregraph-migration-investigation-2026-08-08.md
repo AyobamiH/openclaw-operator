@@ -288,6 +288,11 @@ identities and strengthened their v1/v2 adapter contracts in place:
 5. Meta reply ambiguity reconciliation now preserves the original terminal
    receipt and appends a hash-bound corrective receipt after complete official
    readback. No ambiguous write is replayed.
+6. The natural 2026-08-08 17:00 Campaign Factory cycle exposed a missing
+   package-root metadata file in the previously pinned renderer runtime. The
+   immutable runtime builder now includes the canonical renderer package and
+   lock metadata, and the scheduler points to a new non-overwriting v2 bundle.
+   The unused v1 bundle is retained as evidence rather than rewritten.
 6. Already committed Threads readiness is an idempotent success, and
    outside-natural-slot Reel triggers are zero-write deferrals rather than cron
    failures.

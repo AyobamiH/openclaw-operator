@@ -24,7 +24,7 @@ export type GovernedSchedulerPortfolioEntry = {
 };
 
 const WORKSPACE = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
-const FACTORY_RUNTIME = "/home/oneclickwebsitedesignfactory/.openclaw/runtime/deterministic-self-identification-publishing-engine/20260808-full-pregraph-v1";
+const FACTORY_RUNTIME = "/home/oneclickwebsitedesignfactory/.openclaw/runtime/deterministic-self-identification-publishing-engine/20260808-full-pregraph-v2";
 const definitions = {
   "threads-readiness@1.0.0": threadsReadinessGraph(),
   "threads-publication@1.0.0": threadsPublicationGraph(),

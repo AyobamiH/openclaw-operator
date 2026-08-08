@@ -1837,5 +1837,13 @@
 - Safety: unavailable metrics remain null, attribution retains its evidence
   threshold, experiment selection adjustment remains zero, Browser Relay is
   forbidden, and this cutover grants no dated payload-bound provider write.
+- Runtime repair discovered before restart: the natural 17:00 Campaign Factory
+  cycle failed before any provider write because the pinned renderer runtime
+  did not contain the package-root metadata expected by its integrity check.
+  The first restart attempt was not dispatched because its pre-health probe
+  timed out. The immutable runtime builder now copies the canonical renderer
+  package and lock metadata, and the scheduler targets the new
+  `20260808-full-pregraph-v2` bundle. The unused v1 bundle was not overwritten
+  or deleted.
 - Verification and activation evidence: recorded below after the protected
   gate, commit, push, runtime build and single restart complete.
