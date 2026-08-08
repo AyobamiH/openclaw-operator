@@ -1845,5 +1845,22 @@
   package and lock metadata, and the scheduler targets the new
   `20260808-full-pregraph-v2` bundle. The unused v1 bundle was not overwritten
   or deleted.
-- Verification and activation evidence: recorded below after the protected
-  gate, commit, push, runtime build and single restart complete.
+- Verification and activation evidence: source commit `fa78945`, generated
+  docs commit `f83acf8` and renderer-runtime repair `dbd76cb` were pushed to
+  `origin/main`. The v2 immutable runtime is sourced from `dbd76cb`; its
+  registry, integration, renderer package/lock, renderer entrypoint and Reel
+  media hashes match `PROVENANCE.json`, and every bundled path is read-only.
+  An isolated 17:00 Reel cycle completed `shadow_verified`, audit `ready`,
+  media SHA-256
+  `b2ffec156001eccf7c261564c145fa5af0100515550d25ef5dd7d0d188dd0c81`,
+  external/provider writes `0`.
+- Service lifecycle: exactly one `systemctl --user restart
+  orchestrator.service` command was submitted. The fixed adjacent config hash
+  remained `d630643c7d513fb2dd9c13456dbd40474d9ed473018696aa28bd340342f1bea2`.
+  Startup failed closed because the installed Graph production allowlist lacked
+  `governed-task-execution@1.1.0`; systemd accumulated automatic retry evidence,
+  but no second manual restart was submitted. The canonical and installed
+  Graph-only drop-ins were corrected, `systemctl --user daemon-reload` was run,
+  and the existing automatic retry recovered the service at 17:19:22 BST with
+  active/running state, loopback port 3312 and both health endpoints HTTP 200.
+  The checked-in drop-in now has an exact code-portfolio regression test.

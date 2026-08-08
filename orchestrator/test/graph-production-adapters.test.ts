@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
@@ -161,6 +161,12 @@ describe("production adapter registry", () => {
       allowedDefinitions: [...supported, "experimental-graph@0.1.0"],
       productionLoadPolicy: true,
     })).toThrow("graph_production_load_policy_mismatch");
+  });
+
+  it("keeps the checked-in systemd production allowlist equal to the code portfolio", async () => {
+    const dropIn = await readFile(join(REPOSITORY, "systemd", "orchestrator-graph-zero-write-canary.conf"), "utf8");
+    const match = dropIn.match(/^Environment=OPENCLAW_GRAPH_ALLOWED_DEFINITIONS=(.+)$/m);
+    expect(match?.[1]?.split(",").sort()).toEqual([...PRODUCTION_GRAPH_DEFINITION_IDENTITIES].sort());
   });
 
   it("exposes only explicit allowlisted production adapters", async () => {
@@ -473,7 +479,7 @@ describe("production-bound graph decisions", () => {
     expect(completed.status).toBe("completed");
     expect(completed.externalEffects).toHaveLength(0);
     expect(comparison.equivalent).toBe(true);
-    expect(graph.payloadHash).toBe("90e8ff6b19c730cecd1af96066b32a7fdcd3fc3f5037e1b1efe2a1f564441f09");
+    expect(graph.payloadHash).toBe("ca767a979c2069199c40e6ede36058ed85dfac667e93efb214a958573bbbbfe3");
     expect(graph.payloadHash).toBe(legacy.payloadHash);
     expect(graph.idempotencyKey).toBe(legacy.idempotencyKey);
     expect(graph.externalWrites).toBe(0);
