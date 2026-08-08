@@ -35,6 +35,15 @@ type SocialEffectState = {
   outboxId: string | null;
   payloadHash: string | null;
   targetId: string | null;
+  topicTag: string | null;
+  mediaPath: string | null;
+  mediaHash: string | null;
+  mediaBytesHash: string | null;
+  creativeFingerprint: string | null;
+  layoutReceipt: Record<string, unknown> | null;
+  layoutReceiptHash: string | null;
+  rendererIdentity: Record<string, unknown> | null;
+  rendererIdentityHash: string | null;
 };
 
 function isSocialHandler(value: string): value is (typeof SOCIAL_LIVE_CAPABILITY_AWARE_HANDLERS)[number] {
@@ -63,6 +72,7 @@ function expectedSocialCapabilityBindings(args: { run: GraphRunState; approval: 
   const requiresDeliveryUpload = args.run.graphId === "threads-publication" && jobId === "083e3560-40fd-4487-9d78-674f64866ef7";
   if (!social?.outboxId || !social.payloadHash || !["publish", "reply"].includes(social.action)) throw new Error("social_live_capability_preparation_missing");
   if ((args.nodeHandler.includes("threads") && social.action !== "publish") || (args.nodeHandler.includes("meta-reply") && social.action !== "reply")) throw new Error("social_live_capability_action_mismatch");
+  if (requiresDeliveryUpload && (!social.mediaHash || social.mediaBytesHash !== social.mediaHash || !social.topicTag || !social.creativeFingerprint || !social.layoutReceiptHash || !social.rendererIdentityHash)) throw new Error("social_live_capability_image_proof_missing");
   const definitionHash = args.definitionHash;
   const envelopeHash = sha256({ graphId: args.run.graphId, graphVersion: args.run.graphVersion, runId: args.run.runId, social, provider, accountKey, jobId, definitionHash });
   const idempotencyKey = sha256({ runId: args.run.runId, nodeId: "perform_exact_effect", target: social.targetId ?? social.outboxId, payloadHash: args.approval.payloadHash, operationType: args.nodeHandler });
@@ -81,7 +91,7 @@ function expectedSocialCapabilityBindings(args: { run: GraphRunState; approval: 
     sequenceId: social.outboxId,
     slotId: social.outboxId,
     payloadHash: social.payloadHash,
-    mediaHash: undefined,
+    mediaHash: social.mediaHash ?? undefined,
     envelopeHash,
     idempotencyKeyFingerprint: sha256(idempotencyKey),
     maximumMutatingDispatches: requiresDeliveryUpload ? 2 : 1,

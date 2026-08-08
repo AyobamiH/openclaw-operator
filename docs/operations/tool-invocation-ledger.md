@@ -1685,3 +1685,65 @@
 - Next safe step: commit and push this documentation/site sync. The broader
   pre-graph capability reconstruction remains queued as a separate evidence
   mission unless continued under the larger autonomous recovery objective.
+
+## 2026-08-08 — Pre-Graph social capability reconstruction
+
+- Requested task: continue the two agent-local tasks after gateway restart by
+  reconstructing the pre-Graph social capability contract and comparing it with
+  the current Graph adapters.
+- Workflow lane: read-only coding/repository audit plus local documentation.
+- Tools/source: `memory_search` and `memory_get`; `sessions_list` and
+  `sessions_history`; `coding_repo_map`, `coding_api_contract_audit`,
+  `coding_migration_review`; direct narrow source/history inspection; focused
+  Node and Vitest checks; zero-write Image, Reel and Threads validate-only
+  invocations; `git diff --check`, docs checks and project validation.
+- Fallback reason: semantic memory search timed out with its embedding provider
+  unavailable, so the memory fallback policy used direct daily/long-term memory
+  reads and the indexed session transcript. The coding API/migration tools were
+  partial because this project adapter currently enables only repo-map, so
+  narrow core inspection completed the contract trace.
+- Changed-state declaration: true only for
+  `docs/operations/social-rendering-pregraph-migration-investigation-2026-08-08.md`,
+  `docs/operations/graph-native-migration-registry.md`, and this ledger. False
+  for production code/config, provider writes, uploads, external writes,
+  Browser Relay, services, scheduler state, installs, commits, pushes,
+  deployments and migrations.
+- Evidence/result: Graph-focused tests passed `47/47`; connector tests passed
+  `19` with `6` explicitly unsupported and `0` failed; Instagram Image and Reel
+  validate-only paths passed with zero provider/external writes. Host social
+  tests passed `98/101`; three failures identify stale Image fixtures. Threads
+  daily-image validate-only failed safely because prepared inventory is absent.
+- Verdict: most worker-level capability migrated. Confirmed Graph gaps are
+  Threads media/proof binding and incomplete Reel proof-lineage freezing.
+  Renderer byte drift, stale fixtures and missing autonomous Threads image
+  replenishment are separate capability/integration gaps.
+- Next safe step: obtain explicit approval for the bounded repair sequence in
+  the investigation report; do not mutate production or perform another
+  provider write from this evidence item.
+
+## 2026-08-08 — Canonical social Graph-boundary repair
+
+- Requested task: retain every proven pre-Graph canonical social contract in
+  Graph, restore autonomous Threads Image replenishment, converge renderers and
+  clear the reported runtime exceptions end to end.
+- Workflow lane: coding, local deterministic rendering, Graph governance,
+  scheduler/runtime repair and deployment closeout.
+- Tools/source: `coding_repo_map` and `coding_migration_review` first; bounded
+  `rg`/source/SQLite inspection fallback because the coding adapter exposes no
+  write-capable contract audit; HyperFrames entry/CLI instructions; Node,
+  Vitest and TypeScript gates; official API-only worker readbacks; OpenClaw cron
+  status; user-service health probes.
+- Changed-state declaration: product Graph adapters/capability/envelope tests
+  and docs; host Threads/Instagram/Meta runner code and tests; local Threads
+  prepared queue/readiness evidence; append-only Meta reconciliation evidence.
+  No second manual provider write, Browser Relay call or secret read occurred.
+- Evidence/result: Graph `93/93`, combined host social receipt/state `46/46`,
+  TypeScript build passed. Threads created two canonical slot-bound image
+  preparations with zero writes. Reel validate-only passed all canonical proof
+  checks with zero writes. Meta run `meta-reply-monitor-20260808T1015Z` was
+  confirmed absent by complete readback and chained to its immutable prior
+  blocked receipt through an append-only reconciliation receipt.
+- Next safe step: complete protected-branch verification, commit/push the two
+  repository changesets, restart the approved user service once, run health
+  probes, and force only zero-write scheduler checks needed to clear stale cron
+  transport state.

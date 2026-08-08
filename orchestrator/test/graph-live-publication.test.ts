@@ -40,6 +40,8 @@ function liveInput() {
 }
 
 function projection() {
+  const layoutAudit = { valid: true, textFitAndSafeMargins: true, contrast: true };
+  const readingTimeVerification = { valid: true, totalSeconds: 24 };
   return PublicationProjectionSchema.parse({
     outboxId: "instagram:reel:2026-08-01:23:00:2c7071ff-35dd-40d0-bf77-b1ed53de256e",
     provider: "instagram", accountKey: "instagram:owner", representedAccountId: "17841453638630920",
@@ -48,6 +50,7 @@ function projection() {
     caption: "Evidence first.", payloadSha256: sha256("Evidence first."), mediaPath: "/safe/frozen.mp4", mediaSha256: "a".repeat(64), mediaSizeBytes: 1234,
     mimeType: "video/mp4", contentSpecSha256: "b".repeat(64), materialContentSha256: "c".repeat(64), storyboardSha256: "d".repeat(64), creativeFingerprint: "e".repeat(64), rendererVersion: "0.10.2",
     layoutVerification: null, layoutVerificationSha256: null,
+    layoutAudit, layoutAuditSha256: sha256(layoutAudit), readingTimeVerification, readingTimeVerificationSha256: sha256(readingTimeVerification),
     claim: { status: "prepared" }, providerResultId: null, permalink: null, status: "render_validated", verification: null,
     generatedMediaUploadCalls: 0, instagramPublishCalls: 0, browserRelayCalls: 0,
   });
@@ -75,8 +78,17 @@ describe("immutable live-capable publication graph", () => {
     const second = buildFrozenPublicationEnvelope(context, liveInput(), projection());
     expect(canonicalJson(first)).toBe(canonicalJson(second));
     expect(frozenEnvelopeHash(first)).toBe(frozenEnvelopeHash(second));
+    expect(first.verificationAssertions).toContain("reading-time");
     const changed = buildFrozenPublicationEnvelope(context, liveInput(), { ...projection(), mediaSha256: "f".repeat(64) });
     expect(() => assertEnvelopeUnchanged(first, changed)).toThrow("publication_envelope_immutable_violation");
+  });
+
+  it("rejects a Reel envelope when measured canonical proof is missing", async () => {
+    const value = await runtime();
+    const definition = value.registry.get("deterministic-social-publication", "2.0.0");
+    const run = value.engine.start({ graphId: definition.graphId, version: definition.version, objective: "Reject incomplete Reel proof", input: liveInput(), authority: { maximum: "external_public", grantedBy: "john" } });
+    const context = { definition, node: definition.nodes.find((node) => node.id === "acquire_durable_candidate_claim")!, run, attemptId: "reel-proof", attemptNumber: 1, idempotencyKey: "reel-proof", effectPayloadHash: sha256({ fixture: "reel-proof" }), signal: new AbortController().signal } satisfies NodeExecutionContext;
+    expect(() => buildFrozenPublicationEnvelope(context, liveInput(), { ...projection(), readingTimeVerification: null, readingTimeVerificationSha256: null })).toThrow("publication_envelope_reel_canonical_proof_missing");
   });
 
   it("cannot freeze or approve an image envelope before exact layout verification", async () => {

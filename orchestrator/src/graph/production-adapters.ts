@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import { resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
 import { ProductionAdapterRegistry } from "./adapter-registry.js";
@@ -73,7 +75,11 @@ const ThreadsReadinessInputSchema = z.object({
 const ThreadsReadinessOutputSchema = z.object({ outcome: z.literal("complete"), preparationHorizonHours: z.number().int().positive(), repairAttemptsMaximum: z.number().int().nonnegative(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0), opportunity: z.record(z.unknown()), attempts: z.array(z.record(z.unknown())).optional(), runnerSummary: z.string() }).strict();
 const SocialPreparationOutputSchema = z.object({
   status: z.string(), action: z.enum(["publish", "reply", "skip", "shadow"]), outboxId: z.string().nullable(), payloadHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
-  targetId: z.string().nullable(), approvalId: z.string().nullable(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0),
+  targetId: z.string().nullable(), approvalId: z.string().nullable(), topicTag: z.string().nullable(), mediaPath: z.string().nullable(),
+  mediaHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(), mediaBytesHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  creativeFingerprint: z.string().regex(/^[a-f0-9]{64}$/).nullable(), layoutReceipt: z.record(z.unknown()).nullable(),
+  layoutReceiptHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(), rendererIdentity: z.record(z.unknown()).nullable(),
+  rendererIdentityHash: z.string().regex(/^[a-f0-9]{64}$/).nullable(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0),
 }).strict();
 const SocialMutationOutputSchema = z.object({ status: z.string(), outboxId: z.string(), providerResultId: z.string().nullable(), permalink: z.string().nullable(), providerWrites: z.number().int().min(0).max(1), browserRelayCalls: z.literal(0) }).strict();
 const SocialReadbackOutputSchema = z.object({ status: z.string(), outboxId: z.string(), verified: z.boolean(), providerResultId: z.string().nullable(), permalink: z.string().nullable(), providerWrites: z.literal(0), browserRelayCalls: z.literal(0) }).strict();
@@ -114,12 +120,49 @@ function socialDispatchGate(graphStore: GraphStore, context: NodeExecutionContex
   };
 }
 
-function socialPreparation(entry: Record<string, any>, input: { shadowMode: boolean }, effect: "publish" | "reply"): z.infer<typeof SocialPreparationOutputSchema> {
+const CANONICAL_LOCAL_MEDIA_RENDERER = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/projects/relay-live-business-engagement-connector/local-media-renderer/bin/local-media-renderer.mjs";
+
+async function fileSha256(path: string): Promise<string> {
+  return createHash("sha256").update(await readFile(path)).digest("hex");
+}
+
+async function socialPreparation(entry: Record<string, any>, input: { shadowMode: boolean }, effect: "publish" | "reply"): Promise<z.infer<typeof SocialPreparationOutputSchema>> {
   const status = String(entry?.status ?? "unknown");
   const actionable = effect === "publish"
     ? ["prepared", "reserved", "render_validated"].includes(status)
     : status === "prepared_reply";
   const text = effect === "publish" ? entry?.selection?.text : entry?.draft;
+  const imagePublication = effect === "publish" && actionable && entry?.selection?.mediaType === "IMAGE";
+  let mediaPath: string | null = null;
+  let mediaHash: string | null = null;
+  let mediaBytesHash: string | null = null;
+  let topicTag: string | null = null;
+  let creativeFingerprint: string | null = null;
+  let layoutReceipt: Record<string, unknown> | null = null;
+  let layoutReceiptHash: string | null = null;
+  let rendererIdentity: Record<string, unknown> | null = null;
+  let rendererIdentityHash: string | null = null;
+  if (imagePublication) {
+    mediaPath = typeof entry?.mediaPath === "string" ? entry.mediaPath : null;
+    mediaHash = typeof entry?.mediaSha256 === "string" ? entry.mediaSha256 : null;
+    topicTag = typeof entry?.selection?.topicTag === "string" ? entry.selection.topicTag : null;
+    creativeFingerprint = typeof entry?.selection?.creativeFingerprint === "string" ? entry.selection.creativeFingerprint : null;
+    layoutReceipt = entry?.rendererReceipt && typeof entry.rendererReceipt === "object" ? structuredClone(entry.rendererReceipt) : null;
+    if (!mediaPath || !mediaHash || !topicTag || !creativeFingerprint || !layoutReceipt) throw new Error("threads_graph_image_proof_binding_incomplete");
+    if (layoutReceipt.checks && typeof layoutReceipt.checks === "object") {
+      const checks = layoutReceipt.checks as Record<string, unknown>;
+      if (checks.fullDecode !== true || checks.textFitAndSafeMargins !== true || checks.contrast !== true) throw new Error("threads_graph_image_layout_receipt_invalid");
+    } else throw new Error("threads_graph_image_layout_receipt_missing_checks");
+    mediaBytesHash = await fileSha256(mediaPath);
+    if (mediaBytesHash !== mediaHash) throw new Error("threads_graph_image_bytes_changed_before_approval");
+    layoutReceiptHash = sha256(layoutReceipt);
+    rendererIdentity = {
+      source: CANONICAL_LOCAL_MEDIA_RENDERER,
+      sourceSha256: await fileSha256(CANONICAL_LOCAL_MEDIA_RENDERER),
+      version: String((layoutReceipt.renderer as Record<string, unknown> | undefined)?.version ?? layoutReceipt.rendererVersion ?? layoutReceipt.version ?? "canonical-local-media-renderer"),
+    };
+    rendererIdentityHash = sha256(rendererIdentity);
+  }
   return {
     status,
     action: !actionable ? "skip" : input.shadowMode ? "shadow" : effect,
@@ -127,6 +170,15 @@ function socialPreparation(entry: Record<string, any>, input: { shadowMode: bool
     payloadHash: typeof text === "string" && text.length > 0 ? sha256(text) : null,
     targetId: effect === "reply" && entry?.selectedCandidate?.id ? String(entry.selectedCandidate.id) : null,
     approvalId: entry?.selection?.approval?.approvalId ? String(entry.selection.approval.approvalId) : null,
+    topicTag,
+    mediaPath,
+    mediaHash,
+    mediaBytesHash,
+    creativeFingerprint,
+    layoutReceipt,
+    layoutReceiptHash,
+    rendererIdentity,
+    rendererIdentityHash,
     providerWrites: 0,
     browserRelayCalls: 0,
   };
@@ -145,6 +197,15 @@ function zeroWriteSocialSkip(status: string): z.infer<typeof SocialPreparationOu
     payloadHash: null,
     targetId: null,
     approvalId: null,
+    topicTag: null,
+    mediaPath: null,
+    mediaHash: null,
+    mediaBytesHash: null,
+    creativeFingerprint: null,
+    layoutReceipt: null,
+    layoutReceiptHash: null,
+    rendererIdentity: null,
+    rendererIdentityHash: null,
     providerWrites: 0,
     browserRelayCalls: 0,
   };
@@ -193,6 +254,10 @@ function projectionFromValidation(value: Record<string, unknown>, input: LivePub
     layoutVerificationSha256: value.layoutVerification
       ? sha256(value.layoutVerification)
       : null,
+    layoutAudit: value.layoutAudit ?? null,
+    layoutAuditSha256: value.layoutAudit ? sha256(value.layoutAudit) : null,
+    readingTimeVerification: value.readingTime ?? null,
+    readingTimeVerificationSha256: value.readingTime ? sha256(value.readingTime) : null,
     claim: { ...graphAuthorization(context, input), status: "preview" }, providerResultId: null, permalink: null, status: "previewed", verification: null,
     generatedMediaUploadCalls: 0, instagramPublishCalls: 0, browserRelayCalls: 0,
   });
@@ -508,10 +573,16 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const input = ThreadsGraphInputSchema.parse(inputValue);
       const runner = await loadThreadsRunner();
       const prepared = await runner.runOpportunity(input.jobId, { prepareOnly: true, now: new Date(input.observedAt), observedAt: new Date(input.observedAt) });
-      const output = socialPreparation(prepared.entry, input, "publish");
-      return { outcome: "succeeded", output, patches: [{ op: "set", path: "socialEffect", value: output as unknown as JsonValue }, { op: "set", path: "target", value: output.outboxId ?? "threads:none" }], evidence: [
+      const output = await socialPreparation(prepared.entry, input, "publish");
+      return { outcome: "succeeded", output: output as unknown as Record<string, JsonValue>, patches: [{ op: "set", path: "socialEffect", value: output as unknown as JsonValue }, { op: "set", path: "target", value: output.outboxId ?? "threads:none" }], evidence: [
         { kind: "social-preparation-receipt", uri: `graph://${context.run.runId}/threads/preparation`, sha256: sha256(output), summary: `Threads preparation reached ${output.status}`, checker: "production.threads-publication-prepare.v1" },
         { kind: "payload-hash", uri: `graph://${context.run.runId}/threads/payload`, sha256: output.payloadHash ?? sha256(null), summary: output.payloadHash ? "Exact Threads payload frozen" : "No eligible Threads payload", checker: "production.threads-publication-prepare.v1" },
+        ...(output.mediaHash ? [
+          { kind: "media-hash", uri: `graph://${context.run.runId}/threads/media`, sha256: output.mediaHash, summary: "Exact Threads image bytes frozen", checker: "production.threads-publication-prepare.v1" },
+          { kind: "creative-fingerprint", uri: `graph://${context.run.runId}/threads/creative`, sha256: output.creativeFingerprint!, summary: `Threads topic ${output.topicTag} and complete creative fingerprint frozen`, checker: "production.threads-publication-prepare.v1" },
+          { kind: "layout-receipt", uri: `graph://${context.run.runId}/threads/layout`, sha256: output.layoutReceiptHash!, summary: "Canonical renderer layout receipt frozen", checker: "production.threads-publication-prepare.v1" },
+          { kind: "renderer-identity", uri: `graph://${context.run.runId}/threads/renderer`, sha256: output.rendererIdentityHash!, summary: "Canonical renderer source identity frozen", checker: "production.threads-publication-prepare.v1" },
+        ] : []),
         { kind: "zero-provider-writes", uri: `graph://${context.run.runId}/threads/preparation-writes`, sha256: sha256({ providerWrites: 0 }), summary: "Threads preparation performed zero provider writes", checker: "production.threads-publication-prepare.v1" },
       ], progressFingerprint: sha256(output) };
     },
@@ -525,6 +596,13 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const input = ThreadsGraphInputSchema.parse(inputValue);
       const prepared = context.run.data.socialEffect as unknown as z.infer<typeof SocialPreparationOutputSchema>;
       if (!prepared?.outboxId || prepared.action !== "publish") throw new Error("threads_graph_exact_preparation_missing");
+      if (input.jobId === "083e3560-40fd-4487-9d78-674f64866ef7") {
+        if (!prepared.mediaPath || !prepared.mediaHash || !prepared.mediaBytesHash || !prepared.topicTag || !prepared.creativeFingerprint || !prepared.layoutReceipt || !prepared.layoutReceiptHash || !prepared.rendererIdentity || !prepared.rendererIdentityHash) throw new Error("threads_graph_image_live_proof_missing");
+        const currentMediaHash = await fileSha256(prepared.mediaPath);
+        if (currentMediaHash !== prepared.mediaHash || currentMediaHash !== prepared.mediaBytesHash) throw new Error("threads_graph_image_bytes_changed_before_live_handoff");
+        if (sha256(prepared.layoutReceipt) !== prepared.layoutReceiptHash || sha256(prepared.rendererIdentity) !== prepared.rendererIdentityHash) throw new Error("threads_graph_image_proof_changed_before_live_handoff");
+        if (String(prepared.rendererIdentity.source) !== CANONICAL_LOCAL_MEDIA_RENDERER || String(prepared.rendererIdentity.sourceSha256) !== await fileSha256(CANONICAL_LOCAL_MEDIA_RENDERER)) throw new Error("threads_graph_renderer_identity_changed_before_live_handoff");
+      }
       if (!graphStore) throw new Error("threads_graph_store_missing");
       const runner = await loadThreadsRunner();
       const result = await runner.runOpportunity(input.jobId, { now: new Date(input.observedAt), graphAuthorization: { runId: context.run.runId, nodeId: context.node.id, idempotencyKey: context.idempotencyKey }, graphDispatchGate: socialDispatchGate(graphStore, context) });
@@ -533,7 +611,7 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const writes = Number(result.entry?.externalWriteCount ?? 0);
       const output = { status: String(result.entry?.status ?? "unknown"), outboxId: prepared.outboxId, providerResultId: result.entry?.providerResultId ? String(result.entry.providerResultId) : null, permalink: result.entry?.permalink ? String(result.entry.permalink) : null, providerWrites: writes, browserRelayCalls: 0 as const };
       const state = verified && writes === 1 ? "effect_verified" as const : writes === 0 ? "confirmed_absent" as const : "ambiguous" as const;
-      return { outcome: verified ? "succeeded" : state === "confirmed_absent" ? "failed_repairable" : "blocked", output, patches: [{ op: "set", path: "socialEffect.result", value: output as unknown as JsonValue }], evidence: verified ? [
+      return { outcome: verified ? "succeeded" : "failed_repairable", output, patches: [{ op: "set", path: "socialEffect.result", value: output as unknown as JsonValue }], evidence: verified ? [
         { kind: "provider-publication", uri: output.permalink!, sha256: prepared.payloadHash!, summary: "One exact Threads provider object created", checker: "production.threads-publication-live.v1" },
         { kind: "official-provider-readback", uri: output.permalink!, sha256: sha256(output), summary: "Threads canonical worker verified the provider object", checker: "production.threads-publication-live.v1" },
       ] : [], externalEffect: { idempotencyKey: context.idempotencyKey, operationType: "threads-publication", target: prepared.outboxId, payloadHash: context.effectPayloadHash, state, providerOperationId: output.providerResultId ?? undefined, lastObservedAt: new Date().toISOString() }, progressFingerprint: sha256(output) };
@@ -550,7 +628,7 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const runner = await loadThreadsRunner();
       const result = await runner.reconcileOutboxEntry(prepared.outboxId);
       const output = { status: String(result.entry?.status ?? "unknown"), outboxId: prepared.outboxId, verified: result.entry?.status === "published_verified", providerResultId: result.entry?.providerResultId ? String(result.entry.providerResultId) : null, permalink: result.entry?.permalink ? String(result.entry.permalink) : null, providerWrites: 0 as const, browserRelayCalls: 0 as const };
-      if (!output.verified) return { outcome: "blocked", output, failure: failure("idempotency_conflict", "Threads readback did not prove one exact publication") };
+      if (!output.verified) return { outcome: "failed_terminal", output, failure: failure("idempotency_conflict", "Threads readback did not prove one exact publication") };
       return { outcome: "succeeded", output, evidence: [
         { kind: "second-provider-readback", uri: output.permalink!, sha256: sha256(output), summary: "Second Threads readback passed", checker: "production.threads-publication-readback.v1" },
         { kind: "social-terminal-receipt", uri: `graph://${context.run.runId}/threads/terminal`, sha256: sha256(output), summary: "Threads terminal state verified", checker: "production.threads-publication-readback.v1" },
@@ -568,12 +646,12 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       let output: z.infer<typeof SocialPreparationOutputSchema>;
       try {
         const prepared = await runner.runMonitor({ prepareOnly: true, now: new Date(input.observedAt) });
-        output = socialPreparation(prepared.entry, input, "reply");
+        output = await socialPreparation(prepared.entry, input, "reply");
       } catch (error) {
         if (!isReadSideProviderFailure(error)) throw error;
         output = zeroWriteSocialSkip("provider_discovery_unavailable");
       }
-      return { outcome: "succeeded", output, patches: [{ op: "set", path: "socialEffect", value: output as unknown as JsonValue }, { op: "set", path: "target", value: output.targetId ?? output.outboxId ?? "meta-reply:none" }], evidence: [
+      return { outcome: "succeeded", output: output as unknown as Record<string, JsonValue>, patches: [{ op: "set", path: "socialEffect", value: output as unknown as JsonValue }, { op: "set", path: "target", value: output.targetId ?? output.outboxId ?? "meta-reply:none" }], evidence: [
         { kind: "social-preparation-receipt", uri: `graph://${context.run.runId}/meta-reply/preparation`, sha256: sha256(output), summary: `Meta reply preparation reached ${output.status}`, checker: "production.meta-reply-prepare.v1" },
         { kind: "payload-hash", uri: `graph://${context.run.runId}/meta-reply/payload`, sha256: output.payloadHash ?? sha256(null), summary: output.payloadHash ? "Exact reply payload frozen" : "No eligible reply payload", checker: "production.meta-reply-prepare.v1" },
         { kind: "zero-provider-writes", uri: `graph://${context.run.runId}/meta-reply/preparation-writes`, sha256: sha256({ providerWrites: 0 }), summary: "Meta reply preparation performed zero provider writes", checker: "production.meta-reply-prepare.v1" },
@@ -595,7 +673,7 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const writes = Number(result.entry?.externalWriteCount ?? 0);
       const output = { status: String(result.entry?.status ?? "unknown"), outboxId: prepared.outboxId, providerResultId: result.entry?.providerResultId ? String(result.entry.providerResultId) : null, permalink: result.entry?.permalink ? String(result.entry.permalink) : null, providerWrites: writes, browserRelayCalls: 0 as const };
       const state = verified && writes === 1 ? "effect_verified" as const : writes === 0 ? "confirmed_absent" as const : "ambiguous" as const;
-      return { outcome: verified ? "succeeded" : state === "confirmed_absent" ? "failed_repairable" : "blocked", output, patches: [{ op: "set", path: "socialEffect.result", value: output as unknown as JsonValue }], evidence: verified ? [
+      return { outcome: verified ? "succeeded" : "failed_repairable", output, patches: [{ op: "set", path: "socialEffect.result", value: output as unknown as JsonValue }], evidence: verified ? [
         { kind: "provider-reply", uri: output.permalink!, sha256: prepared.payloadHash!, summary: "One exact Meta reply created", checker: "production.meta-reply-live.v1" },
         { kind: "official-provider-readback", uri: output.permalink!, sha256: sha256(output), summary: "Canonical reply worker verified the provider object", checker: "production.meta-reply-live.v1" },
       ] : [], externalEffect: { idempotencyKey: context.idempotencyKey, operationType: "meta-reply", target: prepared.targetId ?? prepared.outboxId, payloadHash: context.effectPayloadHash, state, providerOperationId: output.providerResultId ?? undefined, lastObservedAt: new Date().toISOString() }, progressFingerprint: sha256(output) };
@@ -612,11 +690,12 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const runner = await loadMetaReplyRunner();
       const result = await runner.reconcileReceiptOnly(prepared.outboxId);
       const output = { status: String(result.entry?.status ?? "unknown"), outboxId: prepared.outboxId, verified: result.entry?.status === "verified", providerResultId: result.entry?.providerResultId ? String(result.entry.providerResultId) : null, permalink: result.entry?.permalink ? String(result.entry.permalink) : null, providerWrites: 0 as const, browserRelayCalls: 0 as const };
-      if (!output.verified) return { outcome: "blocked", output, failure: failure("idempotency_conflict", "Meta reply readback did not prove one exact reply") };
+      const confirmedAbsent = output.status === "confirmed_failure";
+      if (!output.verified && !confirmedAbsent) return { outcome: "failed_terminal", output, patches: [{ op: "set", path: "socialEffect.status", value: output.status }], failure: failure("idempotency_conflict", "Meta reply readback did not prove one exact reply") };
       return { outcome: "succeeded", output, evidence: [
-        { kind: "second-provider-readback", uri: output.permalink!, sha256: sha256(output), summary: "Second Meta reply readback passed", checker: "production.meta-reply-readback.v1" },
-        { kind: "social-terminal-receipt", uri: `graph://${context.run.runId}/meta-reply/terminal`, sha256: sha256(output), summary: "Meta reply terminal state verified", checker: "production.meta-reply-readback.v1" },
-      ], progressFingerprint: sha256(output) };
+        { kind: "second-provider-readback", uri: output.permalink ?? `graph://${context.run.runId}/meta-reply/confirmed-absent`, sha256: sha256(output), summary: output.verified ? "Second Meta reply readback passed" : "Complete provider readback confirmed the authorized reply is absent", checker: "production.meta-reply-readback.v1" },
+        { kind: "social-terminal-receipt", uri: `graph://${context.run.runId}/meta-reply/terminal`, sha256: sha256(output), summary: output.verified ? "Meta reply terminal state verified" : "Meta reply ambiguity was safely quarantined as confirmed absent", checker: "production.meta-reply-readback.v1" },
+      ], patches: [{ op: "set", path: "socialEffect.status", value: output.status }], progressFingerprint: sha256(output) };
     },
   });
   registry.register({

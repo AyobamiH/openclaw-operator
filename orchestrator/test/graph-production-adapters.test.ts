@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -255,6 +256,54 @@ describe("production adapter registry", () => {
     expect(runtime.store.oneRunLiveCapability(capability.capabilityId)?.status).toBe("consumed");
     expect(runtime.store.liveCapabilityDispatches(capability.capabilityId)).toMatchObject([{ stepId: "provider_effect", dispatchCount: 1, state: "succeeded", providerOperationId: "provider-one" }]);
     expect(runtime.store.externalEffects(run.runId)).toMatchObject([{ state: "effect_verified", providerOperationId: "provider-one" }]);
+  });
+
+  it("binds exact Threads Image media and canonical creative proof into Graph v1 authority", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-threads-image-capability-"));
+    const mediaPath = join(root, "threads-image.png");
+    const media = Buffer.from("exact-frozen-threads-image-bytes");
+    await writeFile(mediaPath, media);
+    const mediaHash = createHash("sha256").update(media).digest("hex");
+    const runnerPath = join(root, "threads-image-live-fixture.mjs");
+    const entry = {
+      id: "threads:2026-08-04:11:30:083e3560-40fd-4487-9d78-674f64866ef7",
+      status: "prepared",
+      selection: {
+        text: "Exact prepared Threads Image fixture",
+        mediaType: "IMAGE",
+        topicTag: "AI Threads",
+        creativeFingerprint: "c".repeat(64),
+        approval: { approvalId: "fixture-image-approval" },
+      },
+      mediaPath,
+      mediaSha256: mediaHash,
+      rendererReceipt: {
+        renderer: { version: "fixture" },
+        checks: { fullDecode: true, textFitAndSafeMargins: true, contrast: true },
+      },
+      externalWriteCount: 0,
+    };
+    await writeFile(runnerPath, `const prepared=${JSON.stringify(entry)};\nconst verified={...prepared,status:"published_verified",externalWriteCount:1,providerResultId:"provider-image-one",permalink:"https://example.invalid/provider-image-one"};\nexport async function runOpportunity(_jobId,options){if(options.prepareOnly)return{entry:prepared};await options.graphDispatchGate.reserve("delivery_upload","generated_media_delivery_upload");await options.graphDispatchGate.complete("delivery_upload","succeeded",{providerOperationId:"upload-image-one"});await options.graphDispatchGate.reserve("provider_effect","production.threads-publication-live.v1");await options.graphDispatchGate.complete("provider_effect","succeeded",{providerOperationId:"provider-image-one"});return{entry:verified};}\nexport async function reconcileOutboxEntry(){return{entry:verified};}\n`);
+    const prior = process.env.OPENCLAW_THREADS_RUNNER_PATH;
+    process.env.OPENCLAW_THREADS_RUNNER_PATH = runnerPath;
+    cleanups.push(async () => { if (prior === undefined) delete process.env.OPENCLAW_THREADS_RUNNER_PATH; else process.env.OPENCLAW_THREADS_RUNNER_PATH = prior; await rm(root, { recursive: true, force: true }); });
+    const runtime = await testRuntime();
+    const run = runtime.engine.start({ graphId: "threads-publication", version: "1.0.0", objective: "Exact Threads Image capability fixture", input: { provider: "threads", accountKey: "threads:owner", jobId: "083e3560-40fd-4487-9d78-674f64866ef7", observedAt: "2026-08-04T11:30:00+01:00", shadowMode: false, maximumProviderMutations: 1 }, authority: { maximum: "external_public", grantedBy: "fixture" } });
+    const waiting = await runtime.engine.runUntilSettled(run.runId);
+    expect(waiting.status).toBe("waiting_for_approval");
+    expect(waiting.data.socialEffect).toMatchObject({ topicTag: "AI Threads", mediaHash, mediaBytesHash: mediaHash, creativeFingerprint: "c".repeat(64) });
+    const approval = runtime.store.approvals(run.runId)[0]!;
+    const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
+    runtime.engine.decideApproval(run.runId, approval.approvalId, "granted", "fixture", expiresAt);
+    const capability = issueOneRunLiveCapability({ store: runtime.store, runId: run.runId, approvalId: approval.approvalId, issuedBy: "fixture", expiresAt, globalZeroWrite: true });
+    expect(capability.mediaHash).toBe(mediaHash);
+    runtime.engine.resume(run.runId, "fixture");
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(runtime.store.liveCapabilityDispatches(capability.capabilityId)).toMatchObject([
+      { stepId: "delivery_upload", state: "succeeded", dispatchCount: 1 },
+      { stepId: "provider_effect", state: "succeeded", dispatchCount: 1 },
+    ]);
   });
 
   it("requires and consumes one exact capability around a graph-owned digest notification", async () => {

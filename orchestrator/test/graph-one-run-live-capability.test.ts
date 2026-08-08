@@ -35,6 +35,8 @@ async function runtime(): Promise<GraphRuntime> {
 
 function projection(now: Date) {
   const date = now.toISOString().slice(0, 10);
+  const layoutAudit = { valid: true, textFitAndSafeMargins: true, contrast: true };
+  const readingTimeVerification = { valid: true, totalSeconds: 24 };
   return PublicationProjectionSchema.parse({
     outboxId: `instagram:reel:${date}:11:30:2c7071ff-35dd-40d0-bf77-b1ed53de256e`,
     provider: "instagram",
@@ -62,6 +64,10 @@ function projection(now: Date) {
     rendererVersion: "0.10.2",
     layoutVerification: null,
     layoutVerificationSha256: null,
+    layoutAudit,
+    layoutAuditSha256: sha256(layoutAudit),
+    readingTimeVerification,
+    readingTimeVerificationSha256: sha256(readingTimeVerification),
     claim: null,
     providerResultId: null,
     permalink: null,

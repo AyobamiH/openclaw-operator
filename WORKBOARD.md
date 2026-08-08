@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-08-03`
+Last updated: `2026-08-08`
 
 ## Current Headline
 
@@ -33,6 +33,14 @@ The public repo direction is now explicit.
   direction
 
 ## Recently Finished
+
+0. Canonical pre-Graph social proof was restored at the Graph live boundary.
+   - Threads Graph v1 binds exact image bytes, topic tag, complete creative fingerprint, layout receipt and canonical renderer source digest into approval and one-run capability state
+   - the Threads host runner re-hashes the frozen file immediately before delivery upload and fails closed on any creative, renderer or layout drift
+   - Instagram Reel Graph live envelopes require storyboard, creative fingerprint, renderer identity, measured layout audit and reading-time hashes
+   - both platforms now use the canonical source renderer; autonomous Threads Image replenishment is deterministic, slot-bound, zero-write and proven without reopening skipped slots
+   - Meta ambiguous-reply reconciliation is append-only and never retries a consumed dispatch; readiness treats an existing committed slot idempotently
+   - focused Graph tests pass `93/93`, combined focused host social receipt/state tests pass `46/46`, and the TypeScript build passes
 
 0. Campaign Content Factory and full-graph multi-agent truth audits are now repeatable.
    - all five deterministic opportunities are zero-write shadow-ready: two text packages, two verified 12-second Reels and one verified 1080x1350 image

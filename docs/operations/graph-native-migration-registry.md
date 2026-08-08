@@ -555,3 +555,20 @@ which remains `publish_authorized` / `write_started` after one prior upload and
 one prior publish attempt. Until official readback reconciles that row as
 published or absent, every new Instagram image or Reel publication must remain
 zero-write failed-safe.
+
+## 2026-08-08 Pre-Graph social capability reconstruction
+
+The evidence-first reconstruction in
+`social-rendering-pregraph-migration-investigation-2026-08-08.md` confirms that
+the Graph adapters retained most canonical Image and Reel behaviour by
+delegating to the existing deterministic workers. Current zero-write
+validations passed Instagram Image and Reel rendering, layout, contrast,
+reading-time, fingerprint and media-hash checks.
+
+The registry must not claim full equivalence yet. Threads Image Graph v1 binds
+approval and capability to text but not to media bytes or full creative/layout
+lineage. Instagram Reel worker evidence is healthy, but its Graph envelope does
+not require and compare the complete layout/readability proof before live
+execution. Renderer byte drift and stale host integration fixtures are separate
+non-scheduler defects. Repair requires a separately approved envelope/version
+change; no scheduler, service or provider state changed during reconstruction.

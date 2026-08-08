@@ -47,6 +47,10 @@ export const PublicationProjectionSchema = z.object({
   rendererVersion: z.string().nullable(),
   layoutVerification: z.record(z.unknown()).nullable(),
   layoutVerificationSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  layoutAudit: z.record(z.unknown()).nullable(),
+  layoutAuditSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
+  readingTimeVerification: z.record(z.unknown()).nullable(),
+  readingTimeVerificationSha256: z.string().regex(/^[a-f0-9]{64}$/).nullable(),
   claim: z.record(z.unknown()).nullable(),
   providerResultId: z.string().nullable(),
   permalink: z.string().nullable(),
@@ -84,6 +88,10 @@ export type FrozenPublicationEnvelope = {
   mimeType: string;
   layoutVerification: Record<string, unknown> | null;
   layoutVerificationSha256: string | null;
+  layoutAudit: Record<string, unknown> | null;
+  layoutAuditSha256: string | null;
+  readingTimeVerification: Record<string, unknown> | null;
+  readingTimeVerificationSha256: string | null;
   providerTarget: string;
   idempotencyKey: string;
   authorityClass: "external_public";
@@ -187,6 +195,20 @@ export function buildFrozenPublicationEnvelope(
   ) {
     throw new Error("publication_envelope_image_layout_verification_missing");
   }
+  if (
+    input.kind === "reel" &&
+    (!projection.storyboardSha256 ||
+      !projection.creativeFingerprint ||
+      !projection.rendererVersion ||
+      projection.layoutAudit?.valid !== true ||
+      projection.layoutAudit?.textFitAndSafeMargins !== true ||
+      projection.layoutAudit?.contrast !== true ||
+      !projection.layoutAuditSha256 ||
+      projection.readingTimeVerification?.valid !== true ||
+      !projection.readingTimeVerificationSha256)
+  ) {
+    throw new Error("publication_envelope_reel_canonical_proof_missing");
+  }
   const providerTarget = `instagram:${input.expectedAccountId}`;
   const core = {
     graphId: "deterministic-social-publication" as const,
@@ -212,6 +234,10 @@ export function buildFrozenPublicationEnvelope(
     mimeType: projection.mimeType,
     layoutVerification: projection.layoutVerification,
     layoutVerificationSha256: projection.layoutVerificationSha256,
+    layoutAudit: projection.layoutAudit,
+    layoutAuditSha256: projection.layoutAuditSha256,
+    readingTimeVerification: projection.readingTimeVerification,
+    readingTimeVerificationSha256: projection.readingTimeVerificationSha256,
     providerTarget,
     idempotencyKey: sha256({ providerTarget, candidateId: projection.candidateId, payloadSha256: projection.payloadSha256, mediaSha256: projection.mediaSha256 }),
     authorityClass: "external_public" as const,
@@ -228,7 +254,7 @@ export function buildFrozenPublicationEnvelope(
       "event-chain-valid",
       ...(input.kind === "image"
         ? ["layout-semantic-completeness", "layout-geometric-validity"]
-        : []),
+        : ["storyboard-integrity", "creative-fingerprint-integrity", "layout-measured", "text-fit-and-safe-margins", "contrast", "reading-time"]),
     ],
     compensationPolicy: "reconcile_first_delete_only_wrong_account_materially_incorrect_or_duplicate",
     preparationLineage: {
