@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
+import { reconcilePriorMetaReplyGraphEffects } from "../src/graph/production-adapters.js";
 import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
 import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../src/graph/workflows.js";
 import { compareShadowDecisions, prepareProductionPublishingShadowDecision, type ShadowDecisionEnvelope } from "../src/publishing/shadow-equivalence.js";
@@ -80,6 +81,66 @@ function publishingInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe("production adapter registry", () => {
+  it("reconciles prior Meta ambiguity from canonical receipt evidence before a new dispatch", async () => {
+    const runtime = await testRuntime();
+    const prior = runtime.engine.start({
+      graphId: "meta-reply-monitor",
+      version: "1.0.0",
+      objective: "Prior Meta reply ambiguity",
+      input: {
+        provider: "meta",
+        accountKey: "meta:owner",
+        jobId: "4de811aa-f213-4cc3-b1aa-6c2cffb6a847",
+        observedAt: "2026-08-08T11:15:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    const outboxId = "meta-reply-monitor-20260808T1015Z";
+    const effectId = "gex_prior_meta_ambiguity";
+    runtime.store.saveRun({
+      ...prior,
+      data: { ...prior.data, socialEffect: { outboxId, status: "prepared_reply" } },
+      externalEffects: [{
+        effectId,
+        runId: prior.runId,
+        nodeId: "perform_exact_effect",
+        idempotencyKey: "prior-meta-idempotency",
+        operationType: "production.meta-reply-live.v1",
+        target: "meta-comment-one",
+        payloadHash: "a".repeat(64),
+        state: "ambiguous",
+        lastObservedAt: "2026-08-08T10:17:00.000Z",
+        evidenceRefs: [],
+      }],
+    }, prior.revision, []);
+    const receiptHash = "b".repeat(64);
+    const reconciled = await reconcilePriorMetaReplyGraphEffects(runtime.store, {
+      runMonitor: async () => ({ entry: {} }),
+      executePreparedReply: async () => ({ entry: {} }),
+      reconcileReceiptOnly: async () => ({ entry: {
+        status: "confirmed_failure",
+        providerReconciled: true,
+        externalWriteCount: 0,
+        reconciliationReceiptPath: "/canonical/meta-reconciliation.json",
+        reconciliationReceiptSha256: receiptHash,
+      } }),
+    }, { target: "meta-comment-one" });
+    expect(reconciled).toEqual([{
+      runId: prior.runId,
+      effectId,
+      outboxId,
+      state: "confirmed_absent",
+    }]);
+    expect(runtime.store.externalEffects(prior.runId)).toEqual([
+      expect.objectContaining({ effectId, state: "confirmed_absent", evidenceRefs: ["/canonical/meta-reconciliation.json", receiptHash] }),
+    ]);
+    expect(runtime.store.getRun(prior.runId)?.externalEffects).toEqual([
+      expect.objectContaining({ effectId, state: "confirmed_absent" }),
+    ]);
+  });
+
   it("loads exactly the policy-supported production graph portfolio", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-production-policy-"));
     cleanups.push(() => rm(root, { recursive: true, force: true }));

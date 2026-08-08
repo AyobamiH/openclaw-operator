@@ -186,9 +186,18 @@ Validation after implementation:
   text boxes, safe margins, overlap, contrast, reading-time, full decode and
   media hashing with `providerWrites=0`.
 
-The three stale host Instagram fixtures and portable ownership of host dynamic
-engine sources remain repository-hygiene follow-ups; they do not weaken the
-live Graph proof boundary.
+The three stale host Instagram fixtures were upgraded to layout contract
+`1.1.0`; the full host operations gate now passes `199/199`. The host dynamic
+engine sources required by the canonical publisher are tracked in the host
+operations repository.
+
+The first post-deployment Meta natural cycle also exposed stale Graph effect
+states from earlier ambiguous receipts. Complete canonical provider readback
+classified one historical effect as `effect_verified` and three as
+`confirmed_absent`, leaving zero unresolved Meta `request_sent`,
+`provider_accepted` or `ambiguous` effects. The live adapter now performs this
+receipt-bound reconciliation before reserving a new same-target dispatch, and
+the regression is covered by a focused Graph adapter test.
 
 ## Boundary
 

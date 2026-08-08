@@ -107,6 +107,58 @@ const loadThreadsRunner = () => loadWorkspaceModule<ThreadsRunnerModule>(process
 const loadMetaReplyRunner = () => loadWorkspaceModule<MetaReplyRunnerModule>(process.env.OPENCLAW_META_REPLY_RUNNER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/meta-reply-monitor-outbox-runner.mjs", ["runMonitor", "executePreparedReply", "reconcileReceiptOnly"]);
 const loadThreadsReadiness = () => loadWorkspaceModule<ThreadsReadinessModule>(process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/threads-readiness-preparer.mjs", ["prepareNextThreadsOpportunity"]);
 
+export async function reconcilePriorMetaReplyGraphEffects(
+  graphStore: GraphStore,
+  runner: MetaReplyRunnerModule,
+  options: { target?: string; excludeRunId?: string } = {},
+): Promise<Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }>> {
+  const reconciled: Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }> = [];
+  for (const priorRun of graphStore.listRuns({ graphId: "meta-reply-monitor", limit: 250 })) {
+    if (priorRun.runId === options.excludeRunId) continue;
+    const outboxId = String((priorRun.data.socialEffect as Record<string, unknown> | undefined)?.outboxId ?? "");
+    if (!outboxId) continue;
+    for (const effect of graphStore.externalEffects(priorRun.runId)) {
+      if (
+        effect.operationType !== "production.meta-reply-live.v1" ||
+        !["request_sent", "provider_accepted", "ambiguous"].includes(effect.state) ||
+        (options.target && effect.target !== options.target)
+      ) continue;
+      const result = await runner.reconcileReceiptOnly(outboxId);
+      const entry = result.entry ?? {};
+      const providerWrites = Number(entry.externalWriteCount ?? 0);
+      const providerResultId = entry.providerResultId ? String(entry.providerResultId) : undefined;
+      const receiptHash = String(entry.reconciliationReceiptSha256 ?? "");
+      const receiptPath = String(entry.reconciliationReceiptPath ?? "");
+      let state: "effect_verified" | "confirmed_absent" | null = null;
+      if (entry.status === "verified" && providerWrites === 1 && providerResultId) state = "effect_verified";
+      if (
+        entry.status === "confirmed_failure" &&
+        entry.providerReconciled === true &&
+        providerWrites === 0 &&
+        /^[a-f0-9]{64}$/.test(receiptHash) &&
+        receiptPath.length > 0
+      ) state = "confirmed_absent";
+      if (!state) continue;
+      const evidenceRefs = [receiptPath, receiptHash].filter(Boolean);
+      graphStore.reconcileEffect(priorRun.runId, effect.effectId, state, providerResultId, evidenceRefs);
+      const latest = graphStore.getRun(priorRun.runId);
+      if (!latest) throw new Error(`meta_reply_prior_graph_run_missing:${priorRun.runId}`);
+      graphStore.saveRun({
+        ...latest,
+        externalEffects: graphStore.externalEffects(priorRun.runId),
+        updatedAt: new Date().toISOString(),
+      }, latest.revision, [{
+        type: state === "effect_verified" ? "external_effect_verified" : "external_effect_reconciled",
+        nodeId: effect.nodeId,
+        actor: "adapter:production.meta-reply-live.v1",
+        payload: { effectId: effect.effectId, state, providerOperationId: providerResultId ?? null, evidenceRefs },
+      }]);
+      reconciled.push({ runId: priorRun.runId, effectId: effect.effectId, outboxId, state });
+    }
+  }
+  return reconciled;
+}
+
 function socialDispatchGate(graphStore: GraphStore, context: NodeExecutionContext) {
   if (!context.liveCapability) throw new Error("social_live_capability_missing");
   const capability = graphStore.oneRunLiveCapability(context.liveCapability.capabilityId);
@@ -668,6 +720,10 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       if (!prepared?.outboxId || prepared.action !== "reply") throw new Error("meta_reply_graph_exact_preparation_missing");
       if (!graphStore) throw new Error("meta_reply_graph_store_missing");
       const runner = await loadMetaReplyRunner();
+      await reconcilePriorMetaReplyGraphEffects(graphStore, runner, {
+        target: prepared.targetId ?? prepared.outboxId,
+        excludeRunId: context.run.runId,
+      });
       const result = await runner.executePreparedReply(prepared.outboxId, { graphDispatchGate: socialDispatchGate(graphStore, context) });
       const verified = result.entry?.status === "verified";
       const writes = Number(result.entry?.externalWriteCount ?? 0);

@@ -1747,3 +1747,21 @@
   repository changesets, restart the approved user service once, run health
   probes, and force only zero-write scheduler checks needed to clear stale cron
   transport state.
+
+## 2026-08-08 — Meta reply Graph-effect reconciliation completion
+
+- Trigger: the natural 13:15 Meta cycle prepared a reply with zero writes but
+  the one-run capability gate refused dispatch because an older same-target
+  Graph effect remained `ambiguous` after canonical outbox reconciliation.
+- Repair: canonical `reconcileReceiptOnly` evidence now reconciles prior Graph
+  effects before a new Meta reply dispatch. One historical provider reply was
+  marked `effect_verified`; three complete no-match readbacks were marked
+  `confirmed_absent`. Original receipts remain immutable and the corrective
+  receipt paths/hashes are retained as Graph evidence references.
+- Verification: the new focused regression passed; TypeScript build passed;
+  the live Graph store now contains zero Meta effects in `request_sent`,
+  `provider_accepted` or `ambiguous`. Provider writes for reconciliation: `0`;
+  Browser Relay calls: `0`.
+- Next safe step: run the full protected gate, push the preventive code, and
+  observe the next natural Meta and Instagram Reel cycles. No additional
+  manual provider write or second service restart is required.
