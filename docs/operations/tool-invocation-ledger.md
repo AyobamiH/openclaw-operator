@@ -2280,6 +2280,34 @@
   repair is naturally verified, but the canonical Meta readback mismatch and
   unavailable external evidence remain blockers; the canary has no authority.
 
+## 2026-08-09 — Full Graph campaign and recurring-work architecture audit
+
+- Requested task: reconstruct the complete active Graph-operated campaign and
+  recurring-work estate, compare pre-Graph capability, prove recent daily
+  execution, normalize safe local lifecycle/reporting defects, and leave one
+  inspectable operating-system report.
+- Tools and source: coding-lane `coding_repo_map` was used first for bounded
+  repository evidence; core `rg`, `git`, `systemctl`, `journalctl`, `sqlite3`,
+  `openclaw cron`, `curl`, `jq` and exact filesystem tests supplied runtime and
+  scheduler evidence that the metadata-only repo adapter could not. Official
+  read-only Relay connector status/accounts/capabilities were used with Browser
+  Relay unavailable. Focused Vitest and TypeScript validation proved repairs.
+- Changed state: local source/tests/docs only. Repair commit
+  `a410276d429d35da6e7f5181ca0db768fc678bf3` separates current invocation
+  effects from historical references and separates preparatory Instagram media
+  upload from the Instagram publication effect. No provider write, Browser
+  Relay call, live reconciliation, scheduler mutation, service restart, push,
+  deployment, migration activation, permission change or secret read occurred.
+- Evidence: `docs/operations/full-graph-operating-system-audit-2026-08-09.md`;
+  focused scheduler/adapter suites passed `77/77`; TypeScript passed. The broad
+  suite exposed unrelated endpoint-dependent and brittle-count baseline
+  failures, which are recorded rather than hidden.
+- Next safe step: obtain explicit approval for runtime load and deterministic
+  reconciliation of the historical Instagram effect, then verify the next
+  natural zero-write-or-authorized slot. Campaign rotation semantics remain a
+  product decision; host cron and scheduler-state changes remain separately
+  approval-gated.
+
 ## 2026-08-10 — Non-Graph recurring-work ownership reconciliation
 
 - Requested task: reconstruct and govern recurring application-level work that
