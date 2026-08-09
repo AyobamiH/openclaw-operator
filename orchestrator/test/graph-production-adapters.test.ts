@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
-import { reconcilePriorMetaReplyGraphEffects } from "../src/graph/production-adapters.js";
+import { classifyInstagramPublicationEffect, reconcilePriorMetaReplyGraphEffects } from "../src/graph/production-adapters.js";
 import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
 import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../src/graph/workflows.js";
 import { compareShadowDecisions, prepareProductionPublishingShadowDecision, type ShadowDecisionEnvelope } from "../src/publishing/shadow-equivalence.js";
@@ -81,6 +81,33 @@ function publishingInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe("production adapter registry", () => {
+  it("distinguishes a preparatory Instagram media upload from the publication effect", () => {
+    expect(classifyInstagramPublicationEffect({
+      status: "blocked",
+      providerResultId: null,
+      permalink: null,
+      generatedMediaUploadCalls: 1,
+      instagramPublishCalls: 0,
+      browserRelayCalls: 0,
+    })).toBe("confirmed_absent");
+    expect(classifyInstagramPublicationEffect({
+      status: "blocked",
+      providerResultId: "unexpected-provider-id",
+      permalink: null,
+      generatedMediaUploadCalls: 1,
+      instagramPublishCalls: 0,
+      browserRelayCalls: 0,
+    })).toBe("ambiguous");
+    expect(classifyInstagramPublicationEffect({
+      status: "verified",
+      providerResultId: "provider-id",
+      permalink: "https://www.instagram.com/p/provider-id/",
+      generatedMediaUploadCalls: 1,
+      instagramPublishCalls: 1,
+      browserRelayCalls: 0,
+    })).toBe("effect_verified");
+  });
+
   it("reconciles prior Meta ambiguity from canonical receipt evidence before a new dispatch", async () => {
     const runtime = await testRuntime();
     const prior = runtime.engine.start({

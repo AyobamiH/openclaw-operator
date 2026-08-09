@@ -363,6 +363,30 @@ function instagramPreparationBlockResult(entry: Record<string, any>, context: No
   };
 }
 
+export function classifyInstagramPublicationEffect(value: {
+  status?: string | null;
+  providerResultId?: string | null;
+  permalink?: string | null;
+  generatedMediaUploadCalls: number;
+  instagramPublishCalls: number;
+  browserRelayCalls: number;
+}): "effect_verified" | "confirmed_absent" | "ambiguous" {
+  if (
+    value.status === "verified" &&
+    Boolean(value.providerResultId) &&
+    Boolean(value.permalink) &&
+    value.instagramPublishCalls === 1 &&
+    value.browserRelayCalls === 0
+  ) return "effect_verified";
+  if (
+    value.instagramPublishCalls === 0 &&
+    !value.providerResultId &&
+    !value.permalink &&
+    value.browserRelayCalls === 0
+  ) return "confirmed_absent";
+  return "ambiguous";
+}
+
 export function createProductionAdapterRegistry(graphStore?: GraphStore, childRuns?: GraphChildRunCoordinator): ProductionAdapterRegistry {
   const registry = new ProductionAdapterRegistry();
   registry.register({
@@ -563,8 +587,8 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       }
       const verified = PublicationProjectionSchema.parse(await runner.instagramGraphPublicationProjection(result.entry));
       const output = { status: verified.status ?? "unknown", providerResultId: verified.providerResultId, permalink: verified.permalink, generatedMediaUploadCalls: verified.generatedMediaUploadCalls, instagramPublishCalls: verified.instagramPublishCalls, browserRelayCalls: 0 as const };
-      const correct = verified.status === "verified" && verified.providerResultId && verified.permalink && verified.instagramPublishCalls === 1 && verified.browserRelayCalls === 0;
-      const state = correct ? "effect_verified" as const : verified.instagramPublishCalls === 0 && verified.generatedMediaUploadCalls === 0 ? "confirmed_absent" as const : "ambiguous" as const;
+      const state = classifyInstagramPublicationEffect(output);
+      const correct = state === "effect_verified";
       return {
         outcome: correct ? "succeeded" : state === "confirmed_absent" ? "failed_repairable" : "blocked",
         output,
@@ -573,6 +597,11 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
           { kind: "provider-publication", uri: verified.permalink!, sha256: verified.payloadSha256!, summary: "One exact Instagram provider object created", checker: "production.instagram-publication-live.v2" },
           { kind: "official-provider-readback", uri: verified.permalink!, sha256: sha256(verified.verification), summary: "Canonical worker completed owned-feed, verify, and inspect readback", checker: "production.instagram-publication-live.v2" },
           { kind: "local-publication-state", uri: `graph://${context.run.runId}/publication/local-state`, sha256: sha256(verified), summary: "Canonical outbox and graph claim reached verified", checker: "production.instagram-publication-live.v2" },
+        ] : state === "confirmed_absent" ? [
+          { kind: "confirmed-absence", uri: `graph://${context.run.runId}/publication/confirmed-absence`, sha256: sha256(output), summary: "Canonical worker proved that no Instagram publication call occurred", checker: "production.instagram-publication-live.v2" },
+          ...(verified.generatedMediaUploadCalls > 0 ? [
+            { kind: "preparatory-external-effect", uri: `graph://${context.run.runId}/publication/media-upload`, sha256: sha256({ generatedMediaUploadCalls: verified.generatedMediaUploadCalls }), summary: "A preparatory media upload occurred but no Instagram publication call occurred", checker: "production.instagram-publication-live.v2" },
+          ] : []),
         ] : [],
         externalEffect: { idempotencyKey: context.idempotencyKey, operationType: "instagram-publication", target: envelope.providerTarget, payloadHash: context.effectPayloadHash, state, providerOperationId: verified.providerResultId ?? undefined, lastObservedAt: new Date().toISOString() },
         ...(correct ? {} : { failure: failure(state === "confirmed_absent" ? "provider_rejected" : "idempotency_conflict", "Canonical Instagram worker did not reach one verified publication") }),

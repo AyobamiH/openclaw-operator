@@ -859,6 +859,58 @@ describe("graph scheduler migration registry", () => {
     expect(formatGovernedScheduleOutput(result, binding.item.declaration.migrationId)).toContain("Final classification: missed");
   });
 
+  it("does not report a historical effect as a new write when a completed trigger is duplicate-suppressed", async () => {
+    const binding = governedJobs("threads-early-text-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const slotId = `threads:2026-08-09:07:00:${binding.item.declaration.scheduleId}`;
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, slotId, "2026-08-09T06:00:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-historical-publication" });
+    value.store.updateTrigger(reserved.triggerId, "executing", "test", { graphRunId: "run-historical-publication" });
+    value.store.updateTrigger(reserved.triggerId, "completed", "test", { graphRunId: "run-historical-publication", permalink: "https://www.threads.com/@example/post/historical" });
+    value.store.close();
+
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-09T06:00:30.000Z"),
+      schedulerPath: value.path,
+      request: async (route) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-historical-publication") return {
+          run: { runId: "run-historical-publication", status: "completed", data: { socialEffect: { action: "publish", outboxId: slotId, result: { providerResultId: "historical-provider-id", permalink: "https://www.threads.com/@example/post/historical" } } } },
+          externalEffects: [{ state: "effect_verified", providerOperationId: "historical-provider-id" }],
+          childRunReceipts: [],
+          verifierReceipts: [],
+          eventChainValid: true,
+          childRunReceiptChainValid: true,
+        };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+
+    expect(result).toMatchObject({
+      outcome: "duplicate_suppressed",
+      providerWrites: 0,
+      publicationReport: {
+        publicationOutcome: "not_published_zero_write",
+        policyOrSkipReason: "zero_write:duplicate_suppressed",
+        providerWrites: 0,
+        providerPostId: null,
+        providerPostUrl: null,
+        historicalProviderWrites: 1,
+        historicalProviderPostId: "historical-provider-id",
+        historicalProviderPostUrl: "https://www.threads.com/@example/post/historical",
+        finalClassification: "legitimate_skip",
+      },
+    });
+    const message = formatGovernedScheduleOutput(result, binding.item.declaration.migrationId);
+    expect(message).toContain("Publication outcome: not_published_zero_write");
+    expect(message).toContain("Provider writes: 0; Browser Relay calls: 0");
+    expect(message).toContain("Historical provider writes referenced: 1");
+    expect(message).toContain("Final classification: legitimate_skip");
+  });
+
   it("reconciles an already-completed original trigger with a corrected terminal notification and no replay", async () => {
     const binding = governedJobs("threads-daily-image-v1");
     const value = await fixture();

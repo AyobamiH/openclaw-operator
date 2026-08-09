@@ -45,6 +45,9 @@ type PublicationReport = {
   providerWrites: number;
   providerPostId: string | null;
   providerPostUrl: string | null;
+  historicalProviderWrites: number;
+  historicalProviderPostId: string | null;
+  historicalProviderPostUrl: string | null;
   verifierResult: string;
   recoveryRequired: boolean;
   finalClassification: PublicationClassification;
@@ -214,21 +217,24 @@ function syntheticSkipTrigger(migrationId: string, now: Date, reason: string): R
   };
 }
 
-export function buildPublicationReport(args: { detail: any; outcome: string; providerWrites: number; maximumExternalWrites: 0 | 1; eventChainValid: boolean; childReceiptChainValid: boolean; providerOperationId?: string | null; deferredReason?: string; completionContract?: SchedulerCompletionContract; recoveryResult?: string }): PublicationReport {
+export function buildPublicationReport(args: { detail: any; outcome: string; providerWrites: number; maximumExternalWrites: 0 | 1; eventChainValid: boolean; childReceiptChainValid: boolean; providerOperationId?: string | null; deferredReason?: string; completionContract?: SchedulerCompletionContract; recoveryResult?: string; historicalEffect?: { providerWrites: number; providerPostId: string | null; providerPostUrl: string | null } }): PublicationReport {
   const socialEffect = socialEffectFrom(args.detail);
   const result = resultFrom(socialEffect);
   const publicationLive = publicationLiveFrom(args.detail);
   const publicationResult = publicationResultFrom(publicationLive);
   const socialStatus = optionalString(socialEffect?.status) ?? optionalString(result?.status);
   const action = optionalString(socialEffect?.action);
-  const providerPostId = optionalString(result?.providerResultId) ?? optionalString(result?.providerOperationId) ?? optionalString(publicationResult?.providerResultId) ?? optionalString(args.providerOperationId);
-  const providerPostUrl = optionalString(result?.permalink) ?? optionalString(publicationResult?.permalink);
+  const providerPostId = args.outcome === "duplicate_suppressed" ? null
+    : optionalString(result?.providerResultId) ?? optionalString(result?.providerOperationId) ?? optionalString(publicationResult?.providerResultId) ?? optionalString(args.providerOperationId);
+  const providerPostUrl = args.outcome === "duplicate_suppressed" ? null
+    : optionalString(result?.permalink) ?? optionalString(publicationResult?.permalink);
   const candidateId = action && ["publish", "reply", "shadow"].includes(action)
     ? optionalString(socialEffect?.outboxId)
     : optionalString(publicationResult?.outboxId) ?? optionalString(publicationLive?.projection?.outboxId);
   const targetId = optionalString(socialEffect?.targetId) ?? optionalString(socialEffect?.outboxId) ?? optionalString(args.detail?.run?.data?.target) ?? optionalString(publicationResult?.outboxId);
   const terminalZeroWriteReason = args.providerWrites === 0 ? terminalZeroWriteReasonFrom(args.detail) : null;
-  const policyOrSkipReason = args.deferredReason ? `deferred:${args.deferredReason}`
+  const policyOrSkipReason = args.outcome === "duplicate_suppressed" ? "zero_write:duplicate_suppressed"
+    : args.deferredReason ? `deferred:${args.deferredReason}`
     : args.providerWrites > 0 ? "published"
       : socialStatus ? `${action === "skip" ? "skip" : "zero_write"}:${socialStatus}`
         : terminalZeroWriteReason ? terminalZeroWriteReason
@@ -253,6 +259,9 @@ export function buildPublicationReport(args: { detail: any; outcome: string; pro
     providerWrites: args.providerWrites,
     providerPostId,
     providerPostUrl,
+    historicalProviderWrites: args.historicalEffect?.providerWrites ?? 0,
+    historicalProviderPostId: args.historicalEffect?.providerPostId ?? null,
+    historicalProviderPostUrl: args.historicalEffect?.providerPostUrl ?? null,
     verifierResult: verifierResultFrom(args.detail),
     recoveryRequired: finalClassification === "missed" || finalClassification === "failed",
     finalClassification,
@@ -277,6 +286,8 @@ export function formatGovernedScheduleOutput(result: Record<string, unknown>, fa
     `Run: ${String(trigger.graphRunId ?? "none")}`,
     `Provider writes: ${String(report.providerWrites)}; Browser Relay calls: 0`,
     `Provider post: ${report.providerPostUrl ?? report.providerPostId ?? "none"}`,
+    `Historical provider writes referenced: ${String(report.historicalProviderWrites)}`,
+    `Historical provider post: ${report.historicalProviderPostUrl ?? report.historicalProviderPostId ?? "none"}`,
     `Verifier result: ${report.verifierResult}`,
     `Recovery required: ${report.recoveryRequired ? "yes" : "no"}`,
     `Recovery result: ${report.recoveryResult}`,
@@ -429,17 +440,22 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
             ? { receiptId: terminalReceipt.receiptId, outcome: terminalReceipt.outcome, receiptHash: terminalReceipt.receiptHash }
             : terminalCheckpointFrom(sealed.detail),
           trigger: reservation.trigger,
-          providerWrites: effects.length,
+          providerWrites: args.recoveryTriggerId ? effects.length : 0,
           publicationReport: buildPublicationReport({
             detail: sealed.detail,
             outcome: args.recoveryTriggerId ? terminalOutcome : "duplicate_suppressed",
-            providerWrites: effects.length,
+            providerWrites: args.recoveryTriggerId ? effects.length : 0,
             maximumExternalWrites: portfolio.maximumExternalWrites,
             eventChainValid: sealed.detail.eventChainValid === true,
             childReceiptChainValid: sealed.detail.childRunReceiptChainValid === true,
-            providerOperationId: effect?.providerOperationId ?? null,
+            providerOperationId: args.recoveryTriggerId ? effect?.providerOperationId ?? null : null,
             completionContract: sealed.contract,
             recoveryResult: args.recoveryTriggerId ? "terminal_reconciled_no_replay" : "duplicate_suppressed",
+            historicalEffect: args.recoveryTriggerId ? undefined : {
+              providerWrites: effects.length,
+              providerPostId: optionalString(effect?.providerOperationId),
+              providerPostUrl: optionalString(reservation.trigger.permalink),
+            },
           }),
           completionContract: sealed.contract,
           eventChainValid: sealed.detail.eventChainValid === true,
