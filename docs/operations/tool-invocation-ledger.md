@@ -2037,3 +2037,245 @@
   placeholder and the local portable packet. Provider writes `0`; Browser
   Relay calls `0`; no commit, push, runtime bundle, active schedule migration
   or restart has yet occurred in this approved deployment pass.
+
+## 2026-08-08 — Approved packet activation and immutable canary preparation
+
+- Source stages: `SOURCE_IMPLEMENTED=yes`; `COMMITTED=yes` at
+  `8eefb17777eca9bb98a409668cf1e3c37a7da3dd`; `PUSHED=yes`. A fresh
+  `git fetch`, local/tracking/remote SHA comparison and two ancestry checks
+  prove that both `8eefb17` and historical `fa78945` are reachable from remote
+  `main`. The first protected push completed; a redundant second attempt was
+  rejected because the remote ref had already advanced to the exact commit.
+- Immutable runtime: bundle
+  `20260808-full-pregraph-v3` was created read-only from `8eefb17`. Its
+  provenance binds registry
+  `68673f5f9741b32a37291889925faeaed5b327b379f68257408216c44970563c`,
+  integration
+  `1a65d0cf2fe48405fb2f814d26acd0b519a8bc3e8d6ba93a3a15e02ec531e9a5`,
+  dependency readiness
+  `a697141e941b631cd581acdc83dcf22729472aff9041aa5a618d6207c318999d`
+  and canonical renderer
+  `7dea1ff4b77f757c82cd2f6474306d73dbf5ee3b07c60b9dc396a8294046f997`.
+  Independent SHA-256 readback matched and no writable bundle path was found.
+- Scheduler ownership: immutable successor migration
+  `campaign-content-factory-full-pregraph-v4` on schedule
+  `2df05813-93e1-4d3f-8731-a5c2de3625d5` is `graph_owned`, event-chain valid,
+  enabled and bound to the v3 runtime through
+  `governed-task-execution@1.0.0` hash
+  `ad9c80668bc0b348bf48abe5fe2cf4854b95d38682b64f67e6bcf53ee45f240b`.
+  Historical v3 schedule `cb58654b-9136-4f75-8b4f-c7431c7fd3de` is disabled.
+  Its migration record remains intact for audit; it was not rewritten.
+- Rollback point: pre-cutover Graph scheduler, Graph run and deterministic
+  publishing SQLite backups plus exact legacy/Graph job snapshots are under
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/backups/20260808-full-pregraph-v3-cutover.UsbSaX/`.
+  The previous runtime is `20260808-full-pregraph-v2`; rollback of the new
+  migration restores the disabled no-op placeholder, after which the prior v3
+  job can be separately re-enabled only under rollback authority.
+- Service load: the single approved restart was submitted exactly once. PID
+  changed `167625` -> `239207`; activation changed from `17:19:22` to
+  `20:31:36 BST`. Shutdown was graceful, both health endpoints returned HTTP
+  `200`, persistence/Redis coordination are healthy, and startup loaded ten
+  Graph definitions with recovery `resumed=0, blocked=0`. The fixed adjacent
+  configuration hash was identical before and after:
+  `d23ff668131943a733ccbe1969df785fe7e6900cc4de1263a1e3b0ae9eb050b1`.
+- Phase 3 immutable proposal: official API status authenticated
+  `threads:owner` as `@tailwaggingwebdesigns`, represented target
+  `25914281681582868`, with Browser Relay unavailable. Canonical v3 runtime
+  planning for `2026-08-09 15:00 Europe/London` selected campaign
+  `campaign-founder-rescue-identification`, candidate
+  `candidate:threads:tailwaggingwebdesigns:2026-08-09:15:00:campaign-founder-rescue-identification:template-threads-text`,
+  content spec `content_3e718f7aedb92e0baf079746`, content hash
+  `18b64c67e124ea551a2974645d307e62083fd265b4fc6053183be46915c13977`
+  and rendered-text hash
+  `54c35590766cc721a09582193584394fa72ebe3975b5b9ac65c6aa2062161613`.
+  Schema, references, lifecycle, approval-scope, 468-character copy, claims,
+  sales-language, asset, duplicate, cooldown, quota and official-readback
+  checks passed. The exact content hash is absent from the local production
+  store; authenticated official Threads search returned no matching hook.
+- Canary authority boundary: exact canonical packet hash
+  `79f368cfce21afdef93800f7c1797994401aa292435ea6c70dd2984c24098206`
+  binds the target, copy, hashes, no media, not-before `14:59`, expiry `15:10`,
+  and `maximumExternalWrites=1`. No approval or one-run capability was issued.
+  The superseded pre-normalization hash remains unusable.
+- Safety and current verification state: provider writes `0`; Browser Relay
+  calls `0`; Phase 7 remains paused/unapproved; unsupported metrics remain
+  unavailable; CRM/website/conversation/conversion evidence remains blocked.
+  `RUNTIME_LOADED=yes`; `RUNTIME_VERIFIED=pending` until natural Meta and the
+  first enabled Campaign Factory successor cycle are evidenced.
+
+## 2026-08-08 — Natural 21:15 Meta reconciliation evidence
+
+- Requested task and lane: interim read-only runtime proof for the loaded Meta
+  state-patch repair after the single orchestrator restart at `20:31:36 BST`.
+  Core/local tools used were `openclaw cron runs/get`, read-only SQLite queries
+  against `graph-runs.sqlite` and `graph-scheduler.sqlite`, `jq` over canonical
+  outbox/reconciliation receipts, `systemctl --user show`, and narrow `rg`/file
+  inspection. Changed state: documentation and memory checkpoint only; no
+  schedule force/mutation, Graph execution request, provider write, retry,
+  Browser Relay call, service restart, config change, commit or push.
+- Cron and scheduler result: the natural `21:15 Europe/London` trigger
+  `gst_f8e51bfaa53f0beca2b89588f48bc4c1` completed at `21:15:43`, bound to run
+  `grzwcanary_e74df0f7-4788-498a-930a-1355477870b3`. The scheduler completion
+  contract passed and the trigger row is `completed`; cron transport is `ok`.
+  The publication classifier is truthfully `missed`, not a legitimate skip,
+  because the prepared reply produced no verified provider object.
+- Loaded-repair verdict: `state_patch_not_permitted:socialEffect.status` did
+  not recur. The 21:15 run reached `reconcile_provider_state:succeeded`,
+  `package_terminal_receipt:succeeded`, and Graph `completed/success`; the
+  count of matching post-restart node-attempt errors is `0`.
+- Historical effect identity was preserved in place. Pre-restart run
+  `grzwcanary_dd1c9129-42a1-4510-9853-615346ba2687` remains the immutable
+  failed/quarantined run, but its original effect
+  `gex_aeec36b6-d67f-4706-bc1d-a7b139af3072` still has idempotency key
+  `66910d0ba2e8f44ac8ed2e28938d5951ce660264c68530f45c3c5768298d265d`.
+  At `21:15:01` the new natural run reconciled that exact effect row to
+  `confirmed_absent`; Graph event `52` records the same effect ID and the
+  canonical receipt evidence. Consumed capability
+  `glc_9991d64437526a4155dcdac8972ba4fe` remains consumed with exactly one
+  dispatch, now `confirmed_absent` / `duplicate_blocked`. The historical run
+  and scheduler trigger remain failed/ambiguous for audit and were not replayed.
+- Write accounting and recovery decision: the historical and 21:15 live-node
+  snapshots each contain the conservative pre-reconciliation attempted-write
+  marker `providerWrites=1`, and each capability has `dispatch_count=1`.
+  Canonical connector/outbox evidence resolves both calls as
+  `duplicate_blocked` with `externalWrite=false`; complete official provider
+  readback found no exact authorized reply. Final actual provider writes are
+  therefore `0`, verified provider objects `0`, retries `0`, and Browser Relay
+  calls `0`. Both exact reconciliation receipts record
+  `confirmed_failure`, `externalWriteCount=0`, `retryPerformed=false`, and
+  `browserRelayCalls=0`. Recovery decision: reconcile-only, preserve the
+  original identity, and do not retry.
+- Evidence: `graph-runs.sqlite` effect/capability/dispatch/attempt/event rows;
+  `graph-scheduler.sqlite` trigger rows; canonical receipts
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/business-operations/social-outboxes/meta-reply-monitor-reconciliations/2026-08-08/meta-reply-monitor-20260808T1815Z-03eead1a63332469.json`
+  and
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/business-operations/social-outboxes/meta-reply-monitor-reconciliations/2026-08-08/meta-reply-monitor-20260808T1915Z-e10170ce72c67568.json`;
+  canonical outboxes under `artifacts/business-value/marketing/2026-08-08/`.
+  The service is still the once-restarted PID `239207`, active/running since
+  `20:31:36 BST`, with `NRestarts=0` for the current activation.
+- Interim decision: the Meta state-patch repair is naturally runtime-verified.
+  The overall `PRE_GRAPH_CONTRACT_GOVERNED_WITH_EXTERNAL_BLOCKERS` closeout
+  remains pending the separate first natural Campaign Factory v4 cycle; no
+  user-facing terminal message is sent from this interim observer.
+
+## 2026-08-09 — Meta reply-monitor timestamp and identity-label audit
+
+- Requested task and lane: investigate why the 00:17 and 01:17 Europe/London
+  Meta reply-monitor messages appeared not to align with the time embedded in
+  `Candidate ID`. Workflow lanes: scheduler/runtime inspection and notification
+  contract audit.
+- Tools and sources: `openclaw__coding_repo_map` and
+  `openclaw__coding_route_trace` from `coding-agent-skills`; the latter returned
+  partial because route-trace is not enabled by the project adapter, so bounded
+  core fallback used `rg`, `sed`, `jq`, `sqlite3`, and Node `Intl` against the
+  named scheduler formatter, canonical runner, trigger receipts, Graph run
+  database and Meta outbox. Changed state: documentation evidence only; no
+  code, scheduler, service, provider, Graph-run, commit, push or deployment
+  mutation.
+- Evidence and result: `meta-reply-monitor-20260808T2315Z` is the monitor
+  outbox/run identity for scheduled UTC `2026-08-08T23:15:00Z`, which is
+  `2026-08-09 00:15 BST`; it completed at `00:17:37 BST` after 157.776 seconds.
+  `meta-reply-monitor-20260809T0015Z` is scheduled UTC
+  `2026-08-09T00:15:00Z`, which is `01:15 BST`; it completed at `01:17:45 BST`
+  after 165.879 seconds. Trigger slot IDs independently record the correct
+  local slots `meta:2026-08-09:00:15:...` and
+  `meta:2026-08-09:01:15:...`.
+- Contract defect: `buildPublicationReport` assigns
+  `socialEffect.outboxId` to `candidateId`, and
+  `formatGovernedScheduleOutput` labels that value `Candidate ID`. The value is
+  therefore an outbox/run ID, not the selected provider candidate. The actual
+  selected candidate is `socialEffect.targetId` (`17885963115612455` in both
+  runs). The notification also omits scheduled local time, scheduled UTC time
+  and completion time, making the valid UTC `Z` timestamp look one hour behind
+  Telegram's BST timestamp.
+- Safety/result: both runs were on time and internally consistent; this is a
+  notification semantics/presentation defect, not scheduler drift or identity
+  corruption. Provider writes `0`; Browser Relay calls `0`. Next safe step is a
+  separately requested local formatter/test change that renames the field to
+  `Outbox/run ID` and displays local scheduled time, UTC scheduled time and
+  completion time; runtime loading would remain a separate approval boundary.
+
+## 2026-08-09 — Terminal natural verification and remote containment
+
+- Requested task and boundaries: finish the authorized mission after the first
+  natural `05:00 Europe/London` Campaign Factory successor cycle. This pass was
+  read-only except for documentation and memory closeout. It did not force a
+  schedule, execute a provider write, use Browser Relay, activate Phase 7,
+  alter runtime/configuration, retry an ambiguous effect or restart the
+  orchestrator.
+- Read-only tools and evidence: `openclaw cron get/runs`; `systemctl --user
+  show`; public loopback `/health`; narrow `rg`, `sha256sum`, `stat`, `jq` and
+  SQLite queries; GraphStore event-chain verification; scheduler migration
+  chain verification; deterministic report replay against disposable database
+  copies; and Relay connector account/capability/discovery calls for official
+  Threads and Instagram readback. A direct Instagram comment inspection was
+  unsupported by the provider field shape, so the bounded fallback used the
+  owning media's official `post_replies` surface. No connector write tool was
+  invoked.
+- Runtime identity and provenance: service PID `239207` remains active/running
+  from `2026-08-08 20:31:36 BST`, with `NRestarts=0` and healthy loopback
+  liveness. Immutable runtime `20260808-full-pregraph-v3` declares source
+  commit `8eefb17777eca9bb98a409668cf1e3c37a7da3dd`; independent hashes match
+  registry `68673f5f9741b32a37291889925faeaed5b327b379f68257408216c44970563c`,
+  integration `1a65d0cf2fe48405fb2f814d26acd0b519a8bc3e8d6ba93a3a15e02ec531e9a5`,
+  dependency readiness
+  `a697141e941b631cd581acdc83dcf22729472aff9041aa5a618d6207c318999d`
+  and renderer entrypoint
+  `7dea1ff4b77f757c82cd2f6474306d73dbf5ee3b07c60b9dc396a8294046f997`.
+  Scheduler portfolio source hash:
+  `92bcb78e0d88bad2ac97a8ff0565ecbbf361731829b08953eb278a83b492f424`.
+  The ordered ten-definition Graph portfolio hashes to
+  `dbc1e1e0b7d328027f209c19482a8cb1fc8bdf7feb703323c54b33cd7847f394`.
+- Campaign Factory natural receipt: enabled schedule
+  `2df05813-93e1-4d3f-8731-a5c2de3625d5` started naturally after `05:00`
+  and completed at `05:03:51 BST`. Trigger
+  `gst_e66233cd22be8537f288265b6f7dd52f` bound Graph run
+  `grzwcanary_c6df53e1-57fb-4013-8b9c-51d7855289f6`, definition
+  `governed-task-execution@1.0.0` hash
+  `ad9c80668bc0b348bf48abe5fe2cf4854b95d38682b64f67e6bcf53ee45f240b`.
+  It completed a unique shadow opportunity with `legitimate_skip` /
+  `zero_write_policy`, six successful first attempts, valid 52-event chain,
+  child receipt `gcr_82f16c34-8af6-40c3-85aa-4f35f3d9fffa`, and passing
+  verifier receipt
+  `gvr_b709f1ee-ebfb-441a-b178-ae7d618ff68f:passed:receipt_chain_verified`.
+  Recovery was not required; provider writes and Browser Relay calls were `0`.
+- Activation-wide scheduler proof: since PID start, 33 relevant natural
+  Graph-owned cycles reached terminal state: 29 completed and four failed safe.
+  All used one scheduler attempt, all 33 Graph event chains and all seven
+  scheduler migration chains validate, and none has a provider object ID.
+  The complete 147-run post-activation Graph estate also has valid event chains.
+  Thirteen external-effect rows exist; none has a provider operation ID.
+- Meta state-patch result: all nine natural reply-monitor cycles from `21:15`
+  through `05:15` completed on their first Graph attempts. The repaired
+  reconciliation and terminal-receipt nodes succeeded; no
+  `state_patch_not_permitted:socialEffect.status` error recurred. Each effect
+  retained one consumed capability and exactly one dispatch, then reconciled
+  through the ambiguous branch without any retry.
+- Canonical readback blocker: official Instagram readback on parent media
+  `18137975704598362` found exactly one represented-account reply to comment
+  `17885963115612455`: provider object `18402105745083248`, posted
+  `2026-08-08T11:17:54Z`, with text exactly matching the selected draft. The
+  reply predates the current PID and proves containment/no post-restart
+  duplicate. The post-restart reconciliation receipts nevertheless classify
+  the exact reply absent and the candidate unanswered. This is a distinct
+  provider-state classification defect; duplicate blocking prevented an
+  external write but does not make the receipts truthful.
+- Phase results: Phase 6 performed zero metric reads because no verified
+  Campaign Factory provider object was eligible. Only supported official
+  Threads metrics are modeled; unsupported provider metrics and CRM, website,
+  conversation, conversion and attribution evidence remain unavailable.
+  Phase 7 remains `READY_BUT_INTENTIONALLY_INACTIVE`, with two paused/unapproved
+  experiments and no automatic adjustment. Phase 8 emitted reports with null /
+  unavailable evidence visible; repeated execution over identical frozen state
+  and time produced byte-identical daily and weekly outputs.
+- Remote/canary proof: official Threads owned-feed readback found no exact
+  proposed copy and no owned post after `2026-08-08T03:43:19Z`. Exact database
+  searches found zero Graph approvals, zero publishing approvals, zero rendered
+  candidates and zero one-run capabilities for the immutable `15:00` canary
+  packet. Total actual provider writes for the verified natural estate: `0`.
+- Rollback was read only and remains intact at
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/backups/20260808-full-pregraph-v3-cutover.UsbSaX/`.
+- Terminal classification:
+  `PRE_GRAPH_CONTRACT_GOVERNED_WITH_EXTERNAL_BLOCKERS`. The loaded state-patch
+  repair is naturally verified, but the canonical Meta readback mismatch and
+  unavailable external evidence remain blockers; the canary has no authority.

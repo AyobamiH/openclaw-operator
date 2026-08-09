@@ -5,10 +5,13 @@ summary: "Evidence-backed reconstruction of pre-Graph social rendering and publi
 
 # Social Rendering Pre-Graph Migration Investigation
 
-Status: expanded full-estate reconstruction complete; hard-cutover source
-implementation approved, committed and pushed; the business-loop Graph
-definition loaded at 17:19 BST, while final Campaign Factory v3 natural-cycle
-verification is still pending and must not be collapsed into source status.
+Status: terminal natural-cycle verification complete with classification
+`PRE_GRAPH_CONTRACT_GOVERNED_WITH_EXTERNAL_BLOCKERS`. Source commit
+`8eefb17777eca9bb98a409668cf1e3c37a7da3dd` is pushed and loaded through
+immutable runtime `20260808-full-pregraph-v3`; the first natural Campaign
+Factory v4 successor cycle completed with zero provider writes. The Meta
+state-patch defect is gone, but canonical provider readback exposed a separate
+reply-state classification defect that remains a blocker.
 
 The initial investigation was read-only. The subsequent approved social repair
 was loaded and exercised in the running orchestrator and is recorded below.
@@ -21,13 +24,19 @@ recorded zero provider writes and zero Browser Relay calls.
 The business-loop lifecycle repair has the following independently evidenced
 state:
 
-- source implemented: yes (`governed-task-execution@1.1.0` and three bindings);
-- committed: yes (`fa78945`);
-- pushed: yes (remote `main` now reaches `e99879b`);
-- loaded by the running orchestrator: yes (10 definitions at 17:19 BST);
-- runtime verified: not yet for the final immutable Campaign Factory v3
-  schedule, which has zero completed triggers and next runs at the next natural
-  05:00 opportunity.
+- source implemented: yes, including the final dependency, metric, experiment,
+  provenance and Meta reconciliation packet;
+- committed and pushed: yes, source commit
+  `8eefb17777eca9bb98a409668cf1e3c37a7da3dd` is reachable from remote `main`;
+- loaded by the running orchestrator: yes, PID `239207`, active since
+  `2026-08-08 20:31:36 BST`, with `NRestarts=0` for this activation;
+- runtime verified: yes for the zero-write contract. Immutable runtime
+  `20260808-full-pregraph-v3` and Graph-owned Campaign Factory successor
+  `campaign-content-factory-full-pregraph-v4` completed their first natural
+  `05:00 Europe/London` opportunity;
+- terminal limitation: official Instagram readback proves the represented
+  account's exact reply already existed before this runtime activation, while
+  each post-restart Meta reconciliation receipt classified it absent.
 
 The machine-readable dependency and activation record is
 `config/publishing/dependency-readiness.v1.json`. It keeps technical readiness,
@@ -145,9 +154,9 @@ on every platform.
 | 3 — Portfolio activation | Rotate products over five opportunities without conflicting with existing publishers | Seven products, thirteen active campaigns covering all eight families, and the five-slot schedule | Graph-native shadow; product/campaign activation complete, live provider authority still separate | Exact dated payload-bound Self-Identification canary and one-run Graph capability |
 | 4 — Asset intelligence | Track source proof and exact/recompressed/derivative relationships | Proof-lineage classifier, registered 42-second master and campaign media receipts exist | Deterministic contract is present and Graph-receipted in shadow | Live campaign use awaits Phase 3 authority; new assets need evidence registration |
 | 5 — Cross-platform renderers | Render the selected content contract per approved platform | Threads text/image and Instagram image/Reel are implemented with local canonical rendering | Complete for connected Meta surfaces | LinkedIn/X or any new platform needs an official connector, readback contract and explicit activation; Reddit remains prohibited |
-| 6 — Metrics and attribution | Capture honest provider metrics, conversations and evidence-backed outcome links | Provider metrics capture, conversation records and evidence-threshold attribution stores exist; the Campaign Factory Graph child now reads them into operational reports | Runtime owner complete. Missing connector evidence is explicitly unavailable; no attribution is inferred | Add new CRM/website evidence only through provenance-bearing adapters when those systems supply records |
-| 7 — Experimentation | Apply bounded, approved measurement adjustments | Active approved baseline experiment has a zero adjustment, ten-sample minimum and stop rule | Graph-owned evaluation complete; selection cannot change from this baseline | Separate approval remains mandatory before any non-zero adjustment |
-| 8 — Operational hardening | Replay, kill switches, reports, alerts and recovery | Exactly-once/reconciliation, hash-chain audit, capability gates, plus distinct daily and weekly campaign commercial reports | Complete for evidence-only operations | Keep provider writes and future experiment changes separately capability-gated |
+| 6 — Metrics and attribution | Capture honest provider metrics, conversations and evidence-backed outcome links | Official Threads `post_insights` is the only supported provider-metric source in this runtime; views and fully supported engagement-rate inputs are mapped, while unsupported provider fields and CRM/website/conversation/conversion evidence remain unavailable | Natural cycle complete with zero eligible verified provider objects, zero metric reads and zero inferred values; daily and weekly reports keep missing evidence visible as `null`/unavailable | Add new CRM/website evidence only through provenance-bearing adapters when those systems supply records |
+| 7 — Experimentation | Apply bounded, approved measurement adjustments | Both experiments are paused and unapproved; reports contain no active experiments and no automatic performance adjustment | `READY_BUT_INTENTIONALLY_INACTIVE` | Separate approval remains mandatory before activation or any non-zero adjustment |
+| 8 — Operational hardening | Replay, kill switches, reports, alerts and recovery | Exactly-once/reconciliation, hash-chain audit, capability gates, plus distinct daily and weekly campaign commercial reports | Natural reports complete; repeated runs over the same frozen state and observed time produced byte-identical hashes, with absent metrics and attribution visible rather than coerced to zero | Keep provider writes and future experiment changes separately capability-gated |
 
 ## Business-value loop ownership repair
 
@@ -340,27 +349,104 @@ The first post-cutover Meta cycle reconciled the stale historical effects, but
 the 18:15 local cycle exposed a second contract defect after a newly ambiguous
 provider attempt: canonical readback reached the reconciliation node, then
 Graph rejected its state patch as
-`state_patch_not_permitted:socialEffect.status`. The local source repair no
-longer patches unrelated state; it returns the reconciled external-effect
-state and the engine preserves the original effect node and idempotency
-identity. The focused fixture proves ambiguous-to-confirmed-absent closure
-without a retry. This repair is not committed, pushed or loaded, so the current
-runtime effect remains quarantined as ambiguous pending approved rollout and
-canonical reconciliation.
+`state_patch_not_permitted:socialEffect.status`. The committed repair no longer
+patches unrelated state; it returns the reconciled external-effect state and
+preserves the original effect node and idempotency identity.
 
-The exact local deployment packet comprises the dependency-readiness registry
-and validator; Phase 6 recurring official-metric refresh; Phase 7 paused-state
-correction; deterministic copy punctuation hardening; immutable-runtime
-provenance binding; Meta effect reconciliation; associated tests; and the
-workboard, investigation and invocation-ledger updates. `git status` is the
-authoritative file manifest until the packet receives a commit identity.
+Natural runtime evidence now proves that exact state-patch defect is gone.
+Nine post-restart Meta cycles from `21:15` through `05:15 Europe/London` each
+completed on attempt one. Every `reconcile_provider_state` and
+`package_terminal_receipt` node succeeded, and no matching state-patch error
+recurred. Each cycle retained one external-effect row, one consumed live
+capability and exactly one dispatch. The effect moved through the ambiguous
+branch to `confirmed_absent`; no effect had a second attempt, provider operation
+ID, retry or Browser Relay call.
+
+The same verification exposed a distinct blocker. Official Instagram
+`post_replies` readback for parent media `18137975704598362` proves comment
+`17885963115612455` already has exactly one represented-account reply,
+provider object `18402105745083248`, posted at
+`2026-08-08T11:17:54Z`. Its exact text matches the reply draft selected by all
+nine post-restart cycles. It predates PID `239207`; therefore no post-restart
+duplicate was created. However, the Graph reconciliation receipts report that
+exact reply absent and mark the candidate unanswered. Duplicate-ledger
+containment prevented a write, but canonical readback classification is not
+truthful and must be repaired under a separate source/deployment authority.
+
+## Terminal natural-cycle verification
+
+- Service identity: PID `239207`, active/running since
+  `2026-08-08 20:31:36 BST`, `NRestarts=0`; public health returned `healthy`.
+  No additional restart was performed.
+- Runtime provenance: immutable bundle `20260808-full-pregraph-v3` declares
+  source commit `8eefb17777eca9bb98a409668cf1e3c37a7da3dd` and independently
+  verified SHA-256 values for registry
+  `68673f5f9741b32a37291889925faeaed5b327b379f68257408216c44970563c`,
+  integration
+  `1a65d0cf2fe48405fb2f814d26acd0b519a8bc3e8d6ba93a3a15e02ec531e9a5`,
+  dependency readiness
+  `a697141e941b631cd581acdc83dcf22729472aff9041aa5a618d6207c318999d`
+  and renderer entrypoint
+  `7dea1ff4b77f757c82cd2f6474306d73dbf5ee3b07c60b9dc396a8294046f997`.
+  The scheduler portfolio source hash is
+  `92bcb78e0d88bad2ac97a8ff0565ecbbf361731829b08953eb278a83b492f424`.
+  The loaded ten-definition Graph portfolio, canonicalized as ordered
+  `graph_id|version|definition_hash` rows, hashes to
+  `dbc1e1e0b7d328027f209c19482a8cb1fc8bdf7feb703323c54b33cd7847f394`.
+- First natural successor: schedule
+  `2df05813-93e1-4d3f-8731-a5c2de3625d5` completed at `05:03:51 BST` after
+  its natural `05:00` opportunity. Trigger
+  `gst_e66233cd22be8537f288265b6f7dd52f` bound run
+  `grzwcanary_c6df53e1-57fb-4013-8b9c-51d7855289f6`, Graph definition
+  `governed-task-execution@1.0.0` hash
+  `ad9c80668bc0b348bf48abe5fe2cf4854b95d38682b64f67e6bcf53ee45f240b`.
+  The result was `completed_unique_opportunity` / `shadow_verified`, with
+  `legitimate_skip`, `zero_write_policy`, no recovery and zero provider writes.
+- Receipt closure: all six parent nodes succeeded on attempt one; the 52-event
+  chain validates. Child receipt
+  `gcr_82f16c34-8af6-40c3-85aa-4f35f3d9fffa` and verifier receipt
+  `gvr_b709f1ee-ebfb-441a-b178-ae7d618ff68f:passed:receipt_chain_verified`
+  are hash-bound to the run. The child queue task succeeded in one attempt and
+  did not retry.
+- Whole activation: 33 relevant natural Graph-owned scheduler cycles ran after
+  PID start: 29 completed and four failed safe, all with scheduler attempt
+  count one and no provider object ID. All 33 Graph event chains and all seven
+  scheduler migration chains validate. Across the complete Graph run estate
+  created after activation, 147 event chains validate. Thirteen external-effect
+  rows exist, none with a provider operation ID; every natural-cycle state
+  reports `providerWrites=0`.
+- Phase 6: the natural Campaign Factory cycle had zero eligible verified
+  provider objects, so it made zero official metric reads and produced no
+  metrics. Official Threads metrics are the only supported provider metrics;
+  unsupported provider fields and CRM, website, conversation, conversion and
+  attribution evidence remain unavailable. Reports expose missing evidence as
+  null/unavailable, never as a fabricated zero.
+- Phase 7: both registry experiments are paused/unapproved and operational
+  reports include no active experiment or automatic adjustment. Status remains
+  `READY_BUT_INTENTIONALLY_INACTIVE`.
+- Phase 8: daily and weekly JSON/Markdown reports were emitted with missing
+  evidence visible. Two independent executions over identical frozen database
+  state and observed time produced byte-identical hashes. The canonical natural
+  snapshot precedes the same-cycle shadow publication by design, so a replay
+  against the post-cycle database has one additional shadow publication while
+  remaining internally deterministic.
+- Remote containment: official Threads owned-feed readback shows no immutable
+  canary copy and no owned post after `2026-08-08T03:43:19Z`. Official Instagram
+  readback shows one exact historical reply and no post-restart duplicate.
+  Actual provider writes by the verified natural estate are `0`.
+- Canary authority: no matching Graph approval, publishing approval, rendered
+  candidate or one-run live capability exists for the proposed `15:00`
+  Threads packet. It remains immutable proposal evidence only.
+- Rollback remains preserved at
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/backups/20260808-full-pregraph-v3-cutover.UsbSaX/`.
 
 ## Boundary
 
-The historical investigation and previously approved hard cutover are
-complete. The subsequent dependency, metrics, copy, experiment-state and Meta
-reconciliation packet is only locally implemented and validated. It is
-`COMMITTED=no`, `PUSHED=no`, `RUNTIME_LOADED=no` and `RUNTIME_VERIFIED=no` and
-therefore requires fresh approval for commit/push and immutable-runtime /
-scheduler activation. No provider retry or new provider write is authorized by
-that packet.
+The authorized deployment and natural zero-write verification are complete.
+The allowed terminal classification is
+`PRE_GRAPH_CONTRACT_GOVERNED_WITH_EXTERNAL_BLOCKERS`: source is committed,
+pushed and runtime-verified, but Meta reply readback classification remains
+incorrect, CRM/website/conversation/conversion evidence is unavailable, and
+the immutable `15:00` Threads canary has neither approval nor capability. No
+provider retry, Phase 7 activation, canary execution, new provider write or
+additional restart is authorized.
