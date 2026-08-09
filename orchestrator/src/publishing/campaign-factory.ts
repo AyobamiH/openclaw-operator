@@ -1,5 +1,9 @@
 import { resolve } from "node:path";
-import { DeterministicPublishingEngine } from "./engine.js";
+import {
+  buildSelectionHistory,
+  DeterministicPublishingEngine,
+  deterministicRenderedCandidate,
+} from "./engine.js";
 import type { CampaignMediaArtifact, CampaignMediaDelivery } from "./media-artifact.js";
 import { loadRegistryBundle } from "./registry.js";
 import {
@@ -9,6 +13,8 @@ import {
 } from "./production-integration.js";
 import { prepareProductionPublishingShadowDecision } from "./shadow-equivalence.js";
 import { PublishingStore } from "./store.js";
+import { mergeSelectionHistories } from "./selection.js";
+import { sha256 } from "./canonical.js";
 import type { ContentSpec, PublishingRegistryBundle } from "./types.js";
 
 export type CampaignFactoryOpportunity = {
@@ -70,6 +76,7 @@ export async function auditCampaignContentFactory(input: {
   mediaArtifacts?: CampaignMediaArtifact[];
   mediaDeliveries?: CampaignMediaDelivery[];
   opportunityIds?: string[];
+  plannedContent?: CampaignFactoryPlannedContent[];
 }): Promise<CampaignFactoryAudit> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.localDate)) {
     throw new Error("campaign_factory_local_date_invalid");
@@ -82,24 +89,47 @@ export async function auditCampaignContentFactory(input: {
   const opportunities: CampaignFactoryOpportunity[] = [];
   const artifacts = new Map((input.mediaArtifacts ?? []).map((artifact) => [artifact.contentSpecId, artifact]));
   const deliveries = new Map((input.mediaDeliveries ?? []).map((delivery) => [delivery.contentSpecId, delivery]));
+  const plannedContent = input.plannedContent ?? planCampaignFactoryContentForDate({
+    registry,
+    integration,
+    localDate: input.localDate,
+    opportunityIds: input.opportunityIds,
+  });
+  const plannedByOpportunity = new Map(
+    plannedContent.map((item) => [item.opportunityId, item]),
+  );
 
   const opportunityIds = input.opportunityIds ? new Set(input.opportunityIds) : null;
   for (const opportunity of integration.opportunities.filter(
     (candidate) => candidate.enabled && (!opportunityIds || opportunityIds.has(candidate.id)),
   )) {
     const observedAt = `${input.localDate}T${opportunity.localTime}:00${offset}`;
-    const decision = await prepareProductionPublishingShadowDecision({
+    const planned = plannedByOpportunity.get(opportunity.id);
+    const decision = planned ? null : await prepareProductionPublishingShadowDecision({
       integrationPath,
       registryPath,
       opportunityId: opportunity.id,
       observedAt,
     });
-    const format = typeof decision.payload?.format === "string" ? decision.payload.format : null;
-    const mediaUrl = typeof decision.payload?.mediaUrl === "string" && decision.payload.mediaUrl.length > 0
-      ? decision.payload.mediaUrl
-      : null;
-    const contentReady = decision.graphSafeState === "completed" && Boolean(decision.payloadHash);
-    const contentSpecId = typeof decision.decision.contentSpecId === "string" ? decision.decision.contentSpecId : null;
+    const rendered = planned ? deterministicRenderedCandidate(planned.contentSpec) : null;
+    const plannedPayload = rendered ? {
+      text: rendered.text,
+      mediaUrl: rendered.mediaUrl ?? null,
+      mediaHash: rendered.mediaHash ?? null,
+      format: planned!.contentSpec.format,
+    } : null;
+    const format = planned?.contentSpec.format ??
+      (typeof decision?.payload?.format === "string" ? decision.payload.format : null);
+    const mediaUrl = plannedPayload?.mediaUrl ??
+      (typeof decision?.payload?.mediaUrl === "string" && decision.payload.mediaUrl.length > 0
+        ? decision.payload.mediaUrl
+        : null);
+    const payloadHash = plannedPayload ? sha256(plannedPayload) : decision?.payloadHash ?? null;
+    const contentReady = planned
+      ? Boolean(payloadHash)
+      : decision?.graphSafeState === "completed" && Boolean(payloadHash);
+    const contentSpecId = planned?.contentSpec.id ??
+      (typeof decision?.decision.contentSpecId === "string" ? decision.decision.contentSpecId : null);
     const artifact = contentSpecId ? artifacts.get(contentSpecId) : undefined;
     const delivery = contentSpecId ? deliveries.get(contentSpecId) : undefined;
     const artifactBound = Boolean(
@@ -119,7 +149,7 @@ export async function auditCampaignContentFactory(input: {
     const mediaArtifactReady = format === "text" || artifactBound || Boolean(mediaUrl);
     const durableDeliveryReady = format === "text" || deliveryBound || Boolean(mediaUrl);
     const blockers = [
-      ...(contentReady ? [] : [decision.blockReason ?? "content_not_ready"]),
+      ...(contentReady ? [] : [decision?.blockReason ?? "content_not_ready"]),
       ...(contentReady && !mediaArtifactReady ? [`immutable_media_artifact_missing:${format ?? "unknown"}`] : []),
       ...(contentReady && mediaArtifactReady && !durableDeliveryReady
         ? [`durable_public_media_delivery_missing:${format ?? "unknown"}`]
@@ -130,7 +160,7 @@ export async function auditCampaignContentFactory(input: {
       platformId: opportunity.platformId,
       localTime: opportunity.localTime,
       contentSpecId,
-      payloadHash: decision.payloadHash,
+      payloadHash,
       format,
       contentReady,
       mediaArtifactReady,
@@ -192,35 +222,58 @@ export function planCampaignFactoryContentForDate(input: {
   integration: Awaited<ReturnType<typeof loadProductionIntegration>>;
   localDate: string;
   opportunityIds?: string[];
+  historyDatabasePath?: string;
 }): CampaignFactoryPlannedContent[] {
   const offset = londonOffsetFor(input.localDate);
   const opportunityIds = input.opportunityIds ? new Set(input.opportunityIds) : null;
-  return input.integration.opportunities
-    .filter((candidate) => candidate.enabled && (!opportunityIds || opportunityIds.has(candidate.id)))
-    .map((configuredOpportunity) => {
+  const planningStore = new PublishingStore(":memory:");
+  const historyStore = input.historyDatabasePath
+    ? new PublishingStore(resolve(input.historyDatabasePath), { readOnly: true })
+    : null;
+  try {
+    const engine = new DeterministicPublishingEngine(input.registry, planningStore);
+    engine.initialize();
+    return input.integration.opportunities
+      .filter((candidate) => candidate.enabled && (!opportunityIds || opportunityIds.has(candidate.id)))
+      .map((configuredOpportunity) => {
       const observedAt = new Date(`${input.localDate}T${configuredOpportunity.localTime}:00${offset}`);
       const resolution = resolveProductionOpportunity(input.integration, configuredOpportunity.id, observedAt);
       const opportunity = opportunityFor(input.integration, configuredOpportunity.id, resolution.scheduledFor);
-      const store = new PublishingStore(":memory:");
-      try {
-        const engine = new DeterministicPublishingEngine(input.registry, store);
-        engine.initialize();
-        const plan = engine.planSlot({
-          platformId: opportunity.platformId,
-          accountId: opportunity.accountId,
-          scheduledFor: resolution.scheduledFor,
-          now: resolution.scheduledFor,
-        });
-        if (plan.result !== "reserved" || !plan.contentSpec) {
-          throw new Error(`campaign_factory_content_not_reserved:${opportunity.id}:${plan.result}`);
-        }
-        return {
-          opportunityId: opportunity.id,
-          scheduledFor: resolution.scheduledFor.toISOString(),
-          contentSpec: plan.contentSpec,
-        };
-      } finally {
-        store.close();
+      const histories = [
+        buildSelectionHistory(planningStore, resolution.scheduledFor, "shadow_portfolio"),
+        ...(historyStore
+          ? [buildSelectionHistory(historyStore, resolution.scheduledFor, "shadow_portfolio")]
+          : []),
+      ];
+      const plan = engine.planSlot({
+        platformId: opportunity.platformId,
+        accountId: opportunity.accountId,
+        scheduledFor: resolution.scheduledFor,
+        now: resolution.scheduledFor,
+        selectionHistory: mergeSelectionHistories(histories),
+      });
+      if (!plan.candidate || !plan.contentSpec || !plan.reservation || plan.result !== "reserved") {
+        throw new Error(`campaign_factory_content_not_reserved:${opportunity.id}:${plan.result}`);
       }
+      planningStore.transitionPublication(plan.reservation.publicationId, "shadow_verified", {
+        failureCode: "campaign-factory-preplanning-projection",
+      }, resolution.scheduledFor);
+      planningStore.completeSlot(
+        plan.slotRunId,
+        "shadow_verified",
+        ["campaign-factory-preplanning-projection", "provider-mutation-disabled"],
+        plan.candidate,
+        plan.contentSpec.id,
+        resolution.scheduledFor,
+      );
+      return {
+        opportunityId: opportunity.id,
+        scheduledFor: resolution.scheduledFor.toISOString(),
+        contentSpec: plan.contentSpec,
+      };
     });
+  } finally {
+    historyStore?.close();
+    planningStore.close();
+  }
 }

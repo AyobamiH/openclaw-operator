@@ -90,7 +90,12 @@ export async function ensureCampaignMediaForDate(input: {
   rendererEntrypoint: string;
   nodeExecutable?: string;
   opportunityIds?: string[];
-}): Promise<{ results: CampaignFactoryMediaResult[]; artifacts: CampaignMediaArtifact[] }> {
+  databasePath?: string;
+}): Promise<{
+  results: CampaignFactoryMediaResult[];
+  artifacts: CampaignMediaArtifact[];
+  planned: ReturnType<typeof planCampaignFactoryContentForDate>;
+}> {
   const registryPath = resolve(input.registryPath);
   const integrationPath = resolve(input.integrationPath);
   const artifactRoot = resolve(input.artifactRoot);
@@ -106,6 +111,7 @@ export async function ensureCampaignMediaForDate(input: {
     integration,
     localDate: input.localDate,
     opportunityIds: input.opportunityIds,
+    historyDatabasePath: input.databasePath,
   });
   const results: CampaignFactoryMediaResult[] = [];
   const artifacts: CampaignMediaArtifact[] = [];
@@ -155,7 +161,7 @@ export async function ensureCampaignMediaForDate(input: {
       externalWrites: 0,
     });
   }
-  return { results, artifacts };
+  return { results, artifacts, planned };
 }
 
 export async function runCampaignFactoryShadowCycle(input: {
@@ -211,6 +217,7 @@ export async function runCampaignFactoryShadowCycle(input: {
     rendererEntrypoint: input.rendererEntrypoint,
     nodeExecutable: input.nodeExecutable,
     opportunityIds,
+    databasePath: input.databasePath,
   });
   const audit = await auditCampaignContentFactory({
     registryPath: input.registryPath,
@@ -218,6 +225,7 @@ export async function runCampaignFactoryShadowCycle(input: {
     localDate,
     mediaArtifacts: media.artifacts,
     opportunityIds,
+    plannedContent: media.planned,
   });
   if (audit.verdict !== "ready" || audit.totals.shadowReady !== audit.totals.opportunities) {
     throw new Error(`campaign_factory_shadow_audit_not_ready:${audit.verdict}`);

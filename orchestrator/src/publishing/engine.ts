@@ -46,8 +46,28 @@ function activeSlot(registry: PublishingRegistryBundle, scheduledFor: Date): boo
     schedule.slotTimes.includes(time));
 }
 
-function history(store: PublishingStore, now: Date): SelectionHistory {
+export type SelectionSemantics = "provider_verified" | "shadow_portfolio";
+
+export function buildSelectionHistory(
+  store: PublishingStore,
+  now: Date,
+  semantics: SelectionSemantics = "provider_verified",
+): SelectionHistory {
   const date = datePartInLondon(now);
+  if (semantics === "shadow_portfolio") {
+    return {
+      productPublicationCountToday: (productId) => store.portfolioProductCountForDate(productId, date),
+      campaignPublicationCountToday: (campaignId) => store.portfolioCampaignCountForDate(campaignId, date),
+      campaignTypePublicationCountToday: (campaignType) =>
+        store.portfolioCampaignTypeCountForDate(campaignType, date),
+      platformPublicationCountToday: (platformId, accountId) =>
+        store.portfolioPlatformCountForDate(platformId, accountId, date),
+      hoursSinceProductPublication: (productId) => store.hoursSincePortfolioDecision("product", productId, now),
+      hoursSinceCampaignPublication: (campaignId) => store.hoursSincePortfolioDecision("campaign", campaignId, now),
+      recentProductShare: (productId) => store.recentPortfolioProductShare(productId),
+      exactContentHashes: store.contentHashes(),
+    };
+  }
   return {
     productPublicationCountToday: (productId) => store.productVerifiedCountForDate(productId, date),
     campaignPublicationCountToday: (campaignId) => store.campaignVerifiedCountForDate(campaignId, date),
@@ -104,6 +124,8 @@ export class DeterministicPublishingEngine {
     accountId?: string;
     scheduledFor: Date;
     now?: Date;
+    selectionSemantics?: SelectionSemantics;
+    selectionHistory?: SelectionHistory;
   }): SlotPlan {
     const now = input.now ?? new Date();
     if (input.platformId && PROHIBITED_PLATFORM_IDS.has(input.platformId)) {
@@ -124,7 +146,11 @@ export class DeterministicPublishingEngine {
       this.store.completeSlot(slotRunId, "skipped_policy", reasons, null, null, now);
       return { slotRunId, slotKey: key, result: "skipped_policy", candidate: null, contentSpec: null, validation: null, reasons, reservation: null };
     }
-    const selectionHistory = history(this.store, now);
+    const selectionHistory = input.selectionHistory ?? buildSelectionHistory(
+      this.store,
+      now,
+      input.selectionSemantics,
+    );
     const policies = this.registry.platformPolicies.filter((policy) =>
       policy.status === "active" &&
       !PROHIBITED_PLATFORM_IDS.has(policy.platformId) &&

@@ -154,6 +154,7 @@ export async function runProductionOpportunity(input: {
         accountId: opportunity.accountId,
         scheduledFor,
         now: scheduledFor,
+        selectionSemantics: mode === "shadow" ? "shadow_portfolio" : "provider_verified",
       });
     if (plan && (plan.result !== "reserved" || !plan.reservation || !plan.contentSpec)) {
       return {

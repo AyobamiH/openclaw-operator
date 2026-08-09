@@ -27,6 +27,46 @@ export interface SelectionInput {
   history: SelectionHistory;
 }
 
+export function mergeSelectionHistories(
+  histories: SelectionHistory[],
+): SelectionHistory {
+  const minimumKnown = (values: Array<number | null>): number | null => {
+    const known = values.filter((value): value is number => value !== null);
+    return known.length === 0 ? null : Math.min(...known);
+  };
+  return {
+    productPublicationCountToday: (productId) => histories.reduce(
+      (total, value) => total + value.productPublicationCountToday(productId),
+      0,
+    ),
+    campaignPublicationCountToday: (campaignId) => histories.reduce(
+      (total, value) => total + value.campaignPublicationCountToday(campaignId),
+      0,
+    ),
+    campaignTypePublicationCountToday: (campaignType) => histories.reduce(
+      (total, value) => total + value.campaignTypePublicationCountToday(campaignType),
+      0,
+    ),
+    platformPublicationCountToday: (platformId, accountId) => histories.reduce(
+      (total, value) => total + value.platformPublicationCountToday(platformId, accountId),
+      0,
+    ),
+    hoursSinceProductPublication: (productId) => minimumKnown(
+      histories.map((value) => value.hoursSinceProductPublication(productId)),
+    ),
+    hoursSinceCampaignPublication: (campaignId) => minimumKnown(
+      histories.map((value) => value.hoursSinceCampaignPublication(campaignId)),
+    ),
+    recentProductShare: (productId) => Math.max(
+      0,
+      ...histories.map((value) => value.recentProductShare(productId)),
+    ),
+    exactContentHashes: new Set(histories.flatMap(
+      (value) => Array.from(value.exactContentHashes),
+    )),
+  };
+}
+
 function activeAt(campaign: CampaignRecord, now: Date): boolean {
   if (campaign.startAt && Date.parse(campaign.startAt) > now.getTime()) return false;
   if (campaign.endAt && Date.parse(campaign.endAt) <= now.getTime()) return false;

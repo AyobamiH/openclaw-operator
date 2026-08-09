@@ -1,10 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { auditCampaignContentFactory } from "../src/publishing/campaign-factory.js";
+import {
+  auditCampaignContentFactory,
+  planCampaignFactoryContentForDate,
+} from "../src/publishing/campaign-factory.js";
+import { loadProductionIntegration } from "../src/publishing/production-integration.js";
+import { loadRegistryBundle } from "../src/publishing/registry.js";
 
 const REGISTRY = "../config/publishing/registry.v1.json";
 const INTEGRATION = "../config/publishing/production-integration.v1.json";
 
 describe("campaigns content factory", () => {
+  it("shares deterministic shadow portfolio history across preplanned opportunities", async () => {
+    const registry = await loadRegistryBundle(REGISTRY);
+    const integration = await loadProductionIntegration(INTEGRATION, registry);
+    const planned = planCampaignFactoryContentForDate({
+      registry,
+      integration,
+      localDate: "2026-08-10",
+    });
+    expect(planned).toHaveLength(5);
+    expect(new Set(planned.map((item) => item.contentSpec.campaignId)).size).toBeGreaterThan(1);
+    expect(planned[0]?.contentSpec.campaignType).toBe(
+      registry.schedules[0]?.primaryCampaignType,
+    );
+  });
+
   it("produces deterministic zero-write packages and refuses false Instagram readiness without media", async () => {
     const input = {
       registryPath: REGISTRY,

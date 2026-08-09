@@ -244,9 +244,15 @@ function parse<T>(value: unknown): T {
 export class PublishingStore {
   readonly database: SqliteDatabase;
 
-  constructor(path: string) {
-    this.database = new DatabaseSync(path);
-    createSchema(this.database);
+  constructor(path: string, options: { readOnly?: boolean } = {}) {
+    this.database = new DatabaseSync(path, options.readOnly
+      ? { readOnly: true, timeout: 5_000 }
+      : {});
+    if (options.readOnly) {
+      this.database.exec("PRAGMA query_only=ON; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000");
+    } else {
+      createSchema(this.database);
+    }
   }
 
   close(): void {
@@ -811,6 +817,81 @@ export class PublishingStore {
       SELECT s.product_id FROM publishing_publications p
       JOIN publishing_content_specs s ON s.id=p.content_spec_id
       WHERE p.state='verified' ORDER BY p.verified_at DESC LIMIT ?
+    `).all(limit) as Array<{ product_id: string }>;
+    if (rows.length === 0) return 0;
+    return rows.filter((row) => row.product_id === productId).length / rows.length;
+  }
+
+  portfolioProductCountForDate(productId: string, datePrefix: string): number {
+    const row = this.database.prepare(`
+      SELECT COUNT(*) AS count FROM publishing_publications p
+      JOIN publishing_content_specs s ON s.id=p.content_spec_id
+      WHERE s.product_id=?
+        AND p.state IN ('verified','shadow_verified','superseded')
+        AND COALESCE(p.verified_at, p.updated_at) LIKE ?
+    `).get(productId, `${datePrefix}%`) as { count: number };
+    return Number(row.count);
+  }
+
+  portfolioCampaignCountForDate(campaignId: string, datePrefix: string): number {
+    const row = this.database.prepare(`
+      SELECT COUNT(*) AS count FROM publishing_publications p
+      JOIN publishing_content_specs s ON s.id=p.content_spec_id
+      WHERE s.campaign_id=?
+        AND p.state IN ('verified','shadow_verified','superseded')
+        AND COALESCE(p.verified_at, p.updated_at) LIKE ?
+    `).get(campaignId, `${datePrefix}%`) as { count: number };
+    return Number(row.count);
+  }
+
+  portfolioCampaignTypeCountForDate(campaignType: string, datePrefix: string): number {
+    const row = this.database.prepare(`
+      SELECT COUNT(*) AS count FROM publishing_publications p
+      JOIN publishing_content_specs s ON s.id=p.content_spec_id
+      WHERE json_extract(s.spec_json, '$.campaignType')=?
+        AND p.state IN ('verified','shadow_verified','superseded')
+        AND COALESCE(p.verified_at, p.updated_at) LIKE ?
+    `).get(campaignType, `${datePrefix}%`) as { count: number };
+    return Number(row.count);
+  }
+
+  portfolioPlatformCountForDate(
+    platformId: PlatformId,
+    accountId: string,
+    datePrefix: string,
+  ): number {
+    const row = this.database.prepare(`
+      SELECT COUNT(*) AS count FROM publishing_publications
+      WHERE platform_id=? AND account_id=?
+        AND state IN ('verified','shadow_verified','superseded')
+        AND COALESCE(verified_at, updated_at) LIKE ?
+    `).get(platformId, accountId, `${datePrefix}%`) as { count: number };
+    return Number(row.count);
+  }
+
+  hoursSincePortfolioDecision(
+    kind: "product" | "campaign",
+    id: string,
+    now: Date,
+  ): number | null {
+    const column = kind === "product" ? "product_id" : "campaign_id";
+    const row = this.database.prepare(`
+      SELECT MAX(COALESCE(p.verified_at, p.updated_at)) AS decided_at
+      FROM publishing_publications p
+      JOIN publishing_content_specs s ON s.id=p.content_spec_id
+      WHERE s.${column}=?
+        AND p.state IN ('verified','shadow_verified','superseded')
+    `).get(id) as { decided_at?: string | null };
+    if (!row.decided_at) return null;
+    return Math.max(0, (now.getTime() - Date.parse(row.decided_at)) / 3_600_000);
+  }
+
+  recentPortfolioProductShare(productId: string, limit = 20): number {
+    const rows = this.database.prepare(`
+      SELECT s.product_id FROM publishing_publications p
+      JOIN publishing_content_specs s ON s.id=p.content_spec_id
+      WHERE p.state IN ('verified','shadow_verified','superseded')
+      ORDER BY COALESCE(p.verified_at, p.updated_at) DESC LIMIT ?
     `).all(limit) as Array<{ product_id: string }>;
     if (rows.length === 0) return 0;
     return rows.filter((row) => row.product_id === productId).length / rows.length;

@@ -25,12 +25,21 @@ const localDate = requiredArgument("--local-date");
 const artifactRoot = resolve(requiredArgument("--artifact-root"));
 const rendererEntrypoint = resolve(requiredArgument("--renderer-entrypoint"));
 const nodeExecutable = resolve(optionalArgument("--node-executable", process.execPath));
+const databaseIndex = process.argv.indexOf("--database");
+const historyDatabasePath = databaseIndex >= 0
+  ? resolve(process.argv[databaseIndex + 1] ?? "")
+  : undefined;
 const registry = await loadRegistryBundle(registryPath);
 const integration = await loadProductionIntegration(integrationPath, registry);
 if (integration.mode !== "shadow") {
   throw new Error("campaign_factory_local_render_requires_shadow_mode");
 }
-const planned = planCampaignFactoryContentForDate({ registry, integration, localDate });
+const planned = planCampaignFactoryContentForDate({
+  registry,
+  integration,
+  localDate,
+  historyDatabasePath,
+});
 const results = [];
 for (const item of planned) {
   if (item.contentSpec.format === "text") {

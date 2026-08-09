@@ -370,6 +370,161 @@ describe("deterministic self-identification publishing engine", () => {
     store.close();
   });
 
+  it("rotates every eligible campaign under zero-write shadow portfolio history", async () => {
+    const { registry: bundle, engine, store } = await harness();
+    const schedule = bundle.schedules[0]!;
+    const selected: Array<{
+      at: Date;
+      date: string;
+      productId: string;
+      campaignId: string;
+      campaignType: string;
+      primary: boolean;
+    }> = [];
+    for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
+      const dayValue = new Date("2026-08-10T12:00:00.000Z");
+      dayValue.setUTCDate(dayValue.getUTCDate() + dayOffset);
+      const date = dayValue.toISOString().slice(0, 10);
+      for (const slot of schedule.slotTimes) {
+        const scheduledFor = new Date(`${date}T${slot}:00+01:00`);
+        const plan = engine.planSlot({
+          scheduledFor,
+          now: scheduledFor,
+          selectionSemantics: "shadow_portfolio",
+        });
+        if (plan.result !== "reserved" || !plan.reservation || !plan.contentSpec || !plan.candidate) {
+          continue;
+        }
+        const policy = bundle.platformPolicies.find(
+          (item) => item.platformId === plan.contentSpec!.platformId &&
+            item.accountId === plan.contentSpec!.accountId,
+        )!;
+        const result = engine.completeShadow({
+          publicationId: plan.reservation.publicationId,
+          connectorId: policy.connectorId,
+          renderedCandidate: deterministicRenderedCandidate(plan.contentSpec),
+          receipt: {
+            outcome: "validated",
+            dryRun: true,
+            externalWritePerformed: false,
+            accountAdmission: {
+              shadow: true,
+              admitted: true,
+              reasons: ["portfolio-replay"],
+            },
+          },
+          now: scheduledFor,
+        });
+        expect(result.externalWritePerformed).toBe(false);
+        selected.push({
+          at: scheduledFor,
+          date,
+          productId: plan.candidate.productId,
+          campaignId: plan.candidate.campaignId,
+          campaignType: plan.candidate.campaignType,
+          primary: plan.reasons.includes("primary-campaign-model-enforced"),
+        });
+      }
+    }
+
+    const eligibleCampaignIds = bundle.campaigns
+      .filter((campaign) => campaign.status === "active")
+      .map((campaign) => campaign.id)
+      .sort();
+    expect(Array.from(new Set(selected.map((item) => item.campaignId))).sort())
+      .toEqual(eligibleCampaignIds);
+
+    for (const date of new Set(selected.map((item) => item.date))) {
+      const day = selected.filter((item) => item.date === date);
+      expect(day.filter((item) => item.primary)).toHaveLength(1);
+      expect(day.some((item) => item.campaignType === schedule.primaryCampaignType)).toBe(true);
+      for (const product of bundle.products) {
+        expect(day.filter((item) => item.productId === product.id).length)
+          .toBeLessThanOrEqual(product.dailyPublicationCap);
+      }
+      for (const campaign of bundle.campaigns) {
+        expect(day.filter((item) => item.campaignId === campaign.id).length)
+          .toBeLessThanOrEqual(campaign.dailyCap);
+      }
+    }
+
+    for (const campaign of bundle.campaigns) {
+      const decisions = selected.filter((item) => item.campaignId === campaign.id);
+      for (let index = 1; index < decisions.length; index += 1) {
+        const elapsedHours = (
+          decisions[index]!.at.getTime() - decisions[index - 1]!.at.getTime()
+        ) / 3_600_000;
+        expect(elapsedHours).toBeGreaterThanOrEqual(campaign.minimumCooldownHours);
+      }
+    }
+    for (const product of bundle.products) {
+      const decisions = selected.filter((item) => item.productId === product.id);
+      for (let index = 1; index < decisions.length; index += 1) {
+        const elapsedHours = (
+          decisions[index]!.at.getTime() - decisions[index - 1]!.at.getTime()
+        ) / 3_600_000;
+        expect(elapsedHours).toBeGreaterThanOrEqual(product.minimumCooldownHours);
+      }
+    }
+
+    expect(bundle.platformPolicies.every(
+      (policy) => store.verifiedCountForDate(policy.platformId, policy.accountId, "2026") === 0,
+    )).toBe(true);
+    expect(store.publications(500).every((publication) => publication.state === "shadow_verified"))
+      .toBe(true);
+    expect(store.auditChainValid()).toBe(true);
+    store.close();
+  });
+
+  it("keeps ineligible campaigns out of shadow portfolio rotation", async () => {
+    const bundle = await registry();
+    const ineligibleId = "campaign-openclaw-community-discussion";
+    const ineligible = bundle.campaigns.find((campaign) => campaign.id === ineligibleId)!;
+    ineligible.status = "paused";
+    const store = new PublishingStore(":memory:");
+    const engine = new DeterministicPublishingEngine(bundle, store);
+    engine.initialize();
+    const selected = new Set<string>();
+    for (let dayOffset = 0; dayOffset < 60; dayOffset += 1) {
+      const dayValue = new Date("2026-08-10T12:00:00.000Z");
+      dayValue.setUTCDate(dayValue.getUTCDate() + dayOffset);
+      const date = dayValue.toISOString().slice(0, 10);
+      for (const slot of bundle.schedules[0]!.slotTimes) {
+        const scheduledFor = new Date(`${date}T${slot}:00+01:00`);
+        const plan = engine.planSlot({
+          scheduledFor,
+          now: scheduledFor,
+          selectionSemantics: "shadow_portfolio",
+        });
+        if (plan.result !== "reserved" || !plan.reservation || !plan.contentSpec || !plan.candidate) {
+          continue;
+        }
+        selected.add(plan.candidate.campaignId);
+        const policy = bundle.platformPolicies.find(
+          (item) => item.platformId === plan.contentSpec!.platformId &&
+            item.accountId === plan.contentSpec!.accountId,
+        )!;
+        engine.completeShadow({
+          publicationId: plan.reservation.publicationId,
+          connectorId: policy.connectorId,
+          renderedCandidate: deterministicRenderedCandidate(plan.contentSpec),
+          receipt: {
+            outcome: "validated",
+            dryRun: true,
+            externalWritePerformed: false,
+            accountAdmission: { shadow: true, admitted: true, reasons: ["eligibility-replay"] },
+          },
+          now: scheduledFor,
+        });
+      }
+    }
+    expect(selected.has(ineligibleId)).toBe(false);
+    expect(Array.from(selected).sort()).toEqual(
+      bundle.campaigns.filter((campaign) => campaign.status === "active").map((campaign) => campaign.id).sort(),
+    );
+    store.close();
+  });
+
   it("allows only one reservation for a global slot identity", async () => {
     const { engine, store } = await harness();
     engine.planSlot({ scheduledFor: at(), now: at() });
