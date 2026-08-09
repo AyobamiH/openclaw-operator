@@ -362,6 +362,24 @@ export class GraphStore {
     return Number(row.count);
   }
 
+  hasLiveCurrentAttempt(runId: string, now = new Date()): boolean {
+    const row = this.database.prepare(`
+      SELECT EXISTS(
+        SELECT 1
+        FROM graph_runs run
+        JOIN graph_node_attempts attempt
+          ON attempt.run_id=run.run_id
+         AND attempt.node_id=run.current_node_id
+        WHERE run.run_id=?
+          AND run.status='running'
+          AND run.current_node_id IS NOT NULL
+          AND attempt.status='running'
+          AND attempt.lease_expires_at>?
+      ) AS active
+    `).get(runId, now.toISOString()) as { active: number };
+    return Number(row.active) === 1;
+  }
+
   saveRun(run: GraphRunState, expectedRevision: number, events: EventInput[]): GraphRunState {
     const saved = { ...run, revision: expectedRevision + 1 };
     this.transaction(() => {

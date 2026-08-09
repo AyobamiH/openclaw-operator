@@ -168,6 +168,21 @@ The kernel never blindly repeats a creation or publication after a crash.
 Definition/global concurrency exhaustion at startup or an internal scheduler
 poll is a typed deferral, not an uncaught process-fatal exception.
 
+### Equivalent monitor single-flight
+
+The five-minute GitHub workflow monitor is single-flight by its complete
+governed-task identity: Graph ID/version, lane, task type and agent. A tick is
+coalesced only when an equivalent run has a `running` current-node attempt with
+an unexpired execution lease. Coalescing references that existing run and does
+not create or drive a second Graph execution.
+
+Terminal runs, failed attempts, timed-out attempts and lease-expired attempts
+never suppress the next tick. After process death the durable Graph
+stale-attempt rules remain authoritative: an unexpired attempt stays protected,
+then ceases to qualify when its lease expires so a later tick can restore
+freshness. Other governed-task lanes are not subject to this monitor-specific
+coalescing policy. The schedule and its startup poll remain unchanged.
+
 ## Authority
 
 Authority classes are ordered from `read_only` through `irreversible`. The

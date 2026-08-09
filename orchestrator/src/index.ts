@@ -161,6 +161,7 @@ import { registerPublishingRoutes } from "./publishing/routes.js";
 import { createGraphRuntime } from "./graph/runtime.js";
 import { registerGraphRoutes } from "./graph/routes.js";
 import { runWithGraphConcurrencyDeferral } from "./graph/engine.js";
+import { findEquivalentLiveGraphRun } from "./graph/single-flight.js";
 import { verifyGraphChildTaskAuthority } from "./graph/task-authority.js";
 
 /**
@@ -11286,6 +11287,36 @@ async function bootstrap() {
     }
     const binding = graphOwnedTaskBindings[type];
     const existing = graphRuntime.store.listRuns({ graphId: binding.graphId, limit: 250 }).find((run) => run.input.ingressId === ingressId);
+    const equivalentLiveRun = !existing && type === "github-workflow-monitor"
+      ? findEquivalentLiveGraphRun(graphRuntime.store, {
+          graphId: binding.graphId,
+          graphVersion: binding.version,
+          lane: binding.lane,
+          taskType: type,
+          agentId: binding.agentId,
+        })
+      : null;
+    if (equivalentLiveRun) {
+      const task: Task = {
+        id: equivalentLiveRun.runId,
+        type,
+        payload,
+        createdAt: Date.parse(equivalentLiveRun.createdAt),
+        idempotencyKey: ingressId,
+        attempt: 1,
+        maxRetries: 0,
+        admission: {
+          admitted: false,
+          kind: "duplicate-suppressed",
+          reason: "equivalent GitHub workflow monitor run is genuinely active",
+          runId: equivalentLiveRun.runId,
+          attemptId: equivalentLiveRun.runId,
+          sourceTaskId: null,
+        },
+      };
+      console.log(`[graph-owned-task] ${type} coalesced (${equivalentLiveRun.runId})`);
+      return { task, runId: equivalentLiveRun.runId, completion: Promise.resolve(equivalentLiveRun), reused: true };
+    }
     const created = existing ?? graphRuntime.engine.start({
       graphId: binding.graphId,
       version: binding.version,
