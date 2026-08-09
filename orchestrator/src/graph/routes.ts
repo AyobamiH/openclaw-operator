@@ -114,6 +114,10 @@ export function registerGraphRoutes(app: Express, runtime: GraphRuntime): void {
     });
   }
 
+  app.post("/api/graphs/runs/:runId/recover-stale", authLimiter, requireBearerToken, operatorWriteLimiter, requireRole("operator"), auditProtectedAction("graphs.runs.recover-stale"), (req, res) => {
+    try { return res.json({ run: runtime.engine.reconcileStaleRun(String(req.params.runId), actor(req)) }); } catch (error) { return errorResponse(res, error); }
+  });
+
   app.post("/api/graphs/runs/:runId/step", authLimiter, requireBearerToken, operatorWriteLimiter, requireRole("operator"), auditProtectedAction("graphs.runs.step"), async (req, res) => {
     try { return res.json({ run: await runtime.engine.step(String(req.params.runId), `api:${actor(req)}`) }); } catch (error) { return errorResponse(res, error); }
   });

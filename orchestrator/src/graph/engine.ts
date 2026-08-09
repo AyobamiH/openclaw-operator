@@ -50,6 +50,27 @@ export function effectiveNodeTimeoutMs(node: Pick<GraphNodeDefinition, "handler"
   return Math.max(node.timeoutMs, PRODUCTION_ADAPTER_TIMEOUT_OVERRIDES_MS[node.handler] ?? node.timeoutMs);
 }
 
+export type GraphConcurrencyDeferral = "global_concurrency_exhausted" | "definition_concurrency_exhausted";
+
+export function graphConcurrencyDeferral(error: unknown): GraphConcurrencyDeferral | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message === "graph_global_concurrency_exhausted") return "global_concurrency_exhausted";
+  if (message.startsWith("graph_definition_concurrency_exhausted:")) return "definition_concurrency_exhausted";
+  return null;
+}
+
+export function runWithGraphConcurrencyDeferral<T>(operation: () => T):
+  | { outcome: "started"; value: T }
+  | { outcome: "deferred"; reason: GraphConcurrencyDeferral; detail: string } {
+  try {
+    return { outcome: "started", value: operation() };
+  } catch (error) {
+    const reason = graphConcurrencyDeferral(error);
+    if (!reason) throw error;
+    return { outcome: "deferred", reason, detail: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export class NodeExecutorRegistry {
   private readonly handlers = new Map<string, NodeExecutor>();
 
@@ -650,14 +671,79 @@ export class GraphExecutor {
     return this.store.saveRun(resumed, current.revision, [{ type: "graph_resumed", actor, payload: { reason: "checkpoint_retry", checkpointId } }]);
   }
 
-  recover(now = new Date(), actor = "recovery-manager"): { resumed: string[]; blocked: string[]; failed: string[]; releasedLeases: number; expiredAttempts: string[]; unchanged: string[] } {
+  private staleAttempt(run: GraphRunState, now: Date): { attemptId: string; reason: "attempt_timed_out" | "attempt_lease_expired" } | null {
+    if (run.status !== "running" || !run.currentNodeId) return null;
+    const attempts = this.store.attempts(run.runId)
+      .filter((attempt) => attempt.nodeId === run.currentNodeId)
+      .sort((left, right) => right.attemptNumber - left.attemptNumber);
+    if (attempts.some((attempt) => attempt.status === "running" && Date.parse(attempt.leaseExpiresAt) > now.getTime())) return null;
+    const latest = attempts[0];
+    if (!latest) return null;
+    if (latest.status === "timed_out") return { attemptId: latest.attemptId, reason: "attempt_timed_out" };
+    if (latest.status === "running" && Date.parse(latest.leaseExpiresAt) <= now.getTime()) return { attemptId: latest.attemptId, reason: "attempt_lease_expired" };
+    return null;
+  }
+
+  reconcileStaleRun(runId: string, actor: string, now = new Date()): GraphRunState {
+    const run = this.requireRun(runId);
+    if (TERMINAL_STATUSES.has(run.status)) throw new Error("terminal_graph_cannot_transition");
+    const activeExternal = this.store.externalEffects(runId).filter((effect) => !["not_requested", "confirmed_absent", "effect_verified", "compensated"].includes(effect.state));
+    if (activeExternal.length > 0) throw new Error("graph_stale_recovery_requires_external_effect_reconciliation");
+    const stale = this.staleAttempt(run, now);
+    if (!stale) throw new Error("graph_stale_recovery_not_proven");
+    const expiredAttempts = this.store.expireRunningAttempts(run.runId, now);
+    const attempts = new Map(this.store.attempts(run.runId).map((attempt) => [attempt.attemptId, attempt]));
+    const closedChildReceipts: string[] = [];
+    for (const receipt of this.store.childRunReceipts(run.runId)) {
+      if (["succeeded", "failed", "blocked"].includes(receipt.status)) continue;
+      const parentAttempt = attempts.get(receipt.parentAttemptId);
+      if (!parentAttempt || !["timed_out", "failed", "cancelled"].includes(parentAttempt.status)) {
+        throw new Error(`graph_stale_recovery_child_receipt_not_orphaned:${receipt.receiptId}`);
+      }
+      this.store.completeChildRunReceipt({
+        receiptId: receipt.receiptId,
+        status: "failed",
+        outcome: "parent_attempt_stale_after_process_death",
+        output: { parentAttemptId: receipt.parentAttemptId },
+        evidence: { recoveryReason: stale.reason, recoveredAt: now.toISOString() },
+        failureReason: "Parent Graph attempt was proven stale after its execution lease ended",
+        actor,
+      });
+      closedChildReceipts.push(receipt.receiptId);
+    }
+    const failed = {
+      ...run,
+      status: "failed" as const,
+      currentNodeId: null,
+      terminalOutcome: "recovery_stale_attempt_terminalized",
+      lastError: failure("timeout", "Graph recovery terminalised a proven stale effect-free run after process death"),
+      updatedAt: now.toISOString(),
+      checkpoints: [...run.checkpoints, checkpoint(run, "recovery_stale_attempt", run.currentNodeId)],
+    };
+    this.recordTerminalMetrics(failed);
+    return this.store.saveRun(failed, run.revision, [{
+      type: "graph_failed",
+      actor,
+      payload: {
+        terminalOutcome: "recovery_stale_attempt_terminalized",
+        staleAttemptId: stale.attemptId,
+        staleReason: stale.reason,
+        expiredAttempts,
+        closedChildReceipts,
+      },
+    }]);
+  }
+
+  recover(now = new Date(), actor = "recovery-manager"): { resumed: string[]; blocked: string[]; failed: string[]; stale: string[]; releasedLeases: number; expiredAttempts: string[]; unchanged: string[] } {
     const resumed: string[] = []; const blocked: string[] = []; const unchanged: string[] = [];
     const failed: string[] = [];
+    const stale: string[] = [];
     const expiredAttempts: string[] = [];
     const releasedLeases = this.store.releaseExpiredLeases(now);
     for (const run of this.store.listRuns({ limit: 250 }).filter((item) => item.status === "running" || item.status === "waiting_for_approval" || item.status === "waiting")) {
       const effects = this.store.externalEffects(run.runId);
       const definition = this.registry.get(run.graphId, run.graphVersion);
+      const staleAttempt = this.staleAttempt(run, now);
       const wallClockExpired = now.getTime() - Date.parse(run.createdAt) > definition.timeoutPolicy.wallClockMs;
       const expiredGrantedApprovalWithoutCapability = !this.store.oneRunLiveCapabilityForRun(run.runId)
         && this.store.approvals(run.runId).some((approval) => approval.status === "granted" && Date.parse(approval.expiresAt) <= now.getTime());
@@ -665,6 +751,11 @@ export class GraphExecutor {
         this.store.saveRun({ ...run, status: "blocked", lastError: failure("idempotency_conflict", "Recovery requires external effect reconciliation"), updatedAt: now.toISOString() }, run.revision, [{ type: "graph_blocked", actor, payload: { reason: "external_effect_reconciliation_required" } }]);
         blocked.push(run.runId);
         graphRecoveries.labels("blocked_for_reconciliation").inc();
+      } else if (staleAttempt) {
+        const timedOutAttempts = this.store.expireRunningAttempts(run.runId, now);
+        expiredAttempts.push(...timedOutAttempts);
+        stale.push(run.runId);
+        graphRecoveries.labels("stale_attempt_detected").inc();
       } else if (expiredGrantedApprovalWithoutCapability) {
         const timedOutAttempts = this.store.expireRunningAttempts(run.runId, now);
         expiredAttempts.push(...timedOutAttempts);
@@ -693,19 +784,13 @@ export class GraphExecutor {
         }, run.revision, [{ type: "graph_failed", actor, payload: { terminalOutcome: "recovery_wall_clock_timeout", expiredAttempts: timedOutAttempts } }]);
         failed.push(run.runId);
         graphRecoveries.labels("stale_run_failed").inc();
-      } else if (run.status === "running" && this.store.activeAttempts().some((attempt) => attempt.runId === run.runId && Date.parse(attempt.leaseExpiresAt) <= now.getTime())) {
-        const timedOutAttempts = this.store.expireRunningAttempts(run.runId, now);
-        expiredAttempts.push(...timedOutAttempts);
-        this.store.saveRun({ ...run, status: "running", updatedAt: now.toISOString() }, run.revision, [{ type: "graph_resumed", actor, payload: { reason: "expired_attempt_lease_recovered" } }]);
-        resumed.push(run.runId);
-        graphRecoveries.labels("expired_lease_resumed").inc();
       } else if (run.status === "waiting_for_approval" && this.store.approvals(run.runId).some((approval) => approval.status === "granted" && Date.parse(approval.expiresAt) > now.getTime())) {
         this.store.saveRun({ ...run, status: "running", updatedAt: now.toISOString() }, run.revision, [{ type: "graph_resumed", actor, payload: { reason: "approval_granted_while_offline" } }]);
         resumed.push(run.runId);
         graphRecoveries.labels("approval_resumed").inc();
       } else unchanged.push(run.runId);
     }
-    return { resumed, blocked, failed, releasedLeases, expiredAttempts, unchanged };
+    return { resumed, blocked, failed, stale, releasedLeases, expiredAttempts, unchanged };
   }
 
   decideApproval(runId: string, approvalId: string, decision: "granted" | "denied", approver: string, expiresAt: string, note?: string): GraphApproval {

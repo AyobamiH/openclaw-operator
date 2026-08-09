@@ -319,12 +319,47 @@ export class GraphStore {
     return (this.database.prepare(sql).all(...values) as Array<{ state_json: string }>).map((row) => json<GraphRunState>(row.state_json));
   }
 
-  activeRunCount(graphId?: string, graphVersion?: string): number {
+  activeRunCount(graphId?: string, graphVersion?: string, now = new Date()): number {
     const active = ["created", "running", "compensating"];
-    const row = graphId && graphVersion
-      ? this.database.prepare("SELECT COUNT(*) AS count FROM graph_runs WHERE status IN (?, ?, ?) AND graph_id=? AND graph_version=?").get(...active, graphId, graphVersion)
-      : this.database.prepare("SELECT COUNT(*) AS count FROM graph_runs WHERE status IN (?, ?, ?)").get(...active) as { count: number };
-    return Number((row as { count: number }).count);
+    const definitionFilter = graphId && graphVersion ? " AND run.graph_id=? AND run.graph_version=?" : "";
+    const row = this.database.prepare(`
+      SELECT COUNT(*) AS count
+      FROM graph_runs run
+      WHERE run.status IN (?, ?, ?)
+      ${definitionFilter}
+      AND NOT (
+        run.status='running'
+        AND run.current_node_id IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM graph_node_attempts live
+          WHERE live.run_id=run.run_id
+            AND live.node_id=run.current_node_id
+            AND live.status='running'
+            AND live.lease_expires_at>?
+        )
+        AND EXISTS (
+          SELECT 1 FROM graph_node_attempts latest
+          WHERE latest.run_id=run.run_id
+            AND latest.node_id=run.current_node_id
+            AND latest.attempt_number=(
+              SELECT MAX(candidate.attempt_number)
+              FROM graph_node_attempts candidate
+              WHERE candidate.run_id=run.run_id
+                AND candidate.node_id=run.current_node_id
+            )
+            AND (
+              latest.status='timed_out'
+              OR (latest.status='running' AND latest.lease_expires_at<=?)
+            )
+        )
+      )
+    `).get(
+      ...active,
+      ...(graphId && graphVersion ? [graphId, graphVersion] : []),
+      now.toISOString(),
+      now.toISOString(),
+    ) as { count: number };
+    return Number(row.count);
   }
 
   saveRun(run: GraphRunState, expectedRevision: number, events: EventInput[]): GraphRunState {
@@ -435,6 +470,23 @@ export class GraphStore {
   activeAttempts(): Array<{ attemptId: string; runId: string; nodeId: string; leaseExpiresAt: string }> {
     return (this.database.prepare("SELECT attempt_id, run_id, node_id, lease_expires_at FROM graph_node_attempts WHERE status='running'").all() as Array<Record<string, unknown>>).map((row) => ({
       attemptId: String(row.attempt_id), runId: String(row.run_id), nodeId: String(row.node_id), leaseExpiresAt: String(row.lease_expires_at),
+    }));
+  }
+
+  attempts(runId: string): Array<{ attemptId: string; runId: string; nodeId: string; attemptNumber: number; status: string; leaseExpiresAt: string; completedAt?: string }> {
+    return (this.database.prepare(`
+      SELECT attempt_id,run_id,node_id,attempt_number,status,lease_expires_at,completed_at
+      FROM graph_node_attempts
+      WHERE run_id=?
+      ORDER BY node_id,attempt_number
+    `).all(runId) as Array<Record<string, unknown>>).map((row) => ({
+      attemptId: String(row.attempt_id),
+      runId: String(row.run_id),
+      nodeId: String(row.node_id),
+      attemptNumber: Number(row.attempt_number),
+      status: String(row.status),
+      leaseExpiresAt: String(row.lease_expires_at),
+      ...(row.completed_at === null ? {} : { completedAt: String(row.completed_at) }),
     }));
   }
 

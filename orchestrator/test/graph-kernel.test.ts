@@ -8,6 +8,7 @@ import { codingChangeGraph } from "../src/graph/workflows.js";
 import { applyStatePatches } from "../src/graph/reducer.js";
 import { evaluateAuthority } from "../src/graph/authority.js";
 import { failure } from "../src/graph/failures.js";
+import { runWithGraphConcurrencyDeferral } from "../src/graph/engine.js";
 import type { GraphDefinition, GraphRunState, NodeExecutionResult } from "../src/graph/types.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -265,16 +266,76 @@ describe("ledger, approvals, recovery and idempotency", () => {
     expect(retried.budgets.transitions).toBeGreaterThanOrEqual(advanced.budgets.transitions);
   });
 
-  it("recovers an expired local node lease without restarting the graph", async () => {
+  it("detects process-death work as stale and terminalises it only through targeted recovery", async () => {
     const { runtime } = await createTestRuntime();
     const created = runtime.engine.start(request("research-to-action", { sources: [], claims: [] }));
     const running = runtime.store.saveRun({ ...created, status: "running", updatedAt: new Date().toISOString() }, created.revision, [{ type: "graph_started", payload: {} }]);
     runtime.store.createAttempt({ attemptId: "expired-attempt", runId: running.runId, nodeId: running.currentNodeId!, attemptNumber: 1, idempotencyKey: "expired-attempt-key", owner: "dead-worker", leaseExpiresAt: new Date(Date.now() - 1000).toISOString(), startedAt: new Date(Date.now() - 2000).toISOString() });
     const recovery = runtime.engine.recover();
-    expect(recovery.resumed).toContain(running.runId);
+    expect(recovery.stale).toContain(running.runId);
     expect(recovery.expiredAttempts).toContain("expired-attempt");
     expect(runtime.store.getRun(running.runId)?.currentNodeId).toBe(running.currentNodeId);
     expect(runtime.store.activeAttempts()).toHaveLength(0);
+    const terminal = runtime.engine.reconcileStaleRun(running.runId, "test-recovery");
+    expect(terminal).toMatchObject({ status: "failed", terminalOutcome: "recovery_stale_attempt_terminalized", currentNodeId: null });
+  });
+
+  it("closes an orphaned child receipt when targeted stale recovery terminalises its parent", async () => {
+    const { runtime } = await createTestRuntime();
+    const created = runtime.engine.start(request("research-to-action", { sources: [], claims: [] }));
+    const running = runtime.store.saveRun({ ...created, status: "running", updatedAt: new Date().toISOString() }, created.revision, [{ type: "graph_started", payload: {} }]);
+    runtime.store.createAttempt({ attemptId: "dead-child-attempt", runId: running.runId, nodeId: running.currentNodeId!, attemptNumber: 1, idempotencyKey: "dead-child-attempt-key", owner: "dead-process", leaseExpiresAt: new Date(Date.now() - 1000).toISOString(), startedAt: new Date(Date.now() - 2000).toISOString() });
+    const receipt = runtime.store.prepareChildRunReceipt({
+      parentRunId: running.runId,
+      parentNodeId: running.currentNodeId!,
+      parentAttemptId: "dead-child-attempt",
+      idempotencyKey: "dead-child-receipt-key",
+      childRunId: "dead-child-run",
+      childTaskType: "build-refactor",
+      childAgentId: "build-refactor-agent",
+      authority: running.authority,
+      input: { repositoryPath: "/fixture" },
+      policyHash: "a".repeat(64),
+    });
+    runtime.store.bindChildRunDispatch(receipt.receiptId, "missing-dispatch-task");
+    runtime.store.markChildRunRunning(receipt.receiptId);
+    runtime.engine.recover();
+    runtime.engine.reconcileStaleRun(running.runId, "test-recovery");
+    expect(runtime.store.childRunReceipt(receipt.receiptId)).toMatchObject({
+      status: "failed",
+      outcome: "parent_attempt_stale_after_process_death",
+      failureReason: "Parent Graph attempt was proven stale after its execution lease ended",
+    });
+    expect(runtime.store.verifyEventChain(running.runId)).toBe(true);
+  });
+
+  it("releases stale definition concurrency after process death without freeing a live attempt", async () => {
+    const { runtime } = await createTestRuntime();
+    const source = codingChangeGraph();
+    const limited: GraphDefinition = { ...source, graphId: "stale-capacity", concurrency: { ...source.concurrency, maxRuns: 1 } };
+    runtime.engine.register(limited);
+    const stale = runtime.engine.start(request("stale-capacity", { sources: [], claims: [] }));
+    const staleRunning = runtime.store.saveRun({ ...stale, status: "running", updatedAt: new Date().toISOString() }, stale.revision, [{ type: "graph_started", payload: {} }]);
+    runtime.store.createAttempt({ attemptId: "dead-attempt", runId: staleRunning.runId, nodeId: staleRunning.currentNodeId!, attemptNumber: 1, idempotencyKey: "dead-attempt-key", owner: "dead-process", leaseExpiresAt: new Date(Date.now() - 1000).toISOString(), startedAt: new Date(Date.now() - 2000).toISOString() });
+    expect(runtime.store.activeRunCount("stale-capacity", "1.0.0")).toBe(0);
+    expect(() => runtime.engine.start(request("stale-capacity", { sources: [], claims: [] }))).not.toThrow();
+
+    const protectedDefinition: GraphDefinition = { ...source, graphId: "live-capacity", concurrency: { ...source.concurrency, maxRuns: 1 } };
+    runtime.engine.register(protectedDefinition);
+    const live = runtime.engine.start(request("live-capacity", { sources: [], claims: [] }));
+    const liveRunning = runtime.store.saveRun({ ...live, status: "running", updatedAt: new Date().toISOString() }, live.revision, [{ type: "graph_started", payload: {} }]);
+    runtime.store.createAttempt({ attemptId: "live-attempt", runId: liveRunning.runId, nodeId: liveRunning.currentNodeId!, attemptNumber: 1, idempotencyKey: "live-attempt-key", owner: "live-process", leaseExpiresAt: new Date(Date.now() + 60_000).toISOString(), startedAt: new Date().toISOString() });
+    expect(runtime.store.activeRunCount("live-capacity", "1.0.0")).toBe(1);
+    expect(() => runtime.engine.start(request("live-capacity", { sources: [], claims: [] }))).toThrow("graph_definition_concurrency_exhausted");
+    expect(() => runtime.engine.reconcileStaleRun(liveRunning.runId, "test-recovery")).toThrow("graph_stale_recovery_not_proven");
+  });
+
+  it("defers startup and scheduler concurrency exhaustion without throwing", () => {
+    const definition = runWithGraphConcurrencyDeferral(() => { throw new Error("graph_definition_concurrency_exhausted:governed-task-execution@1.0.0"); });
+    expect(definition).toMatchObject({ outcome: "deferred", reason: "definition_concurrency_exhausted" });
+    const global = runWithGraphConcurrencyDeferral(() => { throw new Error("graph_global_concurrency_exhausted"); });
+    expect(global).toMatchObject({ outcome: "deferred", reason: "global_concurrency_exhausted" });
+    expect(() => runWithGraphConcurrencyDeferral(() => { throw new Error("unrelated-startup-failure"); })).toThrow("unrelated-startup-failure");
   });
 
   it("terminalises stale non-terminal runs without external effects during recovery", async () => {

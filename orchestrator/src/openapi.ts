@@ -2696,6 +2696,14 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         responses: { "200": jsonResponse("Graph run detail.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "404": responseRef("NotFound") },
       },
     },
+    "/api/graphs/runs/{runId}/recover-stale": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Terminalise one proven stale effect-free Graph run", operationId: "recoverStaleGraphRun",
+        description: "Fails closed unless the current-node attempt is timed out or its lease expired, no live attempt remains, and no unreconciled external effect exists. Non-terminal child receipts bound to the stale attempt are closed as failed.",
+        parameters: [parameterRef("RunId")], security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.recover-stale"),
+        responses: { "200": jsonResponse("Recovered stale Graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
     "/api/graphs/runs/{runId}/events": {
       get: {
         tags: ["Operator", "Graphs"], summary: "Inspect append-only graph events", operationId: "getGraphRunEvents",

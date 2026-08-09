@@ -150,7 +150,14 @@ references only; secret values must never be supplied as graph input.
 
 Startup recovery inspects nonterminal runs and active attempts.
 
-- expired local attempt with no unresolved effect: safe to resume;
+- unexpired current-node attempt: remains active and continues to consume its
+  declared concurrency slot;
+- timed-out or lease-expired current-node attempt with no live successor:
+  classified stale and excluded from concurrency pressure, but not called
+  resumed;
+- targeted stale recovery: operator-only, effect-free, fails closed unless the
+  stale attempt is proven and closes any non-terminal child receipt bound to
+  that attempt before terminalising the parent;
 - approval granted while offline: safe to resume;
 - `request_sent`, `provider_accepted` or `ambiguous`: block for reconciliation;
 - verified effect: do not repeat;
@@ -158,6 +165,8 @@ Startup recovery inspects nonterminal runs and active attempts.
   budget and current external-effect/evidence history.
 
 The kernel never blindly repeats a creation or publication after a crash.
+Definition/global concurrency exhaustion at startup or an internal scheduler
+poll is a typed deferral, not an uncaught process-fatal exception.
 
 ## Authority
 

@@ -160,6 +160,7 @@ import { PublishingStore } from "./publishing/store.js";
 import { registerPublishingRoutes } from "./publishing/routes.js";
 import { createGraphRuntime } from "./graph/runtime.js";
 import { registerGraphRoutes } from "./graph/routes.js";
+import { runWithGraphConcurrencyDeferral } from "./graph/engine.js";
 import { verifyGraphChildTaskAuthority } from "./graph/task-authority.js";
 
 /**
@@ -10750,7 +10751,8 @@ async function bootstrap() {
   if (githubActionsMonitorEnabled) {
     setInterval(() => {
       if (graphRuntime) {
-        startGraphOwnedTask("github-workflow-monitor", { reason: "scheduled-poll", idempotencyKey: `github-workflow-monitor:${Math.floor(Date.now() / (5 * 60_000))}` }, "scheduler");
+        const result = runWithGraphConcurrencyDeferral(() => startGraphOwnedTask("github-workflow-monitor", { reason: "scheduled-poll", idempotencyKey: `github-workflow-monitor:${Math.floor(Date.now() / (5 * 60_000))}` }, "scheduler"));
+        if (result.outcome === "deferred") console.warn(`[graph-owned-task] github-workflow-monitor deferred:${result.reason}:${result.detail}`);
       } else {
         void refreshGitHubWorkflowMonitor().catch((error) => console.warn(`[orchestrator] GitHub workflow monitor poll failed: ${(error as Error).message}`));
       }
@@ -10968,7 +10970,8 @@ async function bootstrap() {
     }
     if (githubActionsMonitorEnabled) {
       if (graphRuntime) {
-        startGraphOwnedTask("github-workflow-monitor", { reason: "startup", idempotencyKey: `github-workflow-monitor:startup:${Math.floor(Date.now() / (5 * 60_000))}` }, "startup");
+        const result = runWithGraphConcurrencyDeferral(() => startGraphOwnedTask("github-workflow-monitor", { reason: "startup", idempotencyKey: `github-workflow-monitor:startup:${Math.floor(Date.now() / (5 * 60_000))}` }, "startup"));
+        if (result.outcome === "deferred") console.warn(`[graph-owned-task] github-workflow-monitor deferred:${result.reason}:${result.detail}`);
       } else {
         void refreshGitHubWorkflowMonitor().catch((error) => console.warn(`[orchestrator] GitHub workflow monitor startup check failed: ${(error as Error).message}`));
       }

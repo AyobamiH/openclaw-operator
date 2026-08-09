@@ -1420,6 +1420,7 @@ not state authority.
 | `POST` | `/api/graphs/runs/:runId/pause` | operator | checkpoint and pause |
 | `POST` | `/api/graphs/runs/:runId/resume` | operator | resume only when approval/effects allow |
 | `POST` | `/api/graphs/runs/:runId/cancel` | operator | cancel when provider-side work is safe |
+| `POST` | `/api/graphs/runs/:runId/recover-stale` | operator | terminalise one effect-free run only after its current attempt is proven timed out/lease-expired; closes child receipts bound to that stale attempt |
 | `POST` | `/api/graphs/runs/:runId/approvals/:approvalId` | operator | exact payload-bound approval decision |
 | `POST` | `/api/graphs/runs/:runId/live-capabilities` | admin | issue one non-wildcard capability from canonical run, claim, envelope and approval references |
 | `POST` | `/api/graphs/runs/:runId/live-capabilities/:capabilityId/revoke` | admin | permanently revoke an unused one-run capability |
@@ -1427,7 +1428,7 @@ not state authority.
 | `POST` | `/api/graphs/runs/:runId/effects/reconcile` | operator | record official external-effect observation |
 | `GET` | `/api/graphs/blocked` | viewer | blocked runs |
 | `GET` | `/api/graphs/orphaned` | viewer | expired active attempts |
-| `POST` | `/api/graphs/recover` | operator | resume safe runs and block ambiguity |
+| `POST` | `/api/graphs/recover` | operator | classify safe resumptions, ambiguity and proven stale attempts without terminalising an unspecified stale run |
 
 Graph definitions cannot identify arbitrary modules. Starting a graph grants no
 authority beyond the supplied envelope. A run can complete only when its

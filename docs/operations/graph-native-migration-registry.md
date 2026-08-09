@@ -344,8 +344,11 @@ The repair makes scheduler ownership singular and fail-closed:
   policy-skip when that migration is `graph_owned`.
 - graph definition concurrency counts only executing capacity
   (`created`, `running`, `compensating`) and not approval waits.
-- recovery releases expired resource leases, expires abandoned attempts, fails
-  stale effect-free non-terminal runs after wall-clock timeout, and fails
+- recovery releases expired resource leases, expires abandoned attempts,
+  classifies current-node attempt timeouts as stale instead of falsely resumed,
+  excludes those proven stale runs from concurrency accounting, supports
+  operator-targeted effect-free terminalisation with orphan child-receipt
+  closure, fails other stale effect-free non-terminal runs after wall-clock timeout, and fails
   effect-free runs whose granted mutation approval expires before one-run live
   capability issue.
 - failed-safe scheduler contention is recorded durably as `deferred` instead
