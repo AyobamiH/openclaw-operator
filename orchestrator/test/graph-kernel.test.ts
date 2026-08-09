@@ -273,11 +273,12 @@ describe("ledger, approvals, recovery and idempotency", () => {
     runtime.store.createAttempt({ attemptId: "expired-attempt", runId: running.runId, nodeId: running.currentNodeId!, attemptNumber: 1, idempotencyKey: "expired-attempt-key", owner: "dead-worker", leaseExpiresAt: new Date(Date.now() - 1000).toISOString(), startedAt: new Date(Date.now() - 2000).toISOString() });
     const recovery = runtime.engine.recover();
     expect(recovery.stale).toContain(running.runId);
-    expect(recovery.expiredAttempts).toContain("expired-attempt");
+    expect(recovery.expiredAttempts).not.toContain("expired-attempt");
     expect(runtime.store.getRun(running.runId)?.currentNodeId).toBe(running.currentNodeId);
-    expect(runtime.store.activeAttempts()).toHaveLength(0);
+    expect(runtime.store.activeAttempts()).toHaveLength(1);
     const terminal = runtime.engine.reconcileStaleRun(running.runId, "test-recovery");
     expect(terminal).toMatchObject({ status: "failed", terminalOutcome: "recovery_stale_attempt_terminalized", currentNodeId: null });
+    expect(runtime.store.activeAttempts()).toHaveLength(0);
   });
 
   it("closes an orphaned child receipt when targeted stale recovery terminalises its parent", async () => {

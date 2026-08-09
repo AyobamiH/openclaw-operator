@@ -752,8 +752,6 @@ export class GraphExecutor {
         blocked.push(run.runId);
         graphRecoveries.labels("blocked_for_reconciliation").inc();
       } else if (staleAttempt) {
-        const timedOutAttempts = this.store.expireRunningAttempts(run.runId, now);
-        expiredAttempts.push(...timedOutAttempts);
         stale.push(run.runId);
         graphRecoveries.labels("stale_attempt_detected").inc();
       } else if (expiredGrantedApprovalWithoutCapability) {
