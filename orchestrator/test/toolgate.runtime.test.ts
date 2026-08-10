@@ -4991,7 +4991,7 @@ describe('Reddit helper token safety', () => {
     const { isServiceModeExpected } = await loadOrchestratorIndexHelpers();
 
     expect(isServiceModeExpected('doc-specialist')).toBe(true);
-    expect(isServiceModeExpected('reddit-helper')).toBe(true);
+    expect(isServiceModeExpected('reddit-helper')).toBe(false);
     expect(isServiceModeExpected('build-refactor-agent')).toBe(false);
     expect(isServiceModeExpected('system-monitor-agent')).toBe(false);
   });

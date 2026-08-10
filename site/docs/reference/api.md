@@ -170,7 +170,10 @@ Specialist operator-console contract truth:
   authoritative system health.
 - `GET /api/runtime/facts`: protected operator/runtime truth for effective
   persistence mode, heartbeat schedule, internal task classification, and
-  resident-service expectations.
+  resident-service expectations. `controlPlane.nonGraphRecurringWork` is the
+  canonical registration, recovery, verification, reporting, external-authority,
+  and disposition contract for retained process cron, intervals, watchers, and
+  lifecycle hooks.
 - `GET /api/companion/overview`, `GET /api/companion/catalog`,
   `GET /api/companion/incidents`, `GET /api/companion/runs`, and
   `GET /api/companion/approvals`: protected, bounded, read-only companion

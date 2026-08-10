@@ -2279,3 +2279,48 @@
   `PRE_GRAPH_CONTRACT_GOVERNED_WITH_EXTERNAL_BLOCKERS`. The loaded state-patch
   repair is naturally verified, but the canonical Meta readback mismatch and
   unavailable external evidence remain blockers; the canary has no authority.
+
+## 2026-08-10 — Non-Graph recurring-work ownership reconciliation
+
+- Requested task: reconstruct and govern recurring application-level work that
+  runs outside the persistent Graph scheduler, eliminate duplicate or hidden
+  owners, preserve justified event and lifecycle behavior, and prove the final
+  ownership model without forcing business or provider work.
+- Workflow lane: OpenClaw/operator runtime governance, source repair, tests,
+  documentation, and protected validation.
+- Tools and source:
+  - coding-agent-skills evidence tools for bounded repository and deployment
+    discovery;
+  - read-only `systemctl`, `journalctl`, `openclaw cron`, SQLite, process, HTTP
+    health, and source searches for canonical runtime and execution evidence;
+  - repository-managed focused tests, documentation checks, typechecks, and
+    `npm run verify`;
+  - Crabbox `0.41.1` with provider `ssh`, target `linux`, and the owned static
+    host `web` for the protected gate. Blacksmith/Testbox were not used.
+- Changed-state declaration: `true` for isolated source, tests, and docs only.
+  The reconciliation adds a validated recurring-work registry, removes the
+  obsolete in-process digest timer, makes heartbeat/nightly identities
+  deterministic, serializes review sampling, narrows the resident-service
+  contract, and converts the document-specialist service to an observer that
+  cannot mutate orchestrator-owned document queues or drift-repair state.
+- Inventory result: 18 non-Graph mechanisms have an explicit owner, state,
+  effects, idempotency/concurrency, recovery, verification, reporting,
+  external-authority declaration, and one disposition. The persistent Graph
+  digest remains the sole digest owner; the Reddit helper is worker-first and
+  conditionally inactive; the document watcher/orchestrator queue is the sole
+  document-repair owner.
+- Validation evidence: focused source suites passed 30/30; the observer
+  non-mutation regression passed 1/1; ToolGate passed 1/1; documentation drift
+  and link checks passed; the first complete owned-SSH protected gate,
+  `run_ad4b9e1399b6`, exited `0` with 35/35 integration tests, 34/34 operator UI
+  tests, builds, and both TypeScript checks green.
+- External effects: provider writes, campaign/social executions, forced Graph
+  runs, credential reads, service restarts, and runtime-state mutations were
+  all `0`.
+- Fallback reason: current runtime truth is the file-backed orchestrator state,
+  not the older SQLite projection; narrow read-only file/API inspection was
+  used where generic repository tools could not establish live ownership.
+- Next safe step: run the complete owned-SSH gate over this exact ledger-bearing
+  change set, commit and push only if green, then request explicit lifecycle
+  approval before restarting `orchestrator.service` and
+  `doc-specialist.service` for runtime cutover and natural verification.

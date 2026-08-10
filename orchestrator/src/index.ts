@@ -163,6 +163,7 @@ import { registerGraphRoutes } from "./graph/routes.js";
 import { runWithGraphConcurrencyDeferral } from "./graph/engine.js";
 import { findEquivalentLiveGraphRun } from "./graph/single-flight.js";
 import { verifyGraphChildTaskAuthority } from "./graph/task-authority.js";
+import { NON_GRAPH_RECURRING_WORK_REGISTRY } from "./nonGraphRecurringWork.js";
 
 /**
  * Security Posture Verification
@@ -1351,9 +1352,12 @@ const INTERNAL_TASK_TYPES = new Set(
 );
 const SCHEDULED_TASK_PROFILES = [
   { type: "nightly-batch", schedule: "0 23 * * *" },
-  { type: "send-digest", schedule: "0 6 * * *" },
   { type: "heartbeat", schedule: HEARTBEAT_CRON_SCHEDULE },
   { type: "business-value-cycle", schedule: DEFAULT_BUSINESS_VALUE_CRON_SCHEDULE },
+  {
+    type: "business-day-pulse",
+    schedule: `${DEFAULT_BUSINESS_DAY_PULSE_CRON_SCHEDULE} ${DEFAULT_BUSINESS_DAY_PULSE_TIME_ZONE}`,
+  },
 ] as const;
 
 const AGENT_CAPABILITY_RUNTIME_SIGNAL_KEYS: Partial<Record<string, string[]>> = {
@@ -4492,10 +4496,7 @@ function getAgentServiceUnitName(agentId: string) {
   return `${agentId}.service`;
 }
 
-const REQUIRED_SERVICE_AGENT_IDS = new Set([
-  "doc-specialist",
-  "reddit-helper",
-]);
+const REQUIRED_SERVICE_AGENT_IDS = new Set(["doc-specialist"]);
 
 export type AgentLifecycleMode = "service-expected" | "worker-first";
 
@@ -5599,6 +5600,7 @@ function buildRuntimeFactsPayload(args: {
           publicTriggerable: profile?.publicTriggerable ?? false,
         };
       }),
+      nonGraphRecurringWork: NON_GRAPH_RECURRING_WORK_REGISTRY,
     },
     agents: {
       declaredCount: agents.length,
@@ -10875,6 +10877,7 @@ async function bootstrap() {
         queue.enqueue("doc-change", {
           path: doc.path,
           lastModified: doc.lastModified,
+          idempotencyKey: `doc-change:${doc.path}:${doc.lastModified}`,
         });
       });
     }
@@ -10884,35 +10887,20 @@ async function bootstrap() {
     // 11:00 PM UTC: Nightly batch (doc-sync + mark high-confidence items for drafting)
     cron.schedule(config.nightlyBatchSchedule || "0 23 * * *", () => {
       console.log("[cron] nightly-batch triggered");
-      queue.enqueue("nightly-batch", { reason: "scheduled" });
-    });
-
-    const digestSchedulerOwnsDelivery = () =>
-      graphRuntime?.scheduler.migration("continuous-marketing-digest-v1")?.status === "graph_owned";
-
-    // Legacy 6:00 AM UTC digest owner. Once the governed scheduler owns digest
-    // delivery, this in-process cron remains only as an auditable policy skip.
-    cron.schedule(config.morningNotificationSchedule || "0 6 * * *", () => {
-      console.log("[cron] send-digest triggered");
-      if (digestSchedulerOwnsDelivery()) {
-        console.log("[cron] send-digest policy-skipped: continuous-marketing-digest-v1 is authoritative");
-        return;
-      }
-      if (graphRuntime) {
-        startGraphOwnedTask("send-digest", {
-          reason: "scheduled",
-          idempotencyKey: `send-digest:${new Date().toISOString().slice(0, 10)}`,
-        }, "scheduler");
-      } else {
-        queue.enqueue("send-digest", { reason: "scheduled" });
-      }
+      queue.enqueue("nightly-batch", {
+        reason: "scheduled",
+        idempotencyKey: `nightly-batch:${new Date().toISOString().slice(0, 10)}`,
+      });
     });
 
     // 5-minute heartbeat for health checks (keeps background monitoring)
     let lastHeartbeatTime = Date.now();
     cron.schedule(HEARTBEAT_CRON_SCHEDULE, () => {
       lastHeartbeatTime = Date.now();
-      queue.enqueue("heartbeat", { reason: "periodic" });
+      queue.enqueue("heartbeat", {
+        reason: "periodic",
+        idempotencyKey: `heartbeat:${Math.floor(Date.now() / (5 * 60_000))}`,
+      });
     });
 
     const businessValueSchedule =
@@ -11007,7 +10995,7 @@ async function bootstrap() {
 
     console.log("[orchestrator] 🔔 Alerts configured and monitoring started");
     console.log(
-      `[orchestrator] Scheduled 5 cron jobs: nightly-batch (11pm), legacy send-digest policy-skip guard (6am), heartbeat (${HEARTBEAT_CRON_SCHEDULE}), business-value (${businessValueSchedule}), business-day-pulse (${businessDayPulseSchedule} ${businessDayPulseTimeZone})`,
+      `[orchestrator] Scheduled 4 cron jobs: nightly-batch (11pm), heartbeat (${HEARTBEAT_CRON_SCHEDULE}), business-value (${businessValueSchedule}), business-day-pulse (${businessDayPulseSchedule} ${businessDayPulseTimeZone})`,
     );
 
     // ============================================================

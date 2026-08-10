@@ -1693,7 +1693,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     }>('/api/health/extended');
 
     expect(healthPayload.workers?.declaredAgents ?? 0).toBeGreaterThan(0);
-    expect(healthPayload.workers?.serviceExpectedCount).toBe(2);
+    expect(healthPayload.workers?.serviceExpectedCount).toBe(1);
     expect(healthPayload.workers?.serviceAvailableCount ?? 0).toBeGreaterThanOrEqual(2);
     expect(healthPayload.workers?.serviceExpectedGapCount ?? 0).toBeGreaterThanOrEqual(0);
     expect(healthPayload.workers?.serviceExpectedGapCount ?? 0).toBeLessThanOrEqual(
@@ -1728,6 +1728,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         internalTaskTypes?: string[];
         publicTriggerableTaskTypes?: string[];
         scheduledTasks?: Array<{ type?: string; schedule?: string; internalOnly?: boolean }>;
+        nonGraphRecurringWork?: Array<{ capability?: string; disposition?: string }>;
       };
       agents?: {
         serviceExpectedIds?: string[];
@@ -1743,10 +1744,16 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect(runtimeFacts.controlPlane?.scheduledTasks?.some(
       (task) => task.type === 'heartbeat' && task.internalOnly === true,
     )).toBe(true);
-    expect(runtimeFacts.agents?.serviceExpectedIds).toEqual(
-      expect.arrayContaining(['doc-specialist', 'reddit-helper']),
-    );
-    expect(runtimeFacts.agents?.workerFirstServiceIds ?? []).toEqual([]);
+    expect(runtimeFacts.controlPlane?.scheduledTasks?.some(
+      (task) => task.type === 'send-digest',
+    )).toBe(false);
+    expect(runtimeFacts.controlPlane?.nonGraphRecurringWork?.some(
+      (entry) =>
+        entry.capability === 'legacy-send-digest-cron' &&
+        entry.disposition === 'DISABLE',
+    )).toBe(true);
+    expect(runtimeFacts.agents?.serviceExpectedIds).toEqual(['doc-specialist']);
+    expect(runtimeFacts.agents?.workerFirstServiceIds).toContain('reddit-helper');
   });
 
   it('exposes explicit agent lifecycle mode through agent overview', async () => {

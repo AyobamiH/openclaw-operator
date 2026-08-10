@@ -639,6 +639,7 @@ export function createReviewSessionService(options: ReviewSessionServiceOptions)
   const { state, flushState, getQueueSnapshot } = options;
   let timer: NodeJS.Timeout | null = null;
   let timerIntervalMs: number | null = null;
+  let sampleInFlight = false;
   let lastCpuSnapshot: CpuSnapshot | null = null;
 
   function requireActiveSession(session: ReviewSessionRecord, action: string) {
@@ -809,12 +810,18 @@ export function createReviewSessionService(options: ReviewSessionServiceOptions)
   }
 
   async function sampleActiveSessions() {
-    const sessions = state.reviewSessions.filter((session) => session.state === "active");
-    for (const session of sessions) {
-      await captureSampleForSession(session);
-    }
-    if (sessions.length > 0) {
-      await flushState(["runtime-state"]);
+    if (sampleInFlight) return;
+    sampleInFlight = true;
+    try {
+      const sessions = state.reviewSessions.filter((session) => session.state === "active");
+      for (const session of sessions) {
+        await captureSampleForSession(session);
+      }
+      if (sessions.length > 0) {
+        await flushState(["runtime-state"]);
+      }
+    } finally {
+      sampleInFlight = false;
     }
   }
 
