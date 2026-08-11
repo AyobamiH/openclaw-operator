@@ -843,6 +843,12 @@ Client contract:
 - If `Retry-After` is absent, use `ratelimit-reset` as the minimum wait.
 - Normal operator-console polling is supported by bucket A, but avoid
   synchronized parallel bursts; stagger polling intervals with jitter.
+- The governed Graph scheduler client observes fresh run state at a
+  ten-second base interval with deterministic jitter and reuses the accepted
+  run detail as its first approval observation. It retries only idempotent
+  `GET`/`HEAD` reads after `429`, preferring `Retry-After`, then
+  `ratelimit-reset`, then the response body's retry hint. Scheduler writes are
+  never retried automatically. Graph run-state responses are not cached.
 
 ---
 

@@ -2399,3 +2399,42 @@
   orchestrator runtime surface with one lifecycle action, then wait for a
   subsequent natural poll to prove truthful scheduler completion and live
   repeated-read deduplication.
+
+## 2026-08-11 — Campaign Feedback pre-Graph viewer-read rate limit
+
+- Requested task: identify the exact HTTP 429 before Graph admission, prove
+  its caller/quota/call-volume cause, and implement only a deterministic
+  read-side repair without forcing campaign, Graph, measurement, provider or
+  schedule execution.
+- Tools and source: OpenClaw coding repository mapper, API-contract audit and
+  deployment preflight were used first. Their adapter exposed repository
+  metadata only, so narrow core source inspection plus read-only systemd,
+  journal and SQLite evidence were used for runtime correlation. No credential
+  or secret-bearing file was read. The first disposable SSH gate hydrate
+  omitted the pinned private `agentproof` package and stopped at TypeScript
+  resolution before tests; the already-installed pinned package was copied
+  into that disposable workspace and the unchanged gate was rerun.
+- Evidence: the internal loopback `GET /api/graphs/health` and
+  `GET /api/graphs/runs/:runId` routes share the authenticated `viewer-read`
+  bucket (`120/60s`, actor `admin-key`). The 15:00 Reel run made one health
+  read and 119 run-detail reads before 429; the Campaign Feedback owner then
+  received 429 on its first health read before Graph acceptance. Five natural
+  windows reproduced the same 119+1 read shape.
+- Classification: duplicate/high-frequency fresh-state polling and a duplicate
+  first approval read caused deterministic shared-quota pressure. This is not
+  an external provider quota and is distinct from post-acceptance scheduler
+  completion settlement.
+- Changed-state declaration: isolated trigger client, regression tests and
+  documentation only. The repair rate-shapes fresh GET/HEAD observation,
+  coalesces the accepted detail, honours server rate-limit evidence and never
+  retries writes. Provider writes, Browser Relay calls, forced Graph runs,
+  measurement polls, schedule executions, campaign/experiment changes and
+  Graph-history mutations remain `0`.
+- Validation: focused scheduler migration suite passed 52/52; local
+  orchestrator typecheck/build and documentation checks passed. The complete
+  owned-SSH protected gate `run_b3a027e8b5ce` exited `0` with 97 unit
+  simulations, 35 live middleware integrations, 34 operator-console tests,
+  both TypeScript checks, both builds, documentation drift/link checks and the
+  VitePress production build green. Isolated commit/push and exact script
+  deployment remain the next approved stages; the 17:00 natural opportunity
+  remains unforced.

@@ -9,6 +9,11 @@ const BASE_URL = "http://127.0.0.1:3312";
 const CREDENTIAL_FILE = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/credentials/orchestrator.env";
 export const PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/database/graph-scheduler.sqlite";
 const EVIDENCE_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers";
+export const GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS = 10_000;
+export const GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS = 60;
+export const GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS = 180;
+const GRAPH_SCHEDULER_READ_RATE_LIMIT_RETRIES = 3;
+const GRAPH_SCHEDULER_READ_JITTER_WINDOW_MS = 1_000;
 
 export type HttpRequest = (route: string, init?: RequestInit) => Promise<any>;
 type PublicationClassification = "published" | "legitimate_skip" | "missed" | "failed" | "deferred";
@@ -126,13 +131,90 @@ export function resolveInputTemplate(value: unknown, slot: { slotId: string; sch
   return value;
 }
 
+function deterministicReadJitterMs(value: string): number {
+  let hash = 2166136261;
+  for (const character of value) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0) % GRAPH_SCHEDULER_READ_JITTER_WINDOW_MS;
+}
+
+function secondsHeaderDelayMs(value: string | null, nowMs: number, allowHttpDate: boolean): number | null {
+  if (!value) return null;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric >= 0) {
+    if (numeric > nowMs / 1000) return Math.max(0, Math.ceil(numeric * 1000 - nowMs));
+    return Math.ceil(numeric * 1000);
+  }
+  if (!allowHttpDate) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed - nowMs) : null;
+}
+
+export function resolveGraphSchedulerReadRetryDelayMs(args: {
+  route: string;
+  attempt: number;
+  headers: Headers;
+  body?: any;
+  nowMs?: number;
+}): number {
+  const nowMs = args.nowMs ?? Date.now();
+  const retryAfterMs = secondsHeaderDelayMs(args.headers.get("Retry-After"), nowMs, true);
+  const resetMs = secondsHeaderDelayMs(args.headers.get("ratelimit-reset"), nowMs, false);
+  const bodyMs = Number.isFinite(Number(args.body?.retryAfterSeconds))
+    ? Math.max(0, Math.ceil(Number(args.body.retryAfterSeconds) * 1000))
+    : null;
+  const providerDelayMs = retryAfterMs ?? resetMs ?? bodyMs ?? 60_000;
+  return Math.max(1_000, providerDelayMs) + deterministicReadJitterMs(`${args.route}:${args.attempt}`);
+}
+
+export class GraphSchedulerHttpError extends Error {
+  readonly status: number;
+  readonly retryAfterMs: number | null;
+
+  constructor(status: number, message: string, retryAfterMs: number | null) {
+    super(message);
+    this.name = "GraphSchedulerHttpError";
+    this.status = status;
+    this.retryAfterMs = retryAfterMs;
+  }
+}
+
+export async function requestGraphSchedulerJson(args: {
+  route: string;
+  init?: RequestInit;
+  dispatch: () => Promise<Response>;
+  sleepFn?: (ms: number) => Promise<void>;
+  now?: () => number;
+  maxReadRateLimitRetries?: number;
+}): Promise<any> {
+  const method = String(args.init?.method ?? "GET").toUpperCase();
+  const isIdempotentRead = method === "GET" || method === "HEAD";
+  const maxRetries = args.maxReadRateLimitRetries ?? GRAPH_SCHEDULER_READ_RATE_LIMIT_RETRIES;
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await args.dispatch();
+    let body: any = null;
+    try { body = await response.json(); } catch { /* HTTP status remains authoritative */ }
+    if (response.ok) return body;
+    const retryAfterMs = response.status === 429
+      ? resolveGraphSchedulerReadRetryDelayMs({ route: args.route, attempt, headers: response.headers, body, nowMs: args.now?.() })
+      : null;
+    if (response.status === 429 && isIdempotentRead && attempt < maxRetries) {
+      await (args.sleepFn ?? sleep)(retryAfterMs!);
+      continue;
+    }
+    throw new GraphSchedulerHttpError(response.status, `graph_scheduler_http_${response.status}:${body?.error ?? "unknown"}`, retryAfterMs);
+  }
+}
+
 async function defaultRequest(route: string, init?: RequestInit): Promise<any> {
   const token = readApiCredentialReference(CREDENTIAL_FILE, { requiredRole: "admin" });
-  const response = await fetch(`${BASE_URL}${route}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers } });
-  let body: any = null;
-  try { body = await response.json(); } catch { /* HTTP status remains authoritative */ }
-  if (!response.ok) throw new Error(`graph_scheduler_http_${response.status}:${body?.error ?? "unknown"}`);
-  return body;
+  return requestGraphSchedulerJson({
+    route,
+    init,
+    dispatch: () => fetch(`${BASE_URL}${route}`, { ...init, headers: { Authorization: `Bearer ${token}`, ...(init?.body ? { "Content-Type": "application/json" } : {}), ...init?.headers } }),
+  });
 }
 
 function optionalString(value: unknown): string | null {
@@ -351,7 +433,7 @@ async function waitForSchedulerCompletionContract(args: { request: HttpRequest; 
     detail = await args.request(`/api/graphs/runs/${args.runId}`);
     contract = schedulerCompletionContract({ detail, slotId: args.slotId, triggerId: args.triggerId, runId: args.runId, maximumExternalWrites: args.maximumExternalWrites });
     if (contract.status === "passed" || contract.status === "terminal") return { detail, contract };
-    if (attempt < args.attempts - 1) await sleep(args.intervalMs);
+    if (attempt < args.attempts - 1) await sleep(args.intervalMs + (args.intervalMs > 0 ? deterministicReadJitterMs(`${args.runId}:completion:${attempt}`) : 0));
   }
   const terminalRunObserved = ["completed", "failed", "cancelled"].includes(String(detail?.run?.status));
   return {
@@ -370,12 +452,16 @@ async function waitForSchedulerCompletionContract(args: { request: HttpRequest; 
   };
 }
 
-async function waitForApprovalBoundary(args: { request: HttpRequest; runId: string; attempts?: number; intervalMs?: number }): Promise<any> {
-  let detail: any = null;
-  for (let attempt = 0; attempt < (args.attempts ?? 120); attempt += 1) {
+export async function waitForApprovalBoundary(args: { request: HttpRequest; runId: string; initialDetail?: any; attempts?: number; intervalMs?: number }): Promise<any> {
+  let detail: any = args.initialDetail ?? null;
+  const attempts = args.attempts ?? GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS;
+  const intervalMs = args.intervalMs ?? GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const approvalResolved = Array.isArray(detail?.approvals)
+      && detail.approvals.some((approval: any) => ["granted", "rejected", "expired"].includes(String(approval?.status)));
+    if (approvalResolved || ["waiting_for_approval", "blocked", "paused", "waiting", "completed", "failed", "cancelled"].includes(String(detail?.run?.status))) return detail;
+    await sleep(intervalMs + (intervalMs > 0 ? deterministicReadJitterMs(`${args.runId}:approval:${attempt}`) : 0));
     detail = await args.request(`/api/graphs/runs/${args.runId}`);
-    if (["waiting_for_approval", "blocked", "paused", "waiting", "completed", "failed", "cancelled"].includes(String(detail?.run?.status))) return detail;
-    if (attempt < (args.attempts ?? 120) - 1) await sleep(args.intervalMs ?? 250);
   }
   return detail;
 }
@@ -514,8 +600,8 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
           slotId: slot.slotId,
           triggerId,
           maximumExternalWrites: portfolio.maximumExternalWrites,
-          attempts: args.completionPollAttempts ?? 1800,
-          intervalMs: args.completionPollIntervalMs ?? 1000,
+          attempts: args.completionPollAttempts ?? GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS,
+          intervalMs: args.completionPollIntervalMs ?? GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS,
         });
         const effects = (sealed.detail?.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
         if (sealed.contract.status === "transient") {
@@ -648,7 +734,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
     }
 
     if (portfolio.approvalPolicy !== "none" && !["waiting_for_approval", "blocked", "paused", "waiting", "completed", "failed", "cancelled"].includes(String(detail.run?.status))) {
-      detail = await waitForApprovalBoundary({ request, runId: runId! });
+      detail = await waitForApprovalBoundary({ request, runId: runId!, initialDetail: detail });
     }
     if (detail.run?.status === "waiting_for_approval") {
       executionNeedsDispatch = true;
@@ -691,8 +777,8 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
       slotId: slot.slotId,
       triggerId,
       maximumExternalWrites: portfolio.maximumExternalWrites,
-      attempts: args.completionPollAttempts ?? 1800,
-      intervalMs: args.completionPollIntervalMs ?? 1000,
+      attempts: args.completionPollAttempts ?? GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS,
+      intervalMs: args.completionPollIntervalMs ?? GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS,
     });
     detail = sealed.detail;
     const completionContract = sealed.contract;

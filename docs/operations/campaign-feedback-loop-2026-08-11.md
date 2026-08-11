@@ -146,3 +146,35 @@ Loading the changed orchestrator process remains a separate service-lifecycle
 stage. The mission authorizes at most the single minimum orchestrator lifecycle
 action needed after the isolated commit is pushed; natural verification still
 must wait for a later scheduled polling opportunity.
+
+## Pre-Graph viewer rate-limit reconstruction
+
+The 15:00 Europe/London opportunity exposed a separate failure before Campaign
+Feedback Graph admission. The governed scheduler client uses the local
+orchestrator API at `127.0.0.1:3312`; its initial request is
+`GET /api/graphs/health`, and accepted-run observation uses
+`GET /api/graphs/runs/:runId`. Both protected reads share the internal
+`viewer-read` limiter: 120 requests per 60 seconds for the authenticated
+`admin-key` actor. This was not a Meta/provider quota.
+
+The immediately preceding Instagram Reel scheduler execution consumed the
+bucket with one health read and 119 run-detail reads for
+`grzwcanary_916edf43-3dea-4907-aaef-03da93133263`. Two run-detail reads and two
+health reads then received HTTP 429. The Campaign Feedback owner therefore
+failed on its initial health read before Graph accepted a measurement run.
+Five observed natural windows showed the same deterministic shape: 119
+run-detail reads plus one health read within the minute, followed by 429s.
+
+The source cause was 250 ms approval polling and one-second completion polling,
+plus a duplicate first approval read. The repair preserves fresh fail-closed
+state reads while changing the base interval to ten seconds with deterministic
+jitter, reusing the accepted run detail, and waiting on `Retry-After` (then
+`ratelimit-reset`, then response-body evidence) before retrying an idempotent
+read. POST requests are never automatically retried. Observation windows remain
+ten minutes for approval and thirty minutes for completion; no cache, schedule,
+Graph authority or provider authority was added.
+
+This defect is independent of the scheduler completion contract. The earlier
+repair governs durable acceptance, execution identity and terminal settlement
+after Graph admission. This repair prevents a local shared read bucket from
+blocking that admission in the first place.

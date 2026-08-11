@@ -579,3 +579,19 @@ not require and compare the complete layout/readability proof before live
 execution. Renderer byte drift and stale host integration fixtures are separate
 non-scheduler defects. Repair requires a separately approved envelope/version
 change; no scheduler, service or provider state changed during reconstruction.
+
+## 2026-08-11 governed scheduler viewer-read shaping
+
+Natural scheduler clients share the orchestrator's authenticated
+`viewer-read` bucket. A single approval-bound Instagram Reel execution was
+observed making 119 `GET /api/graphs/runs/:runId` calls after one health read
+within 60 seconds, exhausting the 120-read actor bucket before the Campaign
+Feedback owner could pass its initial health read. This is a local pre-Graph
+rate-limit defect, not a provider limit and not the scheduler terminal
+completion defect.
+
+The governed trigger now keeps run-state reads fresh but rate-shapes approval
+and completion observation to a ten-second base interval plus deterministic
+jitter, coalesces the accepted detail into approval observation, and retries
+only idempotent reads after the server-directed delay. Writes remain
+non-retryable and all missing/unavailable evidence remains fail closed.

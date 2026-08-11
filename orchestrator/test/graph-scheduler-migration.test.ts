@@ -15,10 +15,17 @@ import { effectiveNodeTimeoutMs } from "../src/graph/engine.js";
 import {
   executeGovernedSchedule,
   formatGovernedScheduleOutput,
+  GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS,
+  GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS,
+  GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS,
+  GraphSchedulerHttpError,
   PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH,
+  requestGraphSchedulerJson,
+  resolveGraphSchedulerReadRetryDelayMs,
   resolveGovernedSchedulerDatabasePath,
   resolveInputTemplate,
   resolveNaturalSlot,
+  waitForApprovalBoundary,
 } from "../scripts/trigger-governed-graph-schedule.js";
 import { executePhaseGSchedule } from "../scripts/trigger-graph-schedule.js";
 
@@ -122,6 +129,88 @@ describe("graph scheduler migration registry", () => {
     expect(() => resolveNaturalSlot({ now: new Date("2026-08-04T03:09:59.000Z"), cronExpression: "15 * * * *", timezone: "Europe/London", scheduleId: "job", provider: "meta", latenessToleranceMinutes: 20 })).toThrow("graph_scheduler_trigger_outside_natural_slot_window");
     expect(() => resolveNaturalSlot({ now: new Date("2026-08-04T04:11:00.000Z"), cronExpression: "0 5,7 * * *", timezone: "Europe/London", scheduleId: "job", provider: "threads", latenessToleranceMinutes: 10 })).toThrow("graph_scheduler_trigger_outside_natural_slot_window");
     expect(resolveInputTemplate({ observedAt: "$scheduledAt", ingressId: "$slotId" }, { slotId: "slot-one", scheduledFor: "2026-08-04T04:00:00.000Z" })).toEqual({ observedAt: "2026-08-04T04:00:00.000Z", ingressId: "slot-one" });
+  });
+
+  it("rate-shapes fresh scheduler reads below the viewer bucket without shortening observation windows", () => {
+    expect(GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS).toBe(10_000);
+    expect(Math.ceil(60_000 / GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS)).toBe(6);
+    expect(GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS * GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS).toBe(10 * 60_000);
+    expect(GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS * GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS).toBe(30 * 60_000);
+  });
+
+  it("honours Retry-After ahead of reset and response-body rate-limit hints", () => {
+    const headers = new Headers({ "Retry-After": "7", "ratelimit-reset": "2" });
+    const delay = resolveGraphSchedulerReadRetryDelayMs({
+      route: "/api/graphs/health",
+      attempt: 0,
+      headers,
+      body: { retryAfterSeconds: 1 },
+      nowMs: Date.parse("2026-08-11T14:00:00.000Z"),
+    });
+    expect(delay).toBeGreaterThanOrEqual(7_000);
+    expect(delay).toBeLessThan(8_000);
+
+    const resetDelay = resolveGraphSchedulerReadRetryDelayMs({
+      route: "/api/graphs/health",
+      attempt: 0,
+      headers: new Headers({ "ratelimit-reset": "5" }),
+      nowMs: Date.parse("2026-08-11T14:00:00.000Z"),
+    });
+    expect(resetDelay).toBeGreaterThanOrEqual(5_000);
+    expect(resetDelay).toBeLessThan(6_000);
+  });
+
+  it("retries only idempotent scheduler reads after a 429 delay", async () => {
+    const responses = [
+      new Response(JSON.stringify({ error: "limited", retryAfterSeconds: 2 }), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "3" } }),
+      new Response(JSON.stringify({ status: "healthy" }), { status: 200, headers: { "Content-Type": "application/json" } }),
+    ];
+    const sleeps: number[] = [];
+    const result = await requestGraphSchedulerJson({
+      route: "/api/graphs/health",
+      dispatch: async () => responses.shift()!,
+      sleepFn: async (ms) => { sleeps.push(ms); },
+      now: () => Date.parse("2026-08-11T14:00:00.000Z"),
+    });
+    expect(result).toEqual({ status: "healthy" });
+    expect(responses).toHaveLength(0);
+    expect(sleeps).toHaveLength(1);
+    expect(sleeps[0]).toBeGreaterThanOrEqual(3_000);
+    expect(sleeps[0]).toBeLessThan(4_000);
+  });
+
+  it("never retries a scheduler write when a 429 is returned", async () => {
+    let dispatches = 0;
+    const sleeps: number[] = [];
+    await expect(requestGraphSchedulerJson({
+      route: "/api/graphs/runs",
+      init: { method: "POST" },
+      dispatch: async () => {
+        dispatches += 1;
+        return new Response(JSON.stringify({ error: "limited" }), { status: 429, headers: { "Content-Type": "application/json", "Retry-After": "5" } });
+      },
+      sleepFn: async (ms) => { sleeps.push(ms); },
+      now: () => Date.parse("2026-08-11T14:00:00.000Z"),
+    })).rejects.toBeInstanceOf(GraphSchedulerHttpError);
+    expect(dispatches).toBe(1);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("coalesces the accepted run read into approval-boundary observation", async () => {
+    let reads = 0;
+    const initialDetail = { run: { id: "run-one", status: "waiting_for_approval" } };
+    const detail = await waitForApprovalBoundary({
+      runId: "run-one",
+      initialDetail,
+      request: async () => {
+        reads += 1;
+        throw new Error("duplicate read should not occur");
+      },
+      attempts: 1,
+      intervalMs: 0,
+    });
+    expect(detail).toEqual(initialDetail);
+    expect(reads).toBe(0);
   });
 
   it("defers delayed cron invocations outside the natural slot without creating a graph run", async () => {
