@@ -238,6 +238,28 @@ function createSchema(database: SqliteDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_publishing_feedback_publication_campaign
       ON publishing_feedback_publications(campaign_id, observed_at DESC);
 
+    CREATE TABLE IF NOT EXISTS publishing_campaign_identity_bridge (
+      historical_campaign_id TEXT PRIMARY KEY,
+      canonical_campaign_id TEXT,
+      status TEXT NOT NULL CHECK(status IN ('mapped','unmapped')),
+      reason TEXT NOT NULL,
+      provenance_json TEXT NOT NULL,
+      provenance_hash TEXT NOT NULL UNIQUE,
+      reviewed_by TEXT NOT NULL,
+      reviewed_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      CHECK(
+        (status='mapped' AND canonical_campaign_id IS NOT NULL)
+        OR (status='unmapped' AND canonical_campaign_id IS NULL)
+      )
+    );
+    CREATE TRIGGER IF NOT EXISTS publishing_campaign_identity_bridge_no_update
+    BEFORE UPDATE ON publishing_campaign_identity_bridge
+    BEGIN SELECT RAISE(ABORT, 'campaign identity bridge records are immutable'); END;
+    CREATE TRIGGER IF NOT EXISTS publishing_campaign_identity_bridge_no_delete
+    BEFORE DELETE ON publishing_campaign_identity_bridge
+    BEGIN SELECT RAISE(ABORT, 'campaign identity bridge records are immutable'); END;
+
     CREATE TABLE IF NOT EXISTS publishing_feedback_metric_observations (
       id TEXT PRIMARY KEY,
       publication_id TEXT NOT NULL,
@@ -1054,6 +1076,7 @@ export class PublishingStore {
       "publishing_conversations",
       "publishing_attribution_edges",
       "publishing_feedback_publications",
+      "publishing_campaign_identity_bridge",
       "publishing_feedback_metric_observations",
       "publishing_feedback_conversations",
       "publishing_feedback_conversation_observations",

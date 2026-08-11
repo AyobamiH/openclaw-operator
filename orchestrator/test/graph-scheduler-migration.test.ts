@@ -279,7 +279,7 @@ describe("graph scheduler migration registry", () => {
     let runInput: any;
     const result = await executeGovernedSchedule({ migrationId: item.declaration.migrationId, now: new Date("2026-08-04T03:30:00.000Z"), schedulerPath: value.path, request: async (route, init) => {
       if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-      if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId: "run-readiness", status: "completed" } }; }
+      if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId: "run-readiness", status: "completed" } }; }
       if (route === "/api/graphs/runs/run-readiness") return { run: { runId: "run-readiness", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
       throw new Error(`unexpected fixture route ${route}`);
     } });
@@ -351,7 +351,7 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId: "run-reel", status: "waiting_for_approval" } }; }
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId: "run-reel", status: "waiting_for_approval" } }; }
         if (route === "/api/graphs/runs/run-reel") {
           if (executeCalls > 0) return completedDetail();
           return {
@@ -365,7 +365,7 @@ describe("graph scheduler migration registry", () => {
         }
         if (route === "/api/graphs/runs/run-reel/approvals/gap_reel_exact" && init?.method === "POST") { approvalRequest = JSON.parse(String(init.body)); approved = true; return { approval: { ...approval, status: "granted" } }; }
         if (route === "/api/graphs/runs/run-reel/live-capabilities" && init?.method === "POST") { capabilityRequest = JSON.parse(String(init.body)); capabilityIssued = true; return { capability: { capabilityId: "glc_reel", status: "prepared" }, dispatches: [] }; }
-        if (route === "/api/graphs/runs/run-reel/execute" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-reel", status: "completed" } }; }
+        if (route === "/api/graphs/runs/run-reel/execute-accepted" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-reel", status: "completed" } }; }
         throw new Error(`unexpected fixture route ${route}`);
       },
     });
@@ -407,7 +407,7 @@ describe("graph scheduler migration registry", () => {
       instagramOutboxPath: `${value.path}.missing-instagram-outbox.json`,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") {
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") {
           runInput = JSON.parse(String(init.body));
           return { run: { runId: "run-phase-g-pre-envelope", status: "failed" } };
         }
@@ -452,7 +452,7 @@ describe("graph scheduler migration registry", () => {
       instagramOutboxPath: `${value.path}.missing-instagram-outbox.json`,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-phase-g-empty-envelope", status: "failed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-phase-g-empty-envelope", status: "failed" } };
         if (route === "/api/graphs/runs/run-phase-g-empty-envelope") return {
           run: {
             runId: "run-phase-g-empty-envelope",
@@ -500,7 +500,7 @@ describe("graph scheduler migration registry", () => {
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
         if (route === "/api/graphs/runs/run-phase-g-old") return { run: { runId: "run-phase-g-old", status: "failed", data: {} }, liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") {
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") {
           recoveryInput = JSON.parse(String(init.body));
           return { run: { runId: "run-phase-g-replayed", status: "failed" } };
         }
@@ -536,7 +536,7 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-factory-no-op", status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-factory-no-op", status: "completed" } };
         if (route === "/api/graphs/runs/run-factory-no-op") return { run: { runId: "run-factory-no-op", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-factory-no-op", status: "succeeded", outcome: "completed_no_eligible_opportunity", receiptHash: "f".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -586,7 +586,7 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-threads-skip", status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-threads-skip", status: "completed" } };
         if (route === "/api/graphs/runs/run-threads-skip") return detail;
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -627,7 +627,7 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-meta-reply-prepare-timeout", status: "failed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-meta-reply-prepare-timeout", status: "failed" } };
         if (route === "/api/graphs/runs/run-meta-reply-prepare-timeout") return {
           run: {
             runId: "run-meta-reply-prepare-timeout",
@@ -678,7 +678,7 @@ describe("graph scheduler migration registry", () => {
       completionPollIntervalMs: 0,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-async-receipt", status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-async-receipt", status: "completed" } };
         if (route === "/api/graphs/runs/run-async-receipt") {
           reads += 1;
           if (reads < 3) return { run: { runId: "run-async-receipt", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], eventChainValid: true };
@@ -689,6 +689,67 @@ describe("graph scheduler migration registry", () => {
     });
     expect(reads).toBe(3);
     expect(result).toMatchObject({ outcome: "completed", completionContract: { status: "passed", childReceiptIds: ["receipt-async"], verifierReceiptIds: ["gvr_async"] } });
+  });
+
+  it("keeps timeout-after-acceptance observable and reconciles duplicate delivery to the same terminal run", async () => {
+    const binding = governedJobs("campaign-content-factory-full-pregraph-v4");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    let startCalls = 0;
+    let terminal = false;
+    const request = async (route: string, init?: RequestInit) => {
+      if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+      if (route === "/api/graphs/runs/accepted" && init?.method === "POST") {
+        startCalls += 1;
+        return {
+          acceptance: { status: "accepted", runId: "run-long-accepted", correlationId: "trigger", acceptedAt: "2026-08-11T10:00:00.000Z", durable: true },
+          run: { runId: "run-long-accepted", status: "running" },
+        };
+      }
+      if (route === "/api/graphs/runs/run-long-accepted") return terminal
+        ? { run: { runId: "run-long-accepted", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-long", status: "succeeded", outcome: "completed_policy_skip", receiptHash: "a".repeat(64) }], verifierReceipts: [{ verifierReceiptId: "verify-long", status: "passed", outcome: "receipt_chain_verified", receiptHash: "b".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true }
+        : { run: { runId: "run-long-accepted", status: "running" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], verifierReceipts: [], eventChainValid: true, childRunReceiptChainValid: true };
+      throw new Error(`unexpected fixture route ${route}`);
+    };
+    const now = new Date("2026-08-11T10:00:00.000Z");
+    const accepted = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now,
+      schedulerPath: value.path,
+      completionPollAttempts: 1,
+      completionPollIntervalMs: 0,
+      request,
+    });
+    expect(accepted).toMatchObject({
+      outcome: "accepted_pending",
+      executionAcceptance: { status: "accepted", runId: "run-long-accepted", durable: true },
+      completionContract: { status: "transient" },
+      publicationReport: { finalClassification: "deferred", recoveryResult: "observe_same_run_no_replay" },
+    });
+    const pendingStore = new GraphSchedulerStore(value.path);
+    expect(pendingStore.triggers(binding.item.declaration.migrationId)).toMatchObject([{ status: "executing", graphRunId: "run-long-accepted", attemptCount: 1 }]);
+    pendingStore.close();
+
+    terminal = true;
+    const reconciled = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now,
+      schedulerPath: value.path,
+      completionPollAttempts: 1,
+      completionPollIntervalMs: 0,
+      request,
+    });
+    expect(reconciled).toMatchObject({
+      outcome: "completed_policy_skip",
+      executionAcceptance: { status: "reconciled_existing", runId: "run-long-accepted" },
+      publicationReport: { recoveryResult: "terminal_reconciled_no_replay" },
+    });
+    expect(startCalls).toBe(1);
+    const completedStore = new GraphSchedulerStore(value.path);
+    expect(completedStore.triggers(binding.item.declaration.migrationId)).toMatchObject([{ status: "completed", graphRunId: "run-long-accepted", attemptCount: 1 }]);
+    completedStore.close();
   });
 
   it("terminalises a permanently missing child receipt as classified failed-safe evidence", async () => {
@@ -705,7 +766,7 @@ describe("graph scheduler migration registry", () => {
       completionPollIntervalMs: 0,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-missing-receipt", status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-missing-receipt", status: "completed" } };
         if (route === "/api/graphs/runs/run-missing-receipt") return { run: { runId: "run-missing-receipt", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], eventChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -735,7 +796,7 @@ describe("graph scheduler migration registry", () => {
       completionPollIntervalMs: 0,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: `run-${String(failedPredicate).slice(7, 12)}`, status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: `run-${String(failedPredicate).slice(7, 12)}`, status: "completed" } };
         if (route.startsWith("/api/graphs/runs/run-")) return { run: { runId: "run-chain-invalid", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-chain", status: "succeeded", outcome: "completed", receiptHash: "c".repeat(64) }], ...chainFlags };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -758,7 +819,7 @@ describe("graph scheduler migration registry", () => {
       completionPollIntervalMs: 0,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-verifier-failed", status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-verifier-failed", status: "completed" } };
         if (route === "/api/graphs/runs/run-verifier-failed") return { run: { runId: "run-verifier-failed", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-verifier", status: "succeeded", outcome: "completed", receiptHash: "d".repeat(64) }], verifierReceipts: [{ verifierReceiptId: "gvr_failed", status: "failed", outcome: "failed", receiptHash: "e".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -781,7 +842,7 @@ describe("graph scheduler migration registry", () => {
       completionPollIntervalMs: 0,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-too-many-effects", status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-too-many-effects", status: "completed" } };
         if (route === "/api/graphs/runs/run-too-many-effects") return { run: { runId: "run-too-many-effects", status: "completed" }, approvals: [], liveCapability: { capabilityId: "glc_many", status: "consumed" }, externalEffects: [{ state: "effect_verified", providerOperationId: "one" }, { state: "effect_verified", providerOperationId: "two" }], childRunReceipts: [{ receiptId: "receipt-many", status: "succeeded", outcome: "completed", receiptHash: "f".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -808,7 +869,7 @@ describe("graph scheduler migration registry", () => {
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
         if (route === "/api/graphs/runs/run-old-slot") return { run: { runId: "run-old-slot", status: "failed" }, liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-old-slot-recovered", status: "completed" } }; }
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-old-slot-recovered", status: "completed" } }; }
         if (route === "/api/graphs/runs/run-old-slot-recovered") return { run: { runId: "run-old-slot-recovered", status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [{ receiptId: "receipt-old-slot", status: "succeeded", outcome: "completed_unique_opportunity", receiptHash: "1".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -850,7 +911,7 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") return { run: { runId: "run-missed-zero", status: "completed" } };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") return { run: { runId: "run-missed-zero", status: "completed" } };
         if (route === "/api/graphs/runs/run-missed-zero") return { run: { runId: "run-missed-zero", status: "completed", data: { socialEffect: { action: "publish", outboxId: "candidate-one" } } }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], assertions: [{ assertionId: "threads-publication-receipted", status: "passed" }], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -929,7 +990,7 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") { created = true; throw new Error("must not replay completed trigger"); }
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { created = true; throw new Error("must not replay completed trigger"); }
         if (route === "/api/graphs/runs/run-completed-original") return { run: { runId: "run-completed-original", status: "completed", data: { socialEffect: { status: "not_ready_before_commit", action: "skip", outboxId: `threads:2026-08-04:16:30:${binding.item.declaration.scheduleId}`, providerWrites: 0 } }, checkpoints: [{ checkpointId: "gcp_done", nodeId: "complete", reason: "completion_verified", stateHash: "2".repeat(64) }] }, approvals: [], liveCapability: null, externalEffects: [], childRunReceipts: [], assertions: [{ assertionId: "threads-publication-receipted", status: "passed" }], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -954,7 +1015,7 @@ describe("graph scheduler migration registry", () => {
       schedulerPath: value.path,
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") throw new Error("graph_scheduler_http_400:graph_definition_concurrency_exhausted:digest-delivery@1.0.0");
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") throw new Error("graph_scheduler_http_400:graph_definition_concurrency_exhausted:digest-delivery@1.0.0");
         throw new Error(`unexpected fixture route ${route}`);
       },
     });
@@ -995,7 +1056,7 @@ describe("graph scheduler migration registry", () => {
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
         if (route === "/api/graphs/runs/run-factory-recovery") return { run: { runId: "run-factory-recovery", status: "failed" }, liveCapability: null, externalEffects: [] };
-        if (route === "/api/graphs/runs" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-factory-recovered", status: "completed" } }; }
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-factory-recovered", status: "completed" } }; }
         if (route === "/api/graphs/runs/run-factory-recovered") return completedDetail();
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -1032,7 +1093,7 @@ describe("graph scheduler migration registry", () => {
       request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
         if (route === "/api/graphs/runs/run-digest-stale") return { run: { runId: "run-digest-stale", status: "failed" }, liveCapability: null, externalEffects: [] };
-        if (route === "/api/graphs/runs" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-digest-recovered", status: "completed" } }; }
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { recoveryInput = JSON.parse(String(init.body)); return { run: { runId: "run-digest-recovered", status: "completed" } }; }
         if (route === "/api/graphs/runs/run-digest-recovered") return { run: { runId: "run-digest-recovered", status: "completed" }, approvals: [], liveCapability: { status: "consumed" }, externalEffects: [{ state: "effect_verified", providerOperationId: "telegram-message-one" }], childRunReceipts: [{ receiptId: "receipt-digest", status: "succeeded", outcome: "completed", receiptHash: "d".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },
@@ -1082,7 +1143,7 @@ describe("graph scheduler migration registry", () => {
         }
         if (route === "/api/graphs/runs/run-digest-partial/live-capabilities" && init?.method === "POST") { capabilityRequest = JSON.parse(String(init.body)); liveCapabilityIssued = true; return { capability: { capabilityId: "glc_digest", status: "prepared" }, dispatches: [] }; }
         if (route === "/api/graphs/runs/run-digest-partial/resume" && init?.method === "POST") return { run: { runId: "run-digest-partial", status: "running" } };
-        if (route === "/api/graphs/runs/run-digest-partial/execute" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-digest-partial", status: "completed" } }; }
+        if (route === "/api/graphs/runs/run-digest-partial/execute-accepted" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-digest-partial", status: "completed" } }; }
         throw new Error(`unexpected fixture route ${route}`);
       },
     });
@@ -1115,7 +1176,7 @@ describe("graph scheduler migration registry", () => {
           return { run: { runId: "run-digest-restart", status: "running" }, approvals: [approval], liveCapability: capabilityIssued ? { capabilityId: "glc_digest", status: "prepared" } : null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
         }
         if (route === "/api/graphs/runs/run-digest-restart/live-capabilities" && init?.method === "POST") { capabilityIssued = true; return { capability: { capabilityId: "glc_digest", status: "prepared" }, dispatches: [] }; }
-        if (route === "/api/graphs/runs/run-digest-restart/execute" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-digest-restart", status: "completed" } }; }
+        if (route === "/api/graphs/runs/run-digest-restart/execute-accepted" && init?.method === "POST") { executeCalls += 1; return { run: { runId: "run-digest-restart", status: "completed" } }; }
         throw new Error(`unexpected fixture route ${route}`);
       },
     });
@@ -1144,7 +1205,7 @@ describe("graph scheduler migration registry", () => {
       },
     })).rejects.toThrow("graph_scheduler_failed_safe_recovery_requires_zero_effects");
     const reopened = new GraphSchedulerStore(value.path);
-    expect(reopened.trigger(reserved.triggerId)).toMatchObject({ status: "failed_safe", attemptCount: 2 });
+    expect(reopened.trigger(reserved.triggerId)).toMatchObject({ status: "ambiguous", attemptCount: 2 });
     reopened.close();
   });
 
@@ -1298,7 +1359,7 @@ describe("graph scheduler migration registry", () => {
       let runInput: any;
       const result = await executeGovernedSchedule({ migrationId: item.declaration.migrationId, now: new Date(clocks[item.declaration.migrationId]!), schedulerPath: value.path, completionPollAttempts: 1, completionPollIntervalMs: 0, request: async (route, init) => {
         if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
-        if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId, status: "completed" } }; }
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId, status: "completed" } }; }
         if (route === `/api/graphs/runs/${runId}`) return { run: { runId, status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       } });
@@ -1331,7 +1392,7 @@ describe("graph scheduler migration registry", () => {
       preSlotSleep: async (ms) => { slept.push(ms); },
       request: async (route, init) => {
         if (route === "/api/graphs/health") { healthCalls += 1; return { status: "healthy", zeroWriteOnly: true }; }
-        if (route === "/api/graphs/runs" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId, status: "completed" } }; }
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") { runInput = JSON.parse(String(init.body)); return { run: { runId, status: "completed" } }; }
         if (route === `/api/graphs/runs/${runId}`) return { run: { runId, status: "completed" }, approvals: [], liveCapability: null, externalEffects: [], eventChainValid: true, childRunReceiptChainValid: true };
         throw new Error(`unexpected fixture route ${route}`);
       },

@@ -49,6 +49,58 @@ corrected values append. Conversation observations append when their content
 changes. Historical Graph, publication, metric and reconciliation records are
 not rewritten or deleted.
 
+## Scheduler completion-truth repair
+
+The 11:00 natural slot reproduced a split-brain receipt without a split-brain
+transaction. Scheduler trigger `gst_8161ea6f854cb2ca1aa26d79205d6800`
+reserved at `10:06:03.364Z`; its synchronous `POST /api/graphs/runs` created
+Graph run `grzwcanary_5506eec0-db33-4ace-955e-cded51ba592b` at
+`10:06:03.406Z`. The HTTP client reached its 300-second headers timeout and
+sealed the scheduler trigger `failed_safe` at `10:11:04.121Z`, while the
+durable Graph run continued and completed with valid child/verifier chains at
+`10:14:54.276Z`. Total Graph duration was 8 minutes 50.870 seconds.
+
+The repaired contract separates acceptance from settlement:
+
+1. `POST /api/graphs/runs/accepted` persists the root run and returns its
+   correlation-bound `runId` with HTTP 202 before background execution;
+2. the scheduler persists that `runId` before observing terminal state;
+3. a bounded observation timeout leaves the trigger `executing` and reports
+   `accepted_pending`, never `failed_safe`;
+4. duplicate delivery observes and terminally reconciles the same `runId`
+   without creating another Graph run or measurement transaction;
+5. completed/failed runs with an invalid receipt chain remain terminal and
+   fail closed; an unobservable accepted run remains `ambiguous`, not replayable.
+
+## Canonical campaign identity reconstruction
+
+The immutable source evidence does not support a one-to-one alias for any of
+the eight historical values. The reviewed bridge therefore records all eight
+as `unmapped`; zero mappings were invented.
+
+| Historical value | Proven source identity | Reviewed disposition |
+|---|---|---|
+| `68b10c5c-f604-4567-9213-d0d1eab08106` | Threads text scheduler/outbox ID | `unmapped` |
+| `083e3560-40fd-4487-9d78-674f64866ef7` | Threads image scheduler/outbox ID | `unmapped` |
+| `qualified-enquiries` | legacy strategic-objective rotation category spanning five products and five audiences | `unmapped` |
+| `pet-care-category` | legacy strategic-pillar rotation category spanning five products and five audiences | `unmapped` |
+| `productised-engineering` | legacy strategic-pillar rotation category spanning three products and three audiences | `unmapped` |
+| `governed-automation` | legacy capability rotation category spanning six products and six audiences | `unmapped` |
+| `market-authority` | legacy strategic-pillar rotation category spanning six products and six audiences | `unmapped` |
+| `operational-excellence` | legacy strategic-pillar rotation category spanning four products and four audiences | `unmapped` |
+
+`publishing_campaign_identity_bridge` is append-only and protected against
+update/delete. Each reviewed record carries source references, reviewer,
+review time and a deterministic provenance hash. Feedback publications retain
+their original `campaign_id` permanently. Reports resolve only direct current
+registry IDs or exact reviewed aliases; all others appear as
+`UNMAPPED:<historical-id>`. Future Graph publications carrying one of the 13
+canonical registry IDs are accepted directly without an alias.
+
+Instagram post insights and CRM/website conversion evidence remain
+`EVIDENCE_UNAVAILABLE`. Those connector gaps are not implementation failures
+and are never converted to zero or inferred attribution.
+
 ## Meaning of states
 
 - `observed`: evidence exists but is not yet provider-verified.
@@ -81,11 +133,16 @@ experiments, schedules or selection weights.
 ## Verification and activation boundary
 
 Focused tests cover duplicate reads, corrected counts, late replies, ambiguous
-publication evidence and reconciliation without fabricated business outcomes.
-The complete protected gate must pass on the owned Crabbox SSH host before the
-isolated change is committed and pushed.
+publication evidence, timeout-after-acceptance, terminal reconciliation,
+duplicate scheduler delivery, immutable historical aliases, unmapped
+identities, direct future canonical identities and reconciliation without
+fabricated business outcomes.
+The complete protected gate passed on the owned Crabbox SSH host as
+`run_eeaacd8d757a` with exit `0`: 97 unit simulations, 35 live middleware
+integrations, 34 operator-console tests, both TypeScript checks, both builds,
+documentation drift/link checks and the VitePress production build were green.
 
-Loading the changed orchestrator process is a separate service-lifecycle
-boundary. Until that exact action is approved and completed, the deployed
-runtime remains on the prior feedback behavior even if source validation is
-green.
+Loading the changed orchestrator process remains a separate service-lifecycle
+stage. The mission authorizes at most the single minimum orchestrator lifecycle
+action needed after the isolated commit is pushed; natural verification still
+must wait for a later scheduled polling opportunity.

@@ -57,6 +57,13 @@ type NaturalSlotResolution = {
   scheduledFor: string;
   waitUntil?: string;
 };
+type ExecutionAcceptance = {
+  status: "accepted" | "already_accepted" | "reconciled_existing";
+  runId: string;
+  correlationId: string;
+  acceptedAt: string;
+  durable: true;
+};
 
 const EARLY_NATURAL_SLOT_TOLERANCE_MINUTES = 5;
 
@@ -271,6 +278,7 @@ export function buildPublicationReport(args: { detail: any; outcome: string; pro
 export function formatGovernedScheduleOutput(result: Record<string, unknown>, fallbackMigrationId: string): string {
   const trigger = result.trigger as Record<string, unknown>;
   const report = result.publicationReport as PublicationReport | undefined;
+  const acceptance = result.executionAcceptance as ExecutionAcceptance | undefined;
   if (!report) {
     return `Graph-owned ${String(result.migrationId ?? fallbackMigrationId)} ${String(result.outcome)}\nTrigger: ${String(trigger.triggerId)}\nRun: ${String(trigger.graphRunId ?? "none")}\nProvider writes: ${String(result.providerWrites ?? 0)}; Browser Relay calls: 0\n`;
   }
@@ -284,6 +292,7 @@ export function formatGovernedScheduleOutput(result: Record<string, unknown>, fa
     `Target ID: ${report.targetId ?? "none"}`,
     `Trigger: ${String(trigger.triggerId)}`,
     `Run: ${String(trigger.graphRunId ?? "none")}`,
+    `Scheduler acknowledgement: ${acceptance ? `${acceptance.status}:${acceptance.runId}:durable` : "not_available"}`,
     `Provider writes: ${String(report.providerWrites)}; Browser Relay calls: 0`,
     `Provider post: ${report.providerPostUrl ?? report.providerPostId ?? "none"}`,
     `Historical provider writes referenced: ${String(report.historicalProviderWrites)}`,
@@ -344,7 +353,31 @@ async function waitForSchedulerCompletionContract(args: { request: HttpRequest; 
     if (contract.status === "passed" || contract.status === "terminal") return { detail, contract };
     if (attempt < args.attempts - 1) await sleep(args.intervalMs);
   }
-  return { detail, contract: { ...contract!, status: "terminal", transient: false, chainValidationReasons: [...contract!.chainValidationReasons, "sealed terminal state not observed before bounded polling limit"] } };
+  const terminalRunObserved = ["completed", "failed", "cancelled"].includes(String(detail?.run?.status));
+  return {
+    detail,
+    contract: {
+      ...contract!,
+      status: terminalRunObserved ? "terminal" : "transient",
+      transient: !terminalRunObserved,
+      chainValidationReasons: [
+        ...contract!.chainValidationReasons,
+        terminalRunObserved
+          ? "sealed terminal state not observed before bounded polling limit"
+          : "sealed terminal state not observed within bounded observation window",
+      ],
+    },
+  };
+}
+
+async function waitForApprovalBoundary(args: { request: HttpRequest; runId: string; attempts?: number; intervalMs?: number }): Promise<any> {
+  let detail: any = null;
+  for (let attempt = 0; attempt < (args.attempts ?? 120); attempt += 1) {
+    detail = await args.request(`/api/graphs/runs/${args.runId}`);
+    if (["waiting_for_approval", "blocked", "paused", "waiting", "completed", "failed", "cancelled"].includes(String(detail?.run?.status))) return detail;
+    if (attempt < (args.attempts ?? 120) - 1) await sleep(args.intervalMs ?? 250);
+  }
+  return detail;
 }
 
 export type GovernedScheduleExecutionArgs = {
@@ -365,6 +398,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
   const observedNow = args.now ?? new Date();
   let triggerId: string | undefined;
   let runId: string | undefined;
+  let executionAcceptance: ExecutionAcceptance | undefined;
   try {
     const health = await request("/api/graphs/health");
     if (health?.status !== "healthy" || health?.zeroWriteOnly !== true) throw new Error("graph_scheduler_runtime_health_gate_failed");
@@ -462,15 +496,93 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
           childReceiptChainValid: sealed.detail.childRunReceiptChainValid === true,
         };
       }
-      if (["reserved", "preparing", "executing", "ambiguous"].includes(reservation.trigger.status)) return { outcome: "concurrent_or_ambiguous_trigger_suppressed", trigger: reservation.trigger, providerWrites: 0 };
+      if (["reserved", "preparing", "executing", "ambiguous"].includes(reservation.trigger.status)) {
+        runId = reservation.trigger.graphRunId;
+        if (!runId) return { outcome: "concurrent_or_ambiguous_trigger_suppressed", trigger: reservation.trigger, providerWrites: 0 };
+        executionAcceptance = {
+          status: "reconciled_existing",
+          runId,
+          correlationId: triggerId,
+          acceptedAt: reservation.trigger.updatedAt,
+          durable: true,
+        };
+        if (reservation.trigger.status === "reserved") store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId });
+        if (["reserved", "preparing"].includes(reservation.trigger.status)) store.updateTrigger(triggerId, "executing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId });
+        const sealed = await waitForSchedulerCompletionContract({
+          request,
+          runId,
+          slotId: slot.slotId,
+          triggerId,
+          maximumExternalWrites: portfolio.maximumExternalWrites,
+          attempts: args.completionPollAttempts ?? 1800,
+          intervalMs: args.completionPollIntervalMs ?? 1000,
+        });
+        const effects = (sealed.detail?.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+        if (sealed.contract.status === "transient") {
+          return {
+            outcome: "accepted_pending",
+            migrationId: args.migrationId,
+            graph: `${migration.graphId}@${migration.graphVersion}`,
+            definitionHash: migration.graphDefinitionHash,
+            trigger: store.trigger(triggerId),
+            providerWrites: effects.length,
+            executionAcceptance,
+            completionContract: sealed.contract,
+            publicationReport: buildPublicationReport({
+              detail: sealed.detail,
+              outcome: "deferred",
+              providerWrites: effects.length,
+              maximumExternalWrites: portfolio.maximumExternalWrites,
+              eventChainValid: sealed.detail?.eventChainValid === true,
+              childReceiptChainValid: sealed.detail?.childRunReceiptChainValid === true,
+              deferredReason: "accepted_execution_pending_terminal_reconciliation",
+              completionContract: sealed.contract,
+              recoveryResult: "observe_same_run_no_replay",
+            }),
+          };
+        }
+        if (sealed.contract.status === "terminal") {
+          const failed = store.updateTrigger(triggerId, reservation.trigger.status === "ambiguous" || !sealed.contract.recoverySafe ? "ambiguous" : "failed_safe", `graph-scheduler:${args.migrationId}`, {
+            graphRunId: runId,
+            failureReason: JSON.stringify({ type: "graph_scheduler_terminal_reconciliation_failed", runId, predicates: sealed.contract.predicates, chainValidationReasons: sealed.contract.chainValidationReasons }),
+          });
+          return { outcome: "completion_contract_failed", trigger: failed, providerWrites: effects.length, executionAcceptance, completionContract: sealed.contract };
+        }
+        const terminalReceipt = [...(sealed.detail.childRunReceipts ?? [])].reverse().find((item: any) => item.status === "succeeded");
+        const terminalOutcome = typeof terminalReceipt?.outcome === "string" ? terminalReceipt.outcome : "completed";
+        const completed = store.updateTrigger(triggerId, "completed", `graph-scheduler:${args.migrationId}`, { graphRunId: runId });
+        return {
+          outcome: terminalOutcome,
+          migrationId: args.migrationId,
+          graph: `${migration.graphId}@${migration.graphVersion}`,
+          definitionHash: migration.graphDefinitionHash,
+          trigger: completed,
+          providerWrites: effects.length,
+          executionAcceptance,
+          completionContract: sealed.contract,
+          publicationReport: buildPublicationReport({
+            detail: sealed.detail,
+            outcome: terminalOutcome,
+            providerWrites: effects.length,
+            maximumExternalWrites: portfolio.maximumExternalWrites,
+            eventChainValid: true,
+            childReceiptChainValid: true,
+            completionContract: sealed.contract,
+            recoveryResult: "terminal_reconciled_no_replay",
+          }),
+          eventChainValid: true,
+          childReceiptChainValid: true,
+        };
+      }
       runId = reservation.trigger.graphRunId;
     }
     store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, runId ? { graphRunId: runId, failureReason: undefined } : {});
     let detail: any;
+    let executionNeedsDispatch = reservation.trigger.status === "failed_safe";
     if (!runId) {
       let created: any;
       try {
-        created = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
+        created = await request("/api/graphs/runs/accepted", { method: "POST", body: JSON.stringify({
           graphId: migration.graphId, version: migration.graphVersion, objective: `Graph-owned scheduled workflow ${slot.slotId}`,
           correlationId: triggerId, input: resolveInputTemplate(portfolio.input, slot), authority: portfolio.authority,
         }) });
@@ -500,6 +612,13 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
         };
       }
       runId = String(created.run.runId);
+      executionAcceptance = {
+        status: created.acceptance?.status === "already_accepted" ? "already_accepted" : "accepted",
+        runId,
+        correlationId: String(created.acceptance?.correlationId ?? triggerId),
+        acceptedAt: String(created.acceptance?.acceptedAt ?? new Date().toISOString()),
+        durable: true,
+      };
       detail = await request(`/api/graphs/runs/${runId}`);
       store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.[0]?.approvalId });
     } else detail = await request(`/api/graphs/runs/${runId}`);
@@ -510,17 +629,29 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
         throw new Error("graph_scheduler_failed_safe_recovery_requires_zero_effects");
       }
       if (!detail?.run || detail.run.status === "failed" || detail.run.status === "cancelled") {
-        const recovered = await request("/api/graphs/runs", { method: "POST", body: JSON.stringify({
+        const recovered = await request("/api/graphs/runs/accepted", { method: "POST", body: JSON.stringify({
           graphId: migration.graphId, version: migration.graphVersion, objective: `Graph-owned scheduled workflow recovery ${slot.slotId}`,
           correlationId: `${triggerId}:attempt:${reservation.trigger.attemptCount + 1}`, input: resolveInputTemplate(portfolio.input, slot), authority: portfolio.authority,
         }) });
         runId = String(recovered.run.runId);
+        executionAcceptance = {
+          status: recovered.acceptance?.status === "already_accepted" ? "already_accepted" : "accepted",
+          runId,
+          correlationId: String(recovered.acceptance?.correlationId ?? `${triggerId}:attempt:${reservation.trigger.attemptCount + 1}`),
+          acceptedAt: String(recovered.acceptance?.acceptedAt ?? new Date().toISOString()),
+          durable: true,
+        };
+        executionNeedsDispatch = false;
         detail = await request(`/api/graphs/runs/${runId}`);
         store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId });
       }
     }
 
+    if (portfolio.approvalPolicy !== "none" && !["waiting_for_approval", "blocked", "paused", "waiting", "completed", "failed", "cancelled"].includes(String(detail.run?.status))) {
+      detail = await waitForApprovalBoundary({ request, runId: runId! });
+    }
     if (detail.run?.status === "waiting_for_approval") {
+      executionNeedsDispatch = true;
       const pendingApproval = detail.approvals?.find((item: any) => item.status === "pending");
       const grantedApproval = detail.approvals?.find((item: any) => item.status === "granted");
       if (portfolio.approvalPolicy === "none" || (!pendingApproval && !grantedApproval)) throw new Error("graph_scheduler_unexpected_approval_boundary");
@@ -539,6 +670,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
     if (!detail.liveCapability && ["running", "blocked"].includes(String(detail.run?.status))) {
       const approval = detail.approvals?.find((item: any) => item.status === "granted");
       if (approval) {
+        executionNeedsDispatch = true;
         const expiryMs = Math.min(Date.now() + 15 * 60_000, Date.parse(approval.expiresAt));
         if (!Number.isFinite(expiryMs) || expiryMs <= Date.now()) throw new Error("graph_scheduler_approval_expired_before_capability_issue");
         await request(`/api/graphs/runs/${runId}/live-capabilities`, { method: "POST", body: JSON.stringify({ approvalId: approval.approvalId, expiresAt: new Date(expiryMs).toISOString() }) });
@@ -547,20 +679,49 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
     }
 
     store.updateTrigger(triggerId, "executing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail.liveCapability?.capabilityId });
-    if (["waiting_for_approval", "blocked", "paused"].includes(String(detail.run?.status))) await request(`/api/graphs/runs/${runId}/resume`, { method: "POST" });
-    if (!['completed','failed','cancelled'].includes(String(detail.run?.status))) await request(`/api/graphs/runs/${runId}/execute`, { method: "POST" });
+    let resumed = false;
+    if (["waiting_for_approval", "blocked", "paused", "waiting"].includes(String(detail.run?.status))) {
+      await request(`/api/graphs/runs/${runId}/resume`, { method: "POST" });
+      resumed = true;
+    }
+    if (resumed || executionNeedsDispatch) await request(`/api/graphs/runs/${runId}/execute-accepted`, { method: "POST" });
     const sealed = await waitForSchedulerCompletionContract({
       request,
       runId: runId!,
       slotId: slot.slotId,
       triggerId,
       maximumExternalWrites: portfolio.maximumExternalWrites,
-      attempts: args.completionPollAttempts ?? 6,
-      intervalMs: args.completionPollIntervalMs ?? 750,
+      attempts: args.completionPollAttempts ?? 1800,
+      intervalMs: args.completionPollIntervalMs ?? 1000,
     });
     detail = sealed.detail;
     const completionContract = sealed.contract;
     const effects = (detail.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+    if (completionContract.status === "transient") {
+      return {
+        outcome: "accepted_pending",
+        migrationId: args.migrationId,
+        graph: `${migration.graphId}@${migration.graphVersion}`,
+        definitionHash: migration.graphDefinitionHash,
+        trigger: store.trigger(triggerId),
+        providerWrites: effects.length,
+        executionAcceptance,
+        completionContract,
+        publicationReport: buildPublicationReport({
+          detail,
+          outcome: "deferred",
+          providerWrites: effects.length,
+          maximumExternalWrites: portfolio.maximumExternalWrites,
+          eventChainValid: detail.eventChainValid === true,
+          childReceiptChainValid: detail.childRunReceiptChainValid === true,
+          deferredReason: "accepted_execution_pending_terminal_reconciliation",
+          completionContract,
+          recoveryResult: "observe_same_run_no_replay",
+        }),
+        eventChainValid: detail.eventChainValid === true,
+        childReceiptChainValid: detail.childRunReceiptChainValid === true,
+      };
+    }
     if (completionContract.status !== "passed") {
       const failed = store.updateTrigger(triggerId, completionContract.recoverySafe ? "failed_safe" : "ambiguous", `graph-scheduler:${args.migrationId}`, {
         graphRunId: runId,
@@ -622,6 +783,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
         : terminalCheckpointFrom(detail),
       trigger: completed,
       providerWrites: effects.length,
+      executionAcceptance,
       publicationReport,
       completionContract,
       eventChainValid: true,
@@ -631,8 +793,16 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
     const message = error instanceof Error ? error.message : String(error);
     if (triggerId) {
       try {
+        if (!runId) {
+          try {
+            const correlated = await request(`/api/graphs/correlations/${encodeURIComponent(triggerId)}/run`);
+            runId = optionalString(correlated?.run?.runId) ?? undefined;
+          } catch { /* an unobserved start remains fail-closed */ }
+        }
         const detail = runId ? await request(`/api/graphs/runs/${runId}`) : null;
-        const ambiguous = detail?.liveCapability?.status === "consumed" || detail?.externalEffects?.some((item: any) => ["request_sent", "provider_accepted", "ambiguous"].includes(item.state));
+        const ambiguous = Boolean(runId)
+          || detail?.liveCapability?.status === "consumed"
+          || detail?.externalEffects?.some((item: any) => ["request_sent", "provider_accepted", "ambiguous"].includes(item.state));
         store.updateTrigger(triggerId, ambiguous ? "ambiguous" : "failed_safe", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail?.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail?.liveCapability?.capabilityId, failureReason: message });
       } catch { /* primary failure remains authoritative */ }
     }

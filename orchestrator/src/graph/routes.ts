@@ -40,6 +40,14 @@ function errorResponse(res: Response, error: unknown): Response {
   return res.status(status).json({ error: message });
 }
 
+function launchAcceptedRun(runtime: GraphRuntime, runId: string, executionActor: string): void {
+  setImmediate(() => {
+    void runtime.engine.runUntilSettled(runId, 250, executionActor).catch((error) => {
+      console.error(`[orchestrator] accepted graph run ${runId} execution failed:`, error);
+    });
+  });
+}
+
 export function registerGraphRoutes(app: Express, runtime: GraphRuntime): void {
   app.get("/api/graphs/health", authLimiter, requireBearerToken, viewerReadLimiter, requireRole("viewer"), auditProtectedAction("graphs.health.read"), (_req, res) => {
     const runs = runtime.store.listRuns({ limit: 250 });
@@ -78,6 +86,47 @@ export function registerGraphRoutes(app: Express, runtime: GraphRuntime): void {
       const run = runtime.engine.start({ ...parsed.data, input: parsed.data.input as Record<string, JsonValue> });
       const settled = await runtime.engine.runUntilSettled(run.runId);
       return res.status(201).json({ run: settled });
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.post("/api/graphs/runs/accepted", authLimiter, requireBearerToken, operatorWriteLimiter, requireRole("operator"), auditProtectedAction("graphs.runs.start-accepted"), (req, res) => {
+    const parsed = StartGraphRunSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "validation_error", issues: parsed.error.issues });
+    try {
+      const requestedCorrelationId = parsed.data.correlationId;
+      const existing = requestedCorrelationId
+        ? runtime.store.rootRunByCorrelationId(requestedCorrelationId)
+        : null;
+      const run = existing ?? runtime.engine.start({
+        ...parsed.data,
+        input: parsed.data.input as Record<string, JsonValue>,
+      });
+      if (existing && (
+        existing.graphId !== parsed.data.graphId
+        || (parsed.data.version && existing.graphVersion !== parsed.data.version)
+        || existing.objective !== parsed.data.objective
+        || sha256(existing.input) !== sha256(parsed.data.input)
+      )) throw new Error("graph_accepted_correlation_binding_mismatch");
+      if (!existing && !["completed", "failed", "cancelled", "waiting_for_approval", "blocked", "paused", "waiting"].includes(run.status)) {
+        launchAcceptedRun(runtime, run.runId, `api-accepted:${actor(req)}`);
+      }
+      return res.status(existing ? 200 : 202).json({
+        acceptance: {
+          status: existing ? "already_accepted" : "accepted",
+          runId: run.runId,
+          correlationId: run.correlationId,
+          acceptedAt: new Date().toISOString(),
+          durable: true,
+        },
+        run,
+      });
+    } catch (error) { return errorResponse(res, error); }
+  });
+
+  app.get("/api/graphs/correlations/:correlationId/run", authLimiter, requireBearerToken, viewerReadLimiter, requireRole("viewer"), auditProtectedAction("graphs.run-by-correlation.read"), (req, res) => {
+    try {
+      const run = runtime.store.rootRunByCorrelationId(String(req.params.correlationId));
+      return run ? res.json({ run }) : res.status(404).json({ error: "graph_run_correlation_not_found" });
     } catch (error) { return errorResponse(res, error); }
   });
 
@@ -123,6 +172,25 @@ export function registerGraphRoutes(app: Express, runtime: GraphRuntime): void {
   });
   app.post("/api/graphs/runs/:runId/execute", authLimiter, requireBearerToken, operatorWriteLimiter, requireRole("operator"), auditProtectedAction("graphs.runs.execute"), async (req, res) => {
     try { return res.json({ run: await runtime.engine.runUntilSettled(String(req.params.runId), 250, `api:${actor(req)}`) }); } catch (error) { return errorResponse(res, error); }
+  });
+  app.post("/api/graphs/runs/:runId/execute-accepted", authLimiter, requireBearerToken, operatorWriteLimiter, requireRole("operator"), auditProtectedAction("graphs.runs.execute-accepted"), (req, res) => {
+    try {
+      const run = runtime.store.getRun(String(req.params.runId));
+      if (!run) return res.status(404).json({ error: "graph_run_not_found" });
+      if (!["completed", "failed", "cancelled"].includes(run.status)) {
+        launchAcceptedRun(runtime, run.runId, `api-execute-accepted:${actor(req)}`);
+      }
+      return res.status(202).json({
+        acceptance: {
+          status: "accepted",
+          runId: run.runId,
+          correlationId: run.correlationId,
+          acceptedAt: new Date().toISOString(),
+          durable: true,
+        },
+        run,
+      });
+    } catch (error) { return errorResponse(res, error); }
   });
   app.post("/api/graphs/runs/:runId/checkpoints/:checkpointId/retry", authLimiter, requireBearerToken, operatorWriteLimiter, requireRole("operator"), auditProtectedAction("graphs.runs.checkpoint-retry"), (req, res) => {
     try { return res.json({ run: runtime.engine.retryFromCheckpoint(String(req.params.runId), String(req.params.checkpointId), actor(req)) }); } catch (error) { return errorResponse(res, error); }

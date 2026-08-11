@@ -128,7 +128,7 @@ function reportMarkdown(report: Record<string, unknown>): string {
     "## Campaign feedback",
     "",
     ...campaigns.map((campaign) =>
-      `- ${String(campaign.campaignId)}: produced=${String(campaign.contentProduced)}, verified=${String(campaign.providerVerifiedPublications)}, metric observations=${String(campaign.metricObservations)}, conversations=${String(campaign.conversationsObserved)}, attribution edges=${String(campaign.attributionEdges)}, business outcomes=${String(campaign.attributedBusinessOutcomes)}, unknown=${String(campaign.unattributedUnknownOutcomes)}`,
+      `- ${String(campaign.campaignId)} [identity=${String(campaign.campaignIdentityStatus)}; sources=${(campaign.sourceCampaignIds as string[]).join(",") || "direct"}]: produced=${String(campaign.contentProduced)}, verified=${String(campaign.providerVerifiedPublications)}, metric observations=${String(campaign.metricObservations)}, conversations=${String(campaign.conversationsObserved)}, attribution edges=${String(campaign.attributionEdges)}, business outcomes=${String(campaign.attributedBusinessOutcomes)}, unknown=${String(campaign.unattributedUnknownOutcomes)}`,
     ),
     "",
     "Unavailable values are not treated as zero. No attribution is inferred without the configured evidence threshold.",
@@ -303,40 +303,58 @@ function buildReport(input: {
   const totalPublications = publications.reduce((total, row) => total + Number(row.count), 0);
   const totalConversations = conversations.reduce((total, row) => total + Number(row.count), 0);
   const feedbackRows = store.database.prepare(`
-    WITH campaign_ids AS (
+    WITH publication_identity AS (
+      SELECT
+        publication.*,
+        CASE
+          WHEN canonical.id IS NOT NULL THEN publication.campaign_id
+          WHEN bridge.status='mapped' THEN bridge.canonical_campaign_id
+          ELSE 'UNMAPPED:' || publication.campaign_id
+        END AS matrix_campaign_id
+      FROM publishing_feedback_publications AS publication
+      LEFT JOIN publishing_campaigns AS canonical
+        ON canonical.id=publication.campaign_id
+      LEFT JOIN publishing_campaign_identity_bridge AS bridge
+        ON bridge.historical_campaign_id=publication.campaign_id
+    ),
+    campaign_ids AS (
       SELECT id AS campaign_id FROM publishing_campaigns
       UNION
-      SELECT campaign_id FROM publishing_feedback_publications
+      SELECT matrix_campaign_id FROM publication_identity
     )
     SELECT
       campaign_ids.campaign_id,
+      CASE WHEN campaign_ids.campaign_id LIKE 'UNMAPPED:%' THEN 'unmapped' ELSE 'canonical' END AS identity_status,
+      (SELECT GROUP_CONCAT(DISTINCT publication.campaign_id)
+        FROM publication_identity AS publication
+        WHERE publication.matrix_campaign_id=campaign_ids.campaign_id) AS source_campaign_ids,
       (SELECT COUNT(*) FROM publishing_content_specs AS content
         WHERE content.campaign_id=campaign_ids.campaign_id
           AND content.created_at BETWEEN ? AND ?) AS content_produced,
-      (SELECT COUNT(*) FROM publishing_feedback_publications AS publication
-        WHERE publication.campaign_id=campaign_ids.campaign_id
+      (SELECT COUNT(*) FROM publication_identity AS publication
+        WHERE publication.matrix_campaign_id=campaign_ids.campaign_id
           AND publication.state='verified'
           AND publication.observed_at BETWEEN ? AND ?) AS provider_verified_publications,
       (SELECT COUNT(*) FROM publishing_feedback_metric_observations AS metric
-        JOIN publishing_feedback_publications AS publication ON publication.id=metric.publication_id
-        WHERE publication.campaign_id=campaign_ids.campaign_id
+        JOIN publication_identity AS publication ON publication.id=metric.publication_id
+        WHERE publication.matrix_campaign_id=campaign_ids.campaign_id
           AND metric.observed_at BETWEEN ? AND ?) AS metric_observations,
       (SELECT COUNT(*) FROM publishing_feedback_conversations AS conversation
-        JOIN publishing_feedback_publications AS publication ON publication.id=conversation.publication_id
-        WHERE publication.campaign_id=campaign_ids.campaign_id
+        JOIN publication_identity AS publication ON publication.id=conversation.publication_id
+        WHERE publication.matrix_campaign_id=campaign_ids.campaign_id
           AND conversation.first_observed_at BETWEEN ? AND ?) AS conversations_observed,
       (SELECT COUNT(*) FROM publishing_feedback_attribution_edges AS edge
-        JOIN publishing_feedback_publications AS publication ON publication.id=edge.publication_id
-        WHERE publication.campaign_id=campaign_ids.campaign_id
+        JOIN publication_identity AS publication ON publication.id=edge.publication_id
+        WHERE publication.matrix_campaign_id=campaign_ids.campaign_id
           AND edge.created_at BETWEEN ? AND ?) AS attribution_edges,
       (SELECT COUNT(*) FROM publishing_feedback_attribution_edges AS edge
-        JOIN publishing_feedback_publications AS publication ON publication.id=edge.publication_id
-        WHERE publication.campaign_id=campaign_ids.campaign_id
+        JOIN publication_identity AS publication ON publication.id=edge.publication_id
+        WHERE publication.matrix_campaign_id=campaign_ids.campaign_id
           AND edge.business_outcome_status='verified'
           AND edge.created_at BETWEEN ? AND ?) AS attributed_business_outcomes,
       (SELECT COUNT(*) FROM publishing_feedback_reconciliations AS reconciliation
-        JOIN publishing_feedback_publications AS publication ON publication.id=reconciliation.publication_id
-        WHERE publication.campaign_id=campaign_ids.campaign_id
+        JOIN publication_identity AS publication ON publication.id=reconciliation.publication_id
+        WHERE publication.matrix_campaign_id=campaign_ids.campaign_id
           AND reconciliation.state IN ('unattributed','ambiguous')
           AND reconciliation.reconciled_at BETWEEN ? AND ?) AS unattributed_unknown_outcomes
     FROM campaign_ids
@@ -352,6 +370,8 @@ function buildReport(input: {
   ) as Array<Record<string, unknown>>;
   const campaignFeedback = feedbackRows.map((row) => ({
     campaignId: String(row.campaign_id),
+    campaignIdentityStatus: String(row.identity_status),
+    sourceCampaignIds: row.source_campaign_ids ? String(row.source_campaign_ids).split(",").sort() : [],
     contentProduced: Number(row.content_produced),
     providerVerifiedPublications: Number(row.provider_verified_publications),
     metricObservations: Number(row.metric_observations),
@@ -391,6 +411,10 @@ function buildReport(input: {
       unavailableIsZero: false,
       attributionMinimumEvidenceEnforced: true,
       automaticPerformanceAdjustment: false,
+      historicalCampaignIdentityRequiresReviewedImmutableEvidence: true,
+      unmappedCampaignIdentityIsNotAttributed: true,
+      instagramPostInsights: "EVIDENCE_UNAVAILABLE",
+      crmWebsiteConversions: "EVIDENCE_UNAVAILABLE",
     },
     externalWrites: 0,
   };

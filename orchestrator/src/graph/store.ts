@@ -309,6 +309,18 @@ export class GraphStore {
     return row?.state_json ? json<GraphRunState>(row.state_json) : null;
   }
 
+  rootRunByCorrelationId(correlationId: string): GraphRunState | null {
+    const rows = this.database.prepare(`
+      SELECT state_json
+      FROM graph_runs
+      WHERE correlation_id=? AND parent_run_id IS NULL
+      ORDER BY created_at ASC
+      LIMIT 2
+    `).all(correlationId) as Array<{ state_json: string }>;
+    if (rows.length > 1) throw new Error(`graph_root_correlation_not_unique:${correlationId}`);
+    return rows[0]?.state_json ? json<GraphRunState>(rows[0].state_json) : null;
+  }
+
   listRuns(args: { status?: GraphRunStatus; graphId?: string; limit?: number } = {}): GraphRunState[] {
     const clauses: string[] = [];
     const values: Array<string | number> = [];

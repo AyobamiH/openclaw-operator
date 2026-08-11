@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runCampaignOperationsCycle } from "../src/publishing/campaign-operations.js";
+import { registerCampaignIdentityBridge } from "../src/publishing/campaign-identity.js";
 import { PublishingStore } from "../src/publishing/store.js";
 
 const { DatabaseSync } = createRequire(import.meta.url)("node:sqlite") as typeof import("node:sqlite");
@@ -120,6 +121,7 @@ describe("campaign feedback", () => {
       metricObservationsInserted: 2,
       conversationsInserted: 0,
       businessOutcomesVerified: 0,
+      campaignIdentityUnmapped: 1,
       externalWrites: 0,
       browserRelayCalls: 0,
     });
@@ -173,7 +175,15 @@ describe("campaign feedback", () => {
       publishing_feedback_conversations: 1,
       publishing_feedback_conversation_observations: 1,
       publishing_feedback_attribution_edges: 1,
+      publishing_campaign_identity_bridge: 8,
     });
+    expect(store.database.prepare(`
+      SELECT campaign_id FROM publishing_feedback_publications
+    `).get()).toEqual({ campaign_id: "campaign-live-1" });
+    expect(() => store.database.prepare(`
+      UPDATE publishing_campaign_identity_bridge SET reason='rewritten'
+      WHERE historical_campaign_id='qualified-enquiries'
+    `).run()).toThrow("campaign identity bridge records are immutable");
     const edge = store.database.prepare(`
       SELECT state, confidence, scope, business_outcome_status
       FROM publishing_feedback_attribution_edges
@@ -192,6 +202,59 @@ describe("campaign feedback", () => {
       "verified_publication_no_exact_conversation_business_outcome_unproven",
     ]);
     store.close();
+  });
+
+  it("binds only a reviewed historical alias and accepts future canonical IDs directly", async () => {
+    const mappedRoot = await mkdtemp(join(tmpdir(), "campaign-feedback-mapped-"));
+    roots.push(mappedRoot);
+    const mappedPaths = createGraphFixture(mappedRoot);
+    const mappedDatabasePath = join(mappedRoot, "publishing.sqlite");
+    const mappedStore = new PublishingStore(mappedDatabasePath);
+    registerCampaignIdentityBridge(mappedStore, [{
+      historicalCampaignId: "campaign-live-1",
+      canonicalCampaignId: "campaign-openclaw-proof",
+      status: "mapped",
+      reason: "test fixture exact immutable campaign binding",
+      provenanceRefs: ["fixture://exact-campaign-binding"],
+      reviewedBy: "fixture-reviewer",
+      reviewedAt: "2026-08-11T12:00:00.000Z",
+    }]);
+    mappedStore.close();
+    const providerRead = async (invocation: { args: Record<string, unknown> }) => invocation.args.surface === "post_insights"
+      ? { metrics: [{ name: "views", value: 1 }, { name: "likes", value: 0 }, { name: "replies", value: 0 }, { name: "reposts", value: 0 }, { name: "quotes", value: 0 }, { name: "shares", value: 0 }] }
+      : { records: [] };
+    const mapped = await runCampaignOperationsCycle({
+      registryPath: REGISTRY_PATH,
+      integrationPath: INTEGRATION_PATH,
+      databasePath: mappedDatabasePath,
+      artifactRoot: join(mappedRoot, "artifacts"),
+      observedAt: new Date("2026-08-11T13:00:00.000Z"),
+      ...mappedPaths,
+      toolInvoker: providerRead,
+    });
+    expect(mapped.feedback).toMatchObject({ campaignIdentityMapped: 1, campaignIdentityUnmapped: 0 });
+    const mappedDaily = (mapped.reports as Array<Record<string, unknown>>).find((report) => report.cadence === "daily")!;
+    const mappedReport = JSON.parse(await readFile(String(mappedDaily.jsonPath), "utf8"));
+    expect(mappedReport.campaigns).toEqual(expect.arrayContaining([
+      expect.objectContaining({ campaignId: "campaign-openclaw-proof", campaignIdentityStatus: "canonical", sourceCampaignIds: ["campaign-live-1"], providerVerifiedPublications: 1 }),
+    ]));
+
+    const directRoot = await mkdtemp(join(tmpdir(), "campaign-feedback-direct-"));
+    roots.push(directRoot);
+    const directPaths = createGraphFixture(directRoot);
+    const graph = new DatabaseSync(directPaths.graphRunDatabasePath);
+    graph.prepare("UPDATE graph_one_run_live_capabilities SET campaign_id=?").run("campaign-openclaw-proof");
+    graph.close();
+    const direct = await runCampaignOperationsCycle({
+      registryPath: REGISTRY_PATH,
+      integrationPath: INTEGRATION_PATH,
+      databasePath: join(directRoot, "publishing.sqlite"),
+      artifactRoot: join(directRoot, "artifacts"),
+      observedAt: new Date("2026-08-11T14:00:00.000Z"),
+      ...directPaths,
+      toolInvoker: providerRead,
+    });
+    expect(direct.feedback).toMatchObject({ campaignIdentityDirect: 1, campaignIdentityMapped: 0, campaignIdentityUnmapped: 0 });
   });
 
   it("keeps an ambiguous provider effect unpolled and business evidence unproven", async () => {

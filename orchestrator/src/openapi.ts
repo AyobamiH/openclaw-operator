@@ -2689,6 +2689,22 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         responses: { "201": jsonResponse("Created graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden") },
       },
     },
+    "/api/graphs/runs/accepted": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Durably accept a graph run and return its execution identity before background execution", operationId: "acceptGraphRun",
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.start-accepted"),
+        requestBody: { required: true, content: { "application/json": { schema: schemaRef("GenericObject") } } },
+        responses: { "200": jsonResponse("Previously accepted correlation-bound graph run.", "GenericObject", writeHeaders), "202": jsonResponse("Durably accepted graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/correlations/{correlationId}/run": {
+      get: {
+        tags: ["Operator", "Graphs"], summary: "Resolve one durable root graph run by scheduler correlation identity", operationId: "getGraphRunByCorrelation",
+        parameters: [{ name: "correlationId", in: "path", required: true, schema: { type: "string" } }],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("viewer", "viewer-read", "graphs.run-by-correlation.read"),
+        responses: { "200": jsonResponse("Correlation-bound graph run.", "GenericObject", protectedReadHeaders), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "404": responseRef("NotFound"), "409": responseRef("Conflict") },
+      },
+    },
     "/api/graphs/runs/{runId}": {
       get: {
         tags: ["Operator", "Graphs"], summary: "Inspect one graph run", operationId: "getGraphRun",
@@ -2746,6 +2762,12 @@ export function buildOpenApiSpec(port: string | number = 3000) {
       post: {
         tags: ["Operator", "Graphs"], summary: "Execute a graph until it settles at a terminal or wait boundary", operationId: "executeGraphRun", parameters: [parameterRef("RunId")],
         security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.execute"), responses: { "200": jsonResponse("Settled graph run.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "409": responseRef("Conflict") },
+      },
+    },
+    "/api/graphs/runs/{runId}/execute-accepted": {
+      post: {
+        tags: ["Operator", "Graphs"], summary: "Durably acknowledge resumed graph execution before background settlement", operationId: "acceptGraphRunExecution", parameters: [parameterRef("RunId")],
+        security: [{ bearerAuth: [] }], "x-openclaw-access": protectedAccess("operator", "operator-write", "graphs.runs.execute-accepted"), responses: { "202": jsonResponse("Durably accepted graph execution.", "GenericObject", writeHeaders), "400": responseRef("BadRequest"), "401": responseRef("Unauthorized"), "403": responseRef("Forbidden"), "404": responseRef("NotFound"), "409": responseRef("Conflict") },
       },
     },
     "/api/graphs/runs/{runId}/checkpoints/{checkpointId}/retry": {

@@ -2361,3 +2361,41 @@
 - Next safe step: complete the real-publication disposable-state proof and full
   protected gate, then commit/push the isolated change if green. Runtime load
   remains an explicit service-lifecycle boundary.
+
+## 2026-08-11 — Campaign Feedback Loop completion truth and identity bridge
+
+- Requested task: make four backlog requests durable, then repair only the
+  scheduler completion-truth and historical/canonical campaign-identity
+  blockers without forcing provider or campaign work.
+- Tools and source: OpenClaw coding repository mapper first (read-only,
+  adapter-limited), followed by narrow core source, read-only systemd/journal
+  and SQLite inspection because runtime execution/state is outside that
+  adapter's contract. Local validation reused the canonical checkout's
+  installed dependencies through a temporary symlink; no package install or
+  update occurred.
+- Reproduction evidence: trigger `gst_8161ea6f854cb2ca1aa26d79205d6800`
+  timed out at 300 seconds while correlation-bound Graph run
+  `grzwcanary_5506eec0-db33-4ace-955e-cded51ba592b` continued to a valid
+  terminal result after 8 minutes 50.870 seconds.
+- Identity evidence: two historical values are scheduler/outbox IDs and six
+  are portfolio rotation categories spanning multiple products/audiences.
+  None has exact one-to-one canonical evidence; all eight are reviewed and
+  preserved as immutable `unmapped` records.
+- Changed-state declaration: isolated source, tests and documentation only.
+  Provider writes, Browser Relay calls, forced Graph runs, schedule changes,
+  campaign/experiment mutations, credential reads, runtime restarts and Graph
+  history mutations remain `0` at this stage.
+- Validation evidence: 53 focused campaign feedback/operations and scheduler
+  migration tests, 25 OpenAPI/persistence regressions, TypeScript, build and
+  documentation sync are green locally. The complete owned-SSH protected gate
+  `run_eeaacd8d757a` exited `0` with 97 unit simulations, 35 live middleware
+  integrations, 34 operator-console tests, both TypeScript checks, both builds,
+  documentation drift/link checks and the VitePress production build green.
+  The exact remote lease root was removed after its exit status was preserved.
+- External effects through the protected gate: provider writes, Browser Relay
+  calls, forced Graph runs, schedule changes, campaign/experiment mutations,
+  credential reads, runtime restarts and Graph history mutations remain `0`.
+- Next safe step: commit/push the isolated green repair, load only the approved
+  orchestrator runtime surface with one lifecycle action, then wait for a
+  subsequent natural poll to prove truthful scheduler completion and live
+  repeated-read deduplication.

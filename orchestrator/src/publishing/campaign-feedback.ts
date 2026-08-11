@@ -2,6 +2,11 @@ import { createRequire } from "node:module";
 
 import { canonicalJson, sha256, stableId } from "./canonical.js";
 import {
+  registerCampaignIdentityBridge,
+  resolveCampaignIdentity,
+  type CampaignIdentityResolution,
+} from "./campaign-identity.js";
+import {
   OpenClawOfficialApiWorkerClient,
   type ProductionToolInvoker,
 } from "./official-worker.js";
@@ -47,6 +52,10 @@ type FeedbackSummary = {
   attributionEdgesInserted: number;
   reconciliationsInserted: number;
   businessOutcomesVerified: 0;
+  campaignIdentityDirect: number;
+  campaignIdentityMapped: number;
+  campaignIdentityUnmapped: number;
+  campaignIdentityGaps: Array<{ sourceCampaignId: string; reason: string }>;
   connectorFailures: Array<{ publicationId: string; error: string }>;
   externalWrites: 0;
   browserRelayCalls: 0;
@@ -198,6 +207,7 @@ function opportunityFor(
 function insertPublication(
   store: PublishingStore,
   publication: FeedbackPublicationEvidence,
+  identity: CampaignIdentityResolution,
   nowIso: string,
 ): { id: string; inserted: boolean } {
   const id = stableId("feedback-publication", {
@@ -242,6 +252,7 @@ function insertPublication(
       graphRunId: publication.graphRunId,
       graphEffectId: publication.graphEffectId,
       evidenceRefs: publication.evidenceRefs,
+      campaignIdentity: identity,
     }),
     publication.observedAt,
     publication.state === "verified" ? publication.observedAt : null,
@@ -413,6 +424,7 @@ export async function runCampaignFeedbackCycle(input: {
   toolInvoker: ProductionToolInvoker;
   openclawBin?: string;
 }): Promise<FeedbackSummary> {
+  registerCampaignIdentityBridge(input.store);
   const scheduledFor = input.observedAt.toISOString();
   const claim = acquirePoll({ store: input.store, scheduledFor, now: input.observedAt });
   const summary: FeedbackSummary = {
@@ -430,6 +442,10 @@ export async function runCampaignFeedbackCycle(input: {
     attributionEdgesInserted: 0,
     reconciliationsInserted: 0,
     businessOutcomesVerified: 0,
+    campaignIdentityDirect: 0,
+    campaignIdentityMapped: 0,
+    campaignIdentityUnmapped: 0,
+    campaignIdentityGaps: [],
     connectorFailures: [],
     externalWrites: 0,
     browserRelayCalls: 0,
@@ -443,7 +459,16 @@ export async function runCampaignFeedbackCycle(input: {
       graphSchedulerDatabasePath: input.graphSchedulerDatabasePath,
     });
     for (const publication of publications) {
-      const imported = insertPublication(input.store, publication, nowIso);
+      const identity = resolveCampaignIdentity(input.store, input.registry, publication.campaignId);
+      if (identity.status === "direct") summary.campaignIdentityDirect += 1;
+      else if (identity.status === "mapped") summary.campaignIdentityMapped += 1;
+      else {
+        summary.campaignIdentityUnmapped += 1;
+        if (!summary.campaignIdentityGaps.some((gap) => gap.sourceCampaignId === identity.sourceCampaignId)) {
+          summary.campaignIdentityGaps.push({ sourceCampaignId: identity.sourceCampaignId, reason: identity.reason });
+        }
+      }
+      const imported = insertPublication(input.store, publication, identity, nowIso);
       if (imported.inserted) summary.importedPublications += 1;
       if (publication.state !== "verified") {
         const evidenceHash = sha256(canonicalJson({
