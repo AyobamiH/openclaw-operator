@@ -47,7 +47,7 @@ function createGraphFixture(root: string, state = "effect_verified"): {
     INSERT INTO graph_one_run_live_capabilities VALUES(
       'graph-run-1','threads-daily-image','1.0.0','campaign-live-1',
       'threads:candidate:campaign-live-1','threads','threads:owner',
-      'threads:2026-08-11:09:00:campaign-live-1','publish'
+      'threads:2026-08-11:09:00:campaign-live-1','production.threads-publication-live.v1'
     );
     INSERT INTO graph_external_effects VALUES(
       'graph-effect-1','graph-run-1','${state}','provider-thread-1',

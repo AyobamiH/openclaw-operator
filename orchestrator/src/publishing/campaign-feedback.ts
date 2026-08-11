@@ -105,7 +105,7 @@ export function loadGraphPublicationEvidence(input: {
         effect.evidence_refs_json
       FROM graph_one_run_live_capabilities AS capability
       JOIN graph_external_effects AS effect ON effect.run_id=capability.graph_run_id
-      WHERE capability.operation_type='publish'
+      WHERE capability.operation_type LIKE '%publication%'
         AND capability.provider IN ('threads','instagram')
         AND effect.provider_operation_id IS NOT NULL
       ORDER BY effect.last_observed_at ASC, effect.effect_id ASC
