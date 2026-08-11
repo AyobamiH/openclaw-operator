@@ -125,6 +125,30 @@ export function admitTaskExecution(
     (execution) => execution.idempotencyKey === idempotencyKey,
   );
 
+  const activeDriftRepair =
+    !existing && task.type === "drift-repair"
+      ? state.taskExecutions.find(
+          (execution) =>
+            execution.type === "drift-repair" &&
+            (execution.status === "pending" ||
+              execution.status === "running" ||
+              execution.status === "retrying"),
+        )
+      : undefined;
+
+  if (activeDriftRepair) {
+    const reason = "coalesced-active-drift-repair";
+    recordDuplicateSuppressed(state, task, activeDriftRepair, reason, now);
+    return buildAdmissionResult(task, {
+      admitted: false,
+      kind: "duplicate-suppressed",
+      reason,
+      runId: activeDriftRepair.idempotencyKey,
+      existingStatus: activeDriftRepair.status,
+      sourceTaskId: activeDriftRepair.taskId,
+    });
+  }
+
   if (!existing) {
     const created: TaskExecutionRecord = {
       taskId: task.id,

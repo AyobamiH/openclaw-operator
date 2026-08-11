@@ -28,7 +28,12 @@ controls.
 - The orchestrator watcher/queue is the sole document drift-repair owner.
   `doc-specialist.service` remains a one-minute health observer and may update
   only its service-state receipt; it may not clear orchestrator pending paths,
-  append repair records, or generate knowledge packs independently.
+  append repair records, or generate knowledge packs independently. Drift
+  repair uses one global knowledge-pack mutation lane: changing burst
+  snapshots coalesce into the orchestrator-owned pending-path buffer,
+  independent paths remain eligible for a distinct terminal follow-up, and
+  restart recovery re-enqueues persisted paths without changing an earlier
+  run's terminal truth.
 - `reddit-helper.service` is disabled and is not a required resident service.
   The supported owner is the bounded worker-first `reddit-response` task path.
   The dormant service may be started only by an explicit operator action and

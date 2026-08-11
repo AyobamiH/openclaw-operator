@@ -3080,7 +3080,7 @@ function buildPublicProofOverview() {
     expect(secondMessage).toContain('cooling down');
   });
 
-  it('serializes concurrent doc-repair admission for the same pending doc set', async () => {
+  it('serializes concurrent doc-repair admission across changing burst snapshots', async () => {
     const { resolveTaskHandler } = await import('../src/taskHandlers.ts');
     const state = createDefaultState();
     const queued: Array<{ type: string; payload: Record<string, unknown> }> = [];
@@ -3089,17 +3089,22 @@ function buildPublicProofOverview() {
       state.pendingDocChanges.push(`nodes/concurrent-${index}.md`);
     }
 
-    const affectedPaths = [
+    const firstAffectedPaths = [
       ...state.pendingDocChanges,
-      'nodes/concurrent-trigger.md',
+      'nodes/concurrent-trigger-a.md',
     ];
-    await clearDocRepairCooldown(affectedPaths);
-    await clearDocRepairLock(affectedPaths);
+    const expandedAffectedPaths = [
+      ...firstAffectedPaths,
+      'nodes/concurrent-trigger-b.md',
+    ];
+    await clearDocRepairCooldown(firstAffectedPaths);
+    await clearDocRepairCooldown(expandedAffectedPaths);
+    await clearDocRepairLock(firstAffectedPaths);
 
-    const makeTask = (id: string) => ({
+    const makeTask = (id: string, path: string) => ({
       id,
       type: 'doc-change',
-      payload: { path: 'nodes/concurrent-trigger.md' },
+      payload: { path },
       createdAt: Date.now(),
     });
     const context = {
@@ -3118,8 +3123,14 @@ function buildPublicProofOverview() {
       logger: console,
     };
 
-    const first = makeTask('doc-change-concurrent-1');
-    const second = makeTask('doc-change-concurrent-2');
+    const first = makeTask(
+      'doc-change-concurrent-1',
+      'nodes/concurrent-trigger-a.md',
+    );
+    const second = makeTask(
+      'doc-change-concurrent-2',
+      'nodes/concurrent-trigger-b.md',
+    );
     await Promise.all([
       resolveTaskHandler(first)(first, context),
       resolveTaskHandler(second)(second, context),

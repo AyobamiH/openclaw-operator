@@ -225,6 +225,80 @@ describe("central task admission", () => {
     });
   });
 
+  it("coalesces a different drift-repair identity while the mutation owner is active", () => {
+    const state = createDefaultState();
+    state.taskExecutions.push(execution("running"));
+
+    const result = admitTaskExecution(
+      state,
+      task({
+        id: "expanded-burst-attempt",
+        idempotencyKey: "run-2",
+        payload: {
+          idempotencyKey: "run-2",
+          paths: ["docs/a.md", "docs/b.md", "docs/c.md"],
+        },
+      }),
+      { now: NOW },
+    );
+
+    expect(result).toMatchObject({
+      admitted: false,
+      kind: "duplicate-suppressed",
+      reason: "coalesced-active-drift-repair",
+      runId: "run-1",
+      existingStatus: "running",
+    });
+    expect(state.taskExecutions).toHaveLength(1);
+    expect(state.workflowEvents.at(-1)).toMatchObject({
+      runId: "run-1",
+      taskId: "expanded-burst-attempt",
+      stopCode: "coalesced-active-drift-repair",
+    });
+  });
+
+  it("preserves independent non-document work while a drift repair is active", () => {
+    const state = createDefaultState();
+    state.taskExecutions.push(execution("running"));
+
+    const result = admitTaskExecution(
+      state,
+      task({
+        id: "independent-task",
+        type: "system-monitor",
+        idempotencyKey: "system-monitor:independent",
+        payload: { idempotencyKey: "system-monitor:independent" },
+      }),
+      { now: NOW },
+    );
+
+    expect(result).toMatchObject({ admitted: true, kind: "new" });
+    expect(state.taskExecutions).toHaveLength(2);
+  });
+
+  it("does not rewrite a failed repair when a later burst receives a new identity", () => {
+    const state = createDefaultState();
+    const failed = execution("failed");
+    state.taskExecutions.push(failed);
+
+    const result = admitTaskExecution(
+      state,
+      task({
+        id: "recovery-burst-attempt",
+        idempotencyKey: "run-2",
+        payload: { idempotencyKey: "run-2", paths: ["docs/c.md"] },
+      }),
+      { now: NOW },
+    );
+
+    expect(result).toMatchObject({ admitted: true, kind: "new", runId: "run-2" });
+    expect(failed).toMatchObject({
+      idempotencyKey: "run-1",
+      status: "failed",
+      lastError: "original failure",
+    });
+  });
+
   it("closes admitted queue attempts deterministically during restart reconciliation", () => {
     const state = createDefaultState();
     const incoming = task();

@@ -2338,7 +2338,7 @@ const docChangeHandler: TaskHandler = async (task, context) => {
   ) {
     const detectedAt = new Date().toISOString();
     const affectedPaths = pendingPaths;
-    const repairId = buildDocRepairRepairId(affectedPaths);
+    const repairId = buildDocRepairRepairId(affectedPaths, task.id);
     const repairFingerprint = buildDocRepairFingerprint(affectedPaths);
     const lockOwner = `doc-change:${task.id}`;
     const repairLock = await claimDocRepairLock(affectedPaths, lockOwner);
@@ -2458,7 +2458,13 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
   const extraPaths = Array.isArray(task.payload.paths)
     ? (task.payload.paths as string[])
     : [];
-  const processedPaths = extractedPaths.length ? extractedPaths : extraPaths;
+  const processedPaths = [
+    ...new Set(
+      [...extractedPaths, ...extraPaths]
+        .map((path) => path.trim())
+        .filter(Boolean),
+    ),
+  ];
 
   if (processedPaths.length === 0) {
     return "no drift to repair";
@@ -2496,6 +2502,9 @@ const driftRepairHandler: TaskHandler = async (task, context) => {
       startedAt: startedAtIso,
       repairTaskId: record.repairTaskId ?? task.id,
       repairRunId: task.idempotencyKey ?? record.repairRunId,
+      affectedPaths: [
+        ...new Set([...(record.affectedPaths ?? []), ...processedPaths]),
+      ],
     }));
   }
 

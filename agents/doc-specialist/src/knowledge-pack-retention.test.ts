@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, readdir, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -50,5 +50,59 @@ test("rejects an invalid retention count", async () => {
       maxPacks: 0,
     }),
     /positive integer/,
+  );
+});
+
+test("cleanup is idempotent when two retention snapshots overlap", async () => {
+  const root = await mkdtemp(join(tmpdir(), "knowledge-pack-retention-overlap-"));
+  const packDir = join(root, "knowledge-packs");
+  const manifestPath = join(root, "archive", "retention.jsonl");
+  await import("node:fs/promises").then(({ mkdir }) => mkdir(packDir, { recursive: true }));
+
+  for (let index = 1; index <= 100; index += 1) {
+    const path = join(packDir, `knowledge-pack-${index}.json`);
+    await writeFile(path, JSON.stringify({ id: `knowledge-pack-${index}` }), "utf-8");
+    await utimes(path, index, index);
+  }
+
+  const results = await Promise.all([
+    enforceKnowledgePackRetention({ directory: packDir, maxPacks: 3, manifestPath }),
+    enforceKnowledgePackRetention({ directory: packDir, maxPacks: 3, manifestPath }),
+  ]);
+
+  assert.deepEqual(
+    (await readdir(packDir)).sort(),
+    [
+      "knowledge-pack-100.json",
+      "knowledge-pack-98.json",
+      "knowledge-pack-99.json",
+    ],
+  );
+  assert.equal(
+    new Set(results.flatMap((result) => result.removedIds)).size,
+    97,
+  );
+  assert.equal(
+    results.reduce((total, result) => total + result.removedCount, 0),
+    97,
+  );
+});
+
+test("cleanup still fails closed for non-ENOENT filesystem errors", async () => {
+  const root = await mkdtemp(join(tmpdir(), "knowledge-pack-retention-error-"));
+  const packDir = join(root, "knowledge-packs");
+  await mkdir(packDir, { recursive: true });
+
+  for (let index = 1; index <= 3; index += 1) {
+    const path = join(packDir, `knowledge-pack-${index}.json`);
+    await writeFile(path, JSON.stringify({ id: `knowledge-pack-${index}` }), "utf-8");
+    await utimes(path, index, index);
+  }
+  await assert.rejects(
+    enforceKnowledgePackRetention({
+      directory: join(packDir, "knowledge-pack-1.json", "not-a-directory"),
+      maxPacks: 1,
+    }),
+    (error: NodeJS.ErrnoException) => error.code === "ENOTDIR",
   );
 });

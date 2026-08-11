@@ -7,6 +7,11 @@ import {
   updateTaskQueueAttempt,
 } from "./task-admission.js";
 import {
+  buildCoalescedDriftRepairPayload,
+  buildStartupDriftRepairPayload,
+  stageDriftRepairPaths,
+} from "./doc-repair-coalescing.js";
+import {
   appendRelationshipObservationRecord,
   appendWorkflowEventRecord,
   getRetryRecoveryDelayMs,
@@ -10872,6 +10877,23 @@ async function bootstrap() {
       );
     }
 
+    const startupDocRepair = buildStartupDriftRepairPayload(
+      state,
+      `doc-index-version:${state.docIndexVersion}`,
+    );
+    if (startupDocRepair) {
+      const task = queue.enqueue("drift-repair", startupDocRepair);
+      if (task.admission?.admitted === false) {
+        console.log(
+          `[orchestrator] pending startup document repair coalesced with ${task.admission.runId}`,
+        );
+      } else {
+        console.log(
+          `[orchestrator] recovered ${String((startupDocRepair.paths as string[]).length)} pending document path(s) into ${task.idempotencyKey}`,
+        );
+      }
+    }
+
     for (const indexer of indexers) {
       indexer.watch((doc) => {
         queue.enqueue("doc-change", {
@@ -11189,6 +11211,7 @@ async function bootstrap() {
 
   const queue = new TaskQueue();
   queue.setAdmissionHandler((task) => {
+    stageDriftRepairPaths(state, task);
     const admission = admitTaskExecution(state, task, {
       defaultMaxRetries: retryMaxAttempts,
     });
@@ -11205,6 +11228,27 @@ async function bootstrap() {
     }
     return admission;
   });
+  const enqueuePendingDriftRepairAfterTerminal = (task: Task) => {
+    if (task.type !== "drift-repair") return;
+    const payload = buildCoalescedDriftRepairPayload(state, task);
+    if (!payload) return;
+    try {
+      const followUp = queue.enqueue("drift-repair", payload);
+      if (followUp.admission?.admitted === false) {
+        console.warn(
+          `[drift-repair] follow-up ${followUp.idempotencyKey} coalesced: ${followUp.admission.reason}`,
+        );
+        return;
+      }
+      console.log(
+        `[drift-repair] queued coalesced follow-up ${followUp.idempotencyKey} for ${String((payload.paths as string[]).length)} pending paths`,
+      );
+    } catch (error) {
+      console.error(
+        `[drift-repair] failed to queue coalesced follow-up without changing terminal truth: ${(error as Error).message}`,
+      );
+    }
+  };
   const graphTaskWaiters = new Map<string, { resolve: (result: { status: "succeeded" | "failed" | "blocked"; outcome: string; output: unknown; evidence: unknown; failureReason?: string }) => void }>();
   const graphTaskTerminalOutcome = (summary: unknown, fallback: string) => {
     if (!summary || typeof summary !== "object" || Array.isArray(summary)) return fallback;
@@ -12641,6 +12685,7 @@ async function bootstrap() {
         graphWaiter.resolve({ status: "succeeded", outcome: graphTaskTerminalOutcome(execution.resultSummary, "task_success"), output: execution.resultSummary ?? { message }, evidence: { taskId: task.id, queueAttempts: execution.queueAttempts ?? [], workflowEvents: state.workflowEvents.filter((event) => event.runId === idempotencyKey).slice(-12) } });
       }
       console.log(`[orchestrator] ✅ ${task.type}: ${message}`);
+      enqueuePendingDriftRepairAfterTerminal(task);
     } catch (error) {
       if (taskExecutionCapabilityId) {
         try { (await getToolGate()).completeExecutionCapability(taskExecutionCapabilityId, "failed"); } catch (capabilityError) { console.error("[toolgate] failed to close task capability:", capabilityError); }
@@ -12785,6 +12830,9 @@ async function bootstrap() {
         error: err.message,
         stack: err.stack,
       });
+      if (execution.status === "failed") {
+        enqueuePendingDriftRepairAfterTerminal(task);
+      }
     } finally {
       await releaseTaskExecutionLease(idempotencyKey, coordinationOwner);
       void flushState().catch((error) => {

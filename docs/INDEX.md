@@ -88,6 +88,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/threads-readiness-instagram-comparison-and-pipeline-repair-2026-08-02.md](./operations/threads-readiness-instagram-comparison-and-pipeline-repair-2026-08-02.md) | Threads/Instagram pipeline comparison, atomic readiness repair, loaded zero-write proof and approved-content boundary |
 | [operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md](./operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md) | deterministic campaign-factory shadow activation, completed governed graph-runtime source contract, and remaining live-activation authority boundary |
 | [operations/campaign-feedback-loop-2026-08-11.md](./operations/campaign-feedback-loop-2026-08-11.md) | Graph publication, provider measurement, exact conversation attribution, reconciliation and truthful reporting contract |
+| [operations/document-drift-repair-single-flight-2026-08-11.md](./operations/document-drift-repair-single-flight-2026-08-11.md) | Single-flight document-repair admission, coalesced path recovery, immutable terminal truth and retention cleanup evidence |
 | [operations/graph-native-migration-registry.md](./operations/graph-native-migration-registry.md) | active workflow classification, graph targets, risks and next migration steps |
 
 ## Guides

@@ -2438,3 +2438,36 @@
   VitePress production build green. Isolated commit/push and exact script
   deployment remain the next approved stages; the 17:00 natural opportunity
   remains unforced.
+
+## 2026-08-11 — Document drift-repair single-flight closure
+
+- Requested task: close the final-audit document drift-repair concurrency
+  defect without changing its singular owner or executing product backlogs.
+- Tools and source: OpenClaw coding repository mapper first, followed by narrow
+  source, test, journal, systemd and health inspection because the mapper does
+  not expose live task history or service state. The approval-bounded runtime
+  repair, proof-chain, closeout, coding-audit routing, and Clawpatch/Crabbox
+  workflow instructions governed the sequence.
+- Reproduction: a changing document burst produced different exact path-set
+  lock/idempotency keys, admitted two drift repairs, and raced the same
+  knowledge-pack retention candidate. The ENOENT regression failed before the
+  repair; changing-snapshot coordination and type-wide admission regressions
+  also failed before implementation.
+- Changed-state declaration: isolated source, tests, task reference,
+  recurring-work registry and this evidence only at this stage. Ownership,
+  schedules, Graph history, credentials, campaigns, providers and the four
+  product backlogs remain unchanged. Provider writes and Browser Relay calls
+  are `0`.
+- Implemented contract: one knowledge-pack mutation lane; type-wide active-run
+  coalescing; durable unique pending paths; distinct terminal follow-ups;
+  restart recovery; immutable per-run failure truth; and ENOENT-only idempotent
+  retention cleanup with other errors propagated.
+- Validation: focused admission/coalescing/coordination tests `27/27`,
+  changing-snapshot handler regression `1/1`, retention tests `4/4`,
+  TypeScript, build and diff checks passed. The complete owned-SSH
+  `verify:main` gate `run_0dcc3e44296f` exited `0` with 97 unit simulations,
+  35 live middleware tests, 34 operator-console tests, both builds and
+  TypeScript projects, documentation checks and the VitePress production
+  build green. Focused remote run `run_58a1fbeeb6a8` also passed `27/27`,
+  `1/1`, and `4/4`; its exact remote work root was removed. Commit/push,
+  runtime load and natural proof remain the next stages.

@@ -12,6 +12,7 @@ const coordinationStore = createSharedCoordinationStore({
 
 const TASK_EXECUTION_LEASE_MS = 15 * 60 * 1000;
 const DOC_REPAIR_LOCK_MS = 5 * 60 * 1000;
+const DOC_REPAIR_SINGLE_FLIGHT_KEY = "knowledge-pack-mutation";
 
 function normalizeDocRepairPaths(paths: string[]) {
   return [...new Set(paths.map((path) => path.trim()).filter(Boolean))].sort();
@@ -33,8 +34,10 @@ function buildDocRepairKey(paths: string[]) {
   };
 }
 
-export function buildDocRepairRepairId(paths: string[]) {
-  const { digest } = buildDocRepairKey(paths);
+export function buildDocRepairRepairId(paths: string[], burstIdentity?: string) {
+  const fingerprint = buildDocRepairFingerprint(paths);
+  const burst = burstIdentity?.trim() ?? "";
+  const digest = buildDigest(`${fingerprint}\n${burst}`);
   return `doc-drift:${digest.slice(0, 16)}`;
 }
 
@@ -62,7 +65,7 @@ export async function claimDocRepairLock(
   owner: string,
   ttlMs: number = DOC_REPAIR_LOCK_MS,
 ) {
-  const { fingerprint, digest } = buildDocRepairKey(paths);
+  const { fingerprint } = buildDocRepairKey(paths);
   if (!fingerprint) {
     return {
       acquired: false,
@@ -72,13 +75,22 @@ export async function claimDocRepairLock(
       expiresAt: null,
     };
   }
-  return coordinationStore.claimLease("doc-repair-lock", digest, owner, ttlMs);
+  return coordinationStore.claimLease(
+    "doc-repair-lock",
+    DOC_REPAIR_SINGLE_FLIGHT_KEY,
+    owner,
+    ttlMs,
+  );
 }
 
 export async function releaseDocRepairLock(paths: string[], owner: string) {
-  const { fingerprint, digest } = buildDocRepairKey(paths);
+  const { fingerprint } = buildDocRepairKey(paths);
   if (!fingerprint) return false;
-  return coordinationStore.releaseLease("doc-repair-lock", digest, owner);
+  return coordinationStore.releaseLease(
+    "doc-repair-lock",
+    DOC_REPAIR_SINGLE_FLIGHT_KEY,
+    owner,
+  );
 }
 
 export async function isDocRepairCooldownActive(paths: string[]) {
@@ -116,9 +128,9 @@ export async function clearDocRepairCooldown(paths: string[]) {
 }
 
 export async function clearDocRepairLock(paths: string[]) {
-  const { fingerprint, digest } = buildDocRepairKey(paths);
+  const { fingerprint } = buildDocRepairKey(paths);
   if (!fingerprint) return;
-  await coordinationStore.deleteKey("doc-repair-lock", digest);
+  await coordinationStore.deleteKey("doc-repair-lock", DOC_REPAIR_SINGLE_FLIGHT_KEY);
 }
 
 export async function resetRuntimeCoordinationStoreForTests() {

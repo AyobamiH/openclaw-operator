@@ -30,12 +30,18 @@ export async function enforceKnowledgePackRetention(
     options.manifestPath ?? join(dirname(directory), "archive", "knowledge-pack-retention.jsonl"),
   );
   const entries = await readdir(directory, { withFileTypes: true });
-  const packs = await Promise.all(
+  const packs = (await Promise.all(
     entries
       .filter((entry) => entry.isFile() && KNOWLEDGE_PACK_PATTERN.test(entry.name))
       .map(async (entry) => {
         const path = join(directory, entry.name);
-        const fileStat = await stat(path);
+        let fileStat;
+        try {
+          fileStat = await stat(path);
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+          throw error;
+        }
         return {
           id: entry.name.slice(0, -".json".length),
           name: entry.name,
@@ -44,15 +50,24 @@ export async function enforceKnowledgePackRetention(
           mtimeMs: fileStat.mtimeMs,
         };
       }),
-  );
+  )).filter((pack) => pack !== null);
   packs.sort((left, right) => right.mtimeMs - left.mtimeMs || right.name.localeCompare(left.name));
 
   const candidates = packs.slice(maxPacks);
   const removed = [];
   for (const candidate of candidates) {
-    await unlink(candidate.path);
+    try {
+      await unlink(candidate.path);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
     removed.push(candidate);
   }
+
+  const retainedCount = (await readdir(directory, { withFileTypes: true })).filter(
+    (entry) => entry.isFile() && KNOWLEDGE_PACK_PATTERN.test(entry.name),
+  ).length;
 
   if (removed.length > 0) {
     await mkdir(dirname(manifestPath), { recursive: true });
@@ -63,7 +78,7 @@ export async function enforceKnowledgePackRetention(
         prunedAt: new Date().toISOString(),
         directory,
         maxPacks,
-        retainedCount: packs.length - removed.length,
+        retainedCount,
         removedCount: removed.length,
         removedBytes: removed.reduce((total, entry) => total + entry.size, 0),
         removed: removed.map((entry) => ({
@@ -78,7 +93,7 @@ export async function enforceKnowledgePackRetention(
   }
 
   return {
-    retainedCount: packs.length - removed.length,
+    retainedCount,
     removedCount: removed.length,
     removedBytes: removed.reduce((total, entry) => total + entry.size, 0),
     removedIds: removed.map((entry) => entry.id),

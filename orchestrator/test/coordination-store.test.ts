@@ -10,6 +10,9 @@ import { PersistenceIntegration } from "../src/persistence/persistence-integrati
 import {
   buildDocRepairFingerprint,
   buildDocRepairRepairId,
+  claimDocRepairLock,
+  releaseDocRepairLock,
+  resetRuntimeCoordinationStoreForTests,
 } from "../src/coordination/runtime-coordination.js";
 import {
   loadProcessedDraftIds,
@@ -95,6 +98,23 @@ describe("shared coordination store", () => {
     expect(buildDocRepairRepairId(firstPaths)).toBe(
       buildDocRepairRepairId(secondPaths),
     );
+  });
+
+  it("serializes document-repair admission across changing burst snapshots", async () => {
+    await resetRuntimeCoordinationStoreForTests();
+    const firstPaths = ["docs/a.md", "docs/b.md"];
+    const expandedPaths = ["docs/a.md", "docs/b.md", "docs/c.md"];
+
+    const first = await claimDocRepairLock(firstPaths, "doc-change:first");
+    const second = await claimDocRepairLock(expandedPaths, "doc-change:second");
+
+    expect(first.acquired).toBe(true);
+    expect(second).toMatchObject({
+      acquired: false,
+      existingOwner: "doc-change:first",
+    });
+
+    await releaseDocRepairLock(firstPaths, "doc-change:first");
   });
 });
 
