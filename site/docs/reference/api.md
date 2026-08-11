@@ -1415,11 +1415,14 @@ not state authority.
 | `POST` | `/api/graphs/definitions/validate` | operator | validate without registration |
 | `POST` | `/api/graphs/definitions/register` | admin | register one allowlisted immutable version |
 | `GET/POST` | `/api/graphs/runs` | viewer/operator | list or start runs |
+| `POST` | `/api/graphs/runs/accepted` | operator | durably accept a correlation-bound run and return `runId` before background execution |
+| `GET` | `/api/graphs/correlations/:correlationId/run` | viewer | reconcile a scheduler correlation to its durable root run without replay |
 | `GET` | `/api/graphs/runs/:runId` | viewer | state, approvals, effects, chain status and Telegram summary |
 | `GET` | `/api/graphs/runs/:runId/events` | viewer | append-only hash-chained events |
 | `GET` | `/api/graphs/runs/:runId/evidence` | viewer | completion evidence package |
 | `POST` | `/api/graphs/runs/:runId/step` | operator | execute one allowed node |
 | `POST` | `/api/graphs/runs/:runId/execute` | operator | execute until terminal/wait/approval/block |
+| `POST` | `/api/graphs/runs/:runId/execute-accepted` | operator | acknowledge resumed execution immediately and observe the same run to terminal state |
 | `POST` | `/api/graphs/runs/:runId/pause` | operator | checkpoint and pause |
 | `POST` | `/api/graphs/runs/:runId/resume` | operator | resume only when approval/effects allow |
 | `POST` | `/api/graphs/runs/:runId/cancel` | operator | cancel when provider-side work is safe |
