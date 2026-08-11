@@ -325,6 +325,7 @@ export class OpenClawOfficialApiWorkerClient implements OfficialApiWorkerClient 
         action: "publish",
         targetId: "account-feed",
         providerResultId: providerId,
+        relayAvailable: false,
       },
       idempotencyKey: `${providerId}:official-readback`,
     });
@@ -348,6 +349,7 @@ export class OpenClawOfficialApiWorkerClient implements OfficialApiWorkerClient 
         surface: "owned",
         query: "",
         limit: 100,
+        relayAvailable: false,
       },
       idempotencyKey: `${contentSpec.contentHash}:official-owned-history`,
     });
@@ -407,6 +409,7 @@ export class OpenClawOfficialApiWorkerClient implements OfficialApiWorkerClient 
         targetId: providerId,
         query: "",
         limit: 25,
+        relayAvailable: false,
       },
       idempotencyKey: `${providerId}:official-provider-metrics`,
     });
@@ -448,5 +451,61 @@ export class OpenClawOfficialApiWorkerClient implements OfficialApiWorkerClient 
         },
       },
     ];
+  }
+
+  async fetchConversations(providerId: string): Promise<Array<{
+    providerConversationId: string;
+    text: string;
+    observedAt: string;
+    evidence: Record<string, unknown>;
+  }>> {
+    const result = await this.input.invoker({
+      tool: "relay_live_business_engagement_discover",
+      args: {
+        platform: this.platformId,
+        accountKey: this.input.opportunity.connectorAccountKey,
+        surface: "post_replies",
+        targetId: providerId,
+        query: "",
+        limit: 100,
+        relayAvailable: false,
+      },
+      idempotencyKey: `${providerId}:official-post-replies`,
+    });
+    const observedAt = new Date().toISOString();
+    const seen = new Set<string>();
+    const conversations: Array<{
+      providerConversationId: string;
+      text: string;
+      observedAt: string;
+      evidence: Record<string, unknown>;
+    }> = [];
+    for (const record of collectRecords(result)) {
+      const id = typeof record.id === "string"
+        ? record.id
+        : typeof record.providerId === "string"
+          ? record.providerId
+          : "";
+      const text = typeof record.text === "string"
+        ? record.text
+        : typeof record.message === "string"
+          ? record.message
+          : "";
+      if (!id || id === providerId || !text || seen.has(id)) continue;
+      seen.add(id);
+      conversations.push({
+        providerConversationId: id,
+        text,
+        observedAt: typeof record.timestamp === "string" ? record.timestamp : observedAt,
+        evidence: {
+          source: "official-provider-post-replies",
+          platform: this.platformId,
+          providerPublicationId: providerId,
+          providerRecord: record,
+          exactTargetedRead: true,
+        },
+      });
+    }
+    return conversations;
   }
 }

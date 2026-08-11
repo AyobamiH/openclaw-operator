@@ -52,7 +52,8 @@ are enforced in code and durable state:
 | Proof lineage | `orchestrator/src/publishing/proof.ts` | Exact, recompressed, derivative and unknown asset relationships |
 | Operator routes | `orchestrator/src/publishing/routes.ts` | Authenticated planning and evidence reads; no provider-write endpoint |
 | Product harness | `orchestrator/src/publishing/cli.ts` | Registry validation, initialization, planning, overview and non-writing diagnostics |
-| Campaign operations | `orchestrator/src/publishing/campaign-operations.ts` | Evidence-only daily/weekly commercial reports and zero-adjustment experiment evaluation |
+| Campaign operations | `orchestrator/src/publishing/campaign-operations.ts` | Evidence-only daily/weekly campaign reports and zero-adjustment experiment evaluation |
+| Campaign feedback | `orchestrator/src/publishing/campaign-feedback.ts` | Graph publication import, idempotent official readback, exact conversation linkage and truthful reconciliation |
 
 ## Registry Contract
 
@@ -264,13 +265,30 @@ controls endpoint types, allowed confidence and minimum evidence count. The
 current publication-to-conversation definition requires at least two evidence
 records.
 
-Provider metrics are captured when a product-owned publication verifies or
-reconciles. The Campaign Factory Graph child now owns evidence-only daily and
-weekly aggregation across provider metrics, conversations and attribution
-edges. Missing CRM/website/provider evidence remains null/unavailable, and no
-attribution is created by the reporting cycle. The active approved experiment
-is a zero-adjustment baseline with a ten-sample threshold and stop rule; it
-cannot change selection without a separate approved registry revision.
+The Graph-owned Campaign Factory v4 child is the sole measurement and
+reconciliation poll owner. It imports exact Graph external-effect publication
+evidence into a separate feedback ledger, then performs official-API-only
+metric and reply reads. A stable publication identity is the
+platform/account/provider object tuple. Metric observations are deduplicated by
+publication, definition, availability and value, so repeated reads do not
+inflate samples while corrected provider counts append a new observation.
+
+Conversations are linked only when a reply is returned by an official read
+targeted at the exact provider publication object. That link creates an
+engagement attribution edge with high provider-object confidence, but its
+business-outcome status remains `unproven`. Likes, views, replies and comments
+are not conversions or revenue evidence. Missing CRM and website connectors
+therefore remain explicit evidence gaps rather than synthetic outcomes.
+
+Reconciliation is append-only and records `unattributed` when a verified
+publication has no exact conversation, `ambiguous` when provider evidence or a
+read fails, and `reconciled` when an exact provider conversation is linked.
+Campaign reports use schema `openclaw-campaign-commercial-report.v2` and
+separate content produced, provider-verified publications, metric
+observations, conversations, attribution edges, attributed business outcomes,
+and unattributed/unknown outcomes. The active approved experiment is a
+zero-adjustment baseline with a ten-sample threshold and stop rule; it cannot
+change selection without a separate approved registry revision.
 
 ## Operational Harness
 

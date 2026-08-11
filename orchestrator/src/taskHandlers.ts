@@ -4309,6 +4309,12 @@ const campaignContentFactoryHandler: TaskHandler = async (task, context) => {
     observedAt,
     openclawBin: typeof task.payload.openclawBin === "string" ? task.payload.openclawBin : undefined,
     workspace: typeof task.payload.workspace === "string" ? task.payload.workspace : undefined,
+    graphRunDatabasePath: typeof task.payload.graphRunDatabasePath === "string"
+      ? task.payload.graphRunDatabasePath
+      : join(dirname(String(task.payload.databasePath)), "graph-runs.sqlite"),
+    graphSchedulerDatabasePath: typeof task.payload.graphSchedulerDatabasePath === "string"
+      ? task.payload.graphSchedulerDatabasePath
+      : join(dirname(String(task.payload.databasePath)), "graph-scheduler.sqlite"),
   });
   if (operations.externalWrites !== 0) throw new Error("campaign operations detected an external write");
   const result = await runCampaignFactoryShadowCycle({

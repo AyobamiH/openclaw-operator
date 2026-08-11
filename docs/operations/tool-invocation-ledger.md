@@ -2324,3 +2324,40 @@
   change set, commit and push only if green, then request explicit lifecycle
   approval before restarting `orchestrator.service` and
   `doc-specialist.service` for runtime cutover and natural verification.
+
+## 2026-08-11 — Campaign measurement and attribution feedback loop
+
+- Requested task: audit and build the real campaign publication, provider
+  measurement, conversation, attribution, reconciliation and reporting path
+  without creating provider writes or inventing business evidence.
+- Workflow lane: campaign evidence architecture, official read connectors,
+  deterministic SQLite state, tests, reporting and runtime verification.
+- Tools and source:
+  - coding-agent-skills repository mapping first; migration and API adapters
+    were unavailable in the project adapter, so narrow core source/SQLite
+    inspection supplied the missing evidence;
+  - read-only SQLite inventory of deterministic publishing, Graph runs and
+    Graph scheduler state;
+  - official Meta connector inspect, insights and reply discovery with Browser
+    Relay disabled;
+  - focused Vitest and TypeScript validation, followed by the owned Crabbox SSH
+    protected gate when the isolated source set is ready.
+- Changed-state declaration: `true` for isolated source, tests and docs only at
+  this stage. Live campaign databases, schedules, Graph history, provider
+  authority, credentials and provider objects were not mutated.
+- Evidence result: the deterministic campaign store still had zero metrics,
+  conversations, attribution edges and reconciliations, while the Graph store
+  held exact verified provider objects. One verified Threads publication
+  returned ten views through the official insights surface and zero exact
+  replies; an exact Instagram Reel read returned zero replies and has no
+  supported insights surface.
+- Contract result: Campaign Factory v4 remains the sole poll owner; identities,
+  deduplication, append-only corrections, exact reply linkage and explicit
+  unproven/ambiguous outcomes are implemented. Likes, views and comments cannot
+  create a business conversion.
+- External effects so far: provider writes, Browser Relay calls, forced Graph
+  runs, campaign activations, experiment changes, credential reads and service
+  restarts are all `0`.
+- Next safe step: complete the real-publication disposable-state proof and full
+  protected gate, then commit/push the isolated change if green. Runtime load
+  remains an explicit service-lifecycle boundary.

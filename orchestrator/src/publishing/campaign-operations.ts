@@ -8,6 +8,7 @@ import {
   type ProductionToolInvoker,
 } from "./official-worker.js";
 import { loadCampaignDependencyReadiness } from "./dependency-readiness.js";
+import { runCampaignFeedbackCycle } from "./campaign-feedback.js";
 import { loadProductionIntegration } from "./production-integration.js";
 import { loadRegistryBundle } from "./registry.js";
 import { PublishingStore } from "./store.js";
@@ -103,6 +104,8 @@ function reportMarkdown(report: Record<string, unknown>): string {
   const attribution = report.attribution as Record<string, number>;
   const metrics = report.metrics as MetricSummary[];
   const experiments = report.experiments as Array<Record<string, unknown>>;
+  const feedback = report.feedback as Record<string, unknown>;
+  const campaigns = report.campaigns as Array<Record<string, unknown>>;
   return [
     `# Campaign commercial report: ${period.id}`,
     "",
@@ -111,6 +114,8 @@ function reportMarkdown(report: Record<string, unknown>): string {
     `Publications: ${publications.total}; verified: ${publications.verified}; failed: ${publications.failed}.`,
     `Conversations: ${conversations.total}; qualified: ${conversations.qualified}.`,
     `Attribution edges: ${attribution.total}.`,
+    `Provider-verified feedback publications: ${String(feedback.providerVerifiedPublications)}.`,
+    `Attributed business outcomes: ${String(feedback.attributedBusinessOutcomes)} (unproven evidence remains explicit).`,
     "",
     "## Metrics",
     "",
@@ -119,6 +124,12 @@ function reportMarkdown(report: Record<string, unknown>): string {
     "## Experiments",
     "",
     ...experiments.map((experiment) => `- ${String(experiment.id)}: ${String(experiment.evaluation)}; samples=${String(experiment.availableSamples)}; adjustment=${String(experiment.adjustment)}`),
+    "",
+    "## Campaign feedback",
+    "",
+    ...campaigns.map((campaign) =>
+      `- ${String(campaign.campaignId)}: produced=${String(campaign.contentProduced)}, verified=${String(campaign.providerVerifiedPublications)}, metric observations=${String(campaign.metricObservations)}, conversations=${String(campaign.conversationsObserved)}, attribution edges=${String(campaign.attributionEdges)}, business outcomes=${String(campaign.attributedBusinessOutcomes)}, unknown=${String(campaign.unattributedUnknownOutcomes)}`,
+    ),
     "",
     "Unavailable values are not treated as zero. No attribution is inferred without the configured evidence threshold.",
     "",
@@ -291,8 +302,66 @@ function buildReport(input: {
     });
   const totalPublications = publications.reduce((total, row) => total + Number(row.count), 0);
   const totalConversations = conversations.reduce((total, row) => total + Number(row.count), 0);
+  const feedbackRows = store.database.prepare(`
+    WITH campaign_ids AS (
+      SELECT id AS campaign_id FROM publishing_campaigns
+      UNION
+      SELECT campaign_id FROM publishing_feedback_publications
+    )
+    SELECT
+      campaign_ids.campaign_id,
+      (SELECT COUNT(*) FROM publishing_content_specs AS content
+        WHERE content.campaign_id=campaign_ids.campaign_id
+          AND content.created_at BETWEEN ? AND ?) AS content_produced,
+      (SELECT COUNT(*) FROM publishing_feedback_publications AS publication
+        WHERE publication.campaign_id=campaign_ids.campaign_id
+          AND publication.state='verified'
+          AND publication.observed_at BETWEEN ? AND ?) AS provider_verified_publications,
+      (SELECT COUNT(*) FROM publishing_feedback_metric_observations AS metric
+        JOIN publishing_feedback_publications AS publication ON publication.id=metric.publication_id
+        WHERE publication.campaign_id=campaign_ids.campaign_id
+          AND metric.observed_at BETWEEN ? AND ?) AS metric_observations,
+      (SELECT COUNT(*) FROM publishing_feedback_conversations AS conversation
+        JOIN publishing_feedback_publications AS publication ON publication.id=conversation.publication_id
+        WHERE publication.campaign_id=campaign_ids.campaign_id
+          AND conversation.first_observed_at BETWEEN ? AND ?) AS conversations_observed,
+      (SELECT COUNT(*) FROM publishing_feedback_attribution_edges AS edge
+        JOIN publishing_feedback_publications AS publication ON publication.id=edge.publication_id
+        WHERE publication.campaign_id=campaign_ids.campaign_id
+          AND edge.created_at BETWEEN ? AND ?) AS attribution_edges,
+      (SELECT COUNT(*) FROM publishing_feedback_attribution_edges AS edge
+        JOIN publishing_feedback_publications AS publication ON publication.id=edge.publication_id
+        WHERE publication.campaign_id=campaign_ids.campaign_id
+          AND edge.business_outcome_status='verified'
+          AND edge.created_at BETWEEN ? AND ?) AS attributed_business_outcomes,
+      (SELECT COUNT(*) FROM publishing_feedback_reconciliations AS reconciliation
+        JOIN publishing_feedback_publications AS publication ON publication.id=reconciliation.publication_id
+        WHERE publication.campaign_id=campaign_ids.campaign_id
+          AND reconciliation.state IN ('unattributed','ambiguous')
+          AND reconciliation.reconciled_at BETWEEN ? AND ?) AS unattributed_unknown_outcomes
+    FROM campaign_ids
+    ORDER BY campaign_ids.campaign_id
+  `).all(
+    period.startsAt, period.endsAt,
+    period.startsAt, period.endsAt,
+    period.startsAt, period.endsAt,
+    period.startsAt, period.endsAt,
+    period.startsAt, period.endsAt,
+    period.startsAt, period.endsAt,
+    period.startsAt, period.endsAt,
+  ) as Array<Record<string, unknown>>;
+  const campaignFeedback = feedbackRows.map((row) => ({
+    campaignId: String(row.campaign_id),
+    contentProduced: Number(row.content_produced),
+    providerVerifiedPublications: Number(row.provider_verified_publications),
+    metricObservations: Number(row.metric_observations),
+    conversationsObserved: Number(row.conversations_observed),
+    attributionEdges: Number(row.attribution_edges),
+    attributedBusinessOutcomes: Number(row.attributed_business_outcomes),
+    unattributedUnknownOutcomes: Number(row.unattributed_unknown_outcomes),
+  }));
   return {
-    schema: "openclaw-campaign-commercial-report.v1",
+    schema: "openclaw-campaign-commercial-report.v2",
     generatedAt: input.generatedAt,
     period,
     publications: {
@@ -308,6 +377,15 @@ function buildReport(input: {
       states: conversationCounts,
     },
     attribution: { total: Number(attribution.count) },
+    feedback: {
+      providerVerifiedPublications: campaignFeedback.reduce((total, row) => total + row.providerVerifiedPublications, 0),
+      metricObservations: campaignFeedback.reduce((total, row) => total + row.metricObservations, 0),
+      conversationsObserved: campaignFeedback.reduce((total, row) => total + row.conversationsObserved, 0),
+      attributionEdges: campaignFeedback.reduce((total, row) => total + row.attributionEdges, 0),
+      attributedBusinessOutcomes: campaignFeedback.reduce((total, row) => total + row.attributedBusinessOutcomes, 0),
+      unattributedUnknownOutcomes: campaignFeedback.reduce((total, row) => total + row.unattributedUnknownOutcomes, 0),
+    },
+    campaigns: campaignFeedback,
     experiments,
     evidencePolicy: {
       unavailableIsZero: false,
@@ -328,6 +406,8 @@ export async function runCampaignOperationsCycle(input: {
   openclawBin?: string;
   workspace?: string;
   dependencyReadinessPath?: string;
+  graphRunDatabasePath?: string;
+  graphSchedulerDatabasePath?: string;
 }): Promise<Record<string, unknown>> {
   const observedAt = input.observedAt ?? new Date();
   const registry = await loadRegistryBundle(resolve(input.registryPath));
@@ -340,13 +420,41 @@ export async function runCampaignOperationsCycle(input: {
   });
   const store = new PublishingStore(resolve(input.databasePath));
   try {
+    const integration = input.integrationPath
+      ? await loadProductionIntegration(resolve(input.integrationPath), registry)
+      : null;
+    const invoker = integration
+      ? input.toolInvoker ?? gatewayToolInvoker({
+          openclawBin: input.openclawBin ?? "/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.18.0/bin/openclaw",
+          workspace: input.workspace ?? process.cwd(),
+          agentId: integration.workerAgentId,
+        })
+      : null;
+    const feedback = integration && invoker && input.graphRunDatabasePath
+      ? await runCampaignFeedbackCycle({
+          store,
+          registry,
+          integration,
+          graphRunDatabasePath: resolve(input.graphRunDatabasePath),
+          graphSchedulerDatabasePath: input.graphSchedulerDatabasePath
+            ? resolve(input.graphSchedulerDatabasePath)
+            : undefined,
+          observedAt,
+          toolInvoker: invoker,
+          openclawBin: input.openclawBin,
+        })
+      : {
+          status: "not_requested",
+          externalWrites: 0,
+          businessOutcomesVerified: 0,
+        };
     const metricRefresh = input.integrationPath
       ? await refreshOfficialProviderMetrics({
           registry,
           store,
           integrationPath: input.integrationPath,
           observedAt,
-          toolInvoker: input.toolInvoker,
+          toolInvoker: invoker ?? input.toolInvoker,
           openclawBin: input.openclawBin,
           workspace: input.workspace,
         })
@@ -390,6 +498,7 @@ export async function runCampaignOperationsCycle(input: {
           }
         : null,
       metricRefresh,
+      feedback,
       reports,
       externalWrites: 0,
     };

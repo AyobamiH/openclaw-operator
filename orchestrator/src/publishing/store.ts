@@ -216,6 +216,116 @@ function createSchema(database: SqliteDatabase): void {
       FOREIGN KEY(definition_id) REFERENCES publishing_attribution_definitions(id)
     );
 
+    CREATE TABLE IF NOT EXISTS publishing_feedback_publications (
+      id TEXT PRIMARY KEY,
+      campaign_id TEXT NOT NULL,
+      candidate_id TEXT NOT NULL,
+      platform_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      provider_object_id TEXT NOT NULL,
+      graph_run_id TEXT NOT NULL,
+      graph_effect_id TEXT NOT NULL,
+      slot_id TEXT NOT NULL,
+      permalink TEXT,
+      state TEXT NOT NULL CHECK(state IN ('observed','verified','ambiguous')),
+      evidence_json TEXT NOT NULL,
+      observed_at TEXT NOT NULL,
+      verified_at TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(platform_id, account_id, provider_object_id),
+      UNIQUE(graph_run_id, graph_effect_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_publishing_feedback_publication_campaign
+      ON publishing_feedback_publications(campaign_id, observed_at DESC);
+
+    CREATE TABLE IF NOT EXISTS publishing_feedback_metric_observations (
+      id TEXT PRIMARY KEY,
+      publication_id TEXT NOT NULL,
+      metric_definition_id TEXT NOT NULL,
+      value REAL,
+      availability TEXT NOT NULL CHECK(availability IN ('available','unavailable')),
+      state TEXT NOT NULL CHECK(state IN ('observed','verified')),
+      evidence_hash TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,
+      observed_at TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(publication_id, metric_definition_id, evidence_hash),
+      FOREIGN KEY(publication_id) REFERENCES publishing_feedback_publications(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_publishing_feedback_metric_publication
+      ON publishing_feedback_metric_observations(publication_id, observed_at DESC);
+
+    CREATE TABLE IF NOT EXISTS publishing_feedback_conversations (
+      id TEXT PRIMARY KEY,
+      publication_id TEXT NOT NULL,
+      platform_id TEXT NOT NULL,
+      account_id TEXT NOT NULL,
+      provider_conversation_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('observed','verified','unattributed','attributed','ambiguous','reconciled')),
+      evidence_json TEXT NOT NULL,
+      first_observed_at TEXT NOT NULL,
+      last_observed_at TEXT NOT NULL,
+      UNIQUE(platform_id, account_id, provider_conversation_id),
+      FOREIGN KEY(publication_id) REFERENCES publishing_feedback_publications(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS publishing_feedback_conversation_observations (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('observed','verified','unattributed','attributed','ambiguous','reconciled')),
+      evidence_hash TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,
+      observed_at TEXT NOT NULL,
+      UNIQUE(conversation_id, evidence_hash),
+      FOREIGN KEY(conversation_id) REFERENCES publishing_feedback_conversations(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS publishing_feedback_attribution_edges (
+      id TEXT PRIMARY KEY,
+      definition_id TEXT NOT NULL,
+      publication_id TEXT NOT NULL,
+      conversation_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('observed','verified','unattributed','attributed','ambiguous','reconciled')),
+      confidence TEXT NOT NULL CHECK(confidence IN ('low','medium','high')),
+      scope TEXT NOT NULL,
+      business_outcome_status TEXT NOT NULL CHECK(business_outcome_status IN ('unproven','verified','ambiguous')),
+      evidence_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(definition_id, publication_id, conversation_id),
+      FOREIGN KEY(publication_id) REFERENCES publishing_feedback_publications(id),
+      FOREIGN KEY(conversation_id) REFERENCES publishing_feedback_conversations(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS publishing_feedback_reconciliations (
+      id TEXT PRIMARY KEY,
+      publication_id TEXT NOT NULL,
+      state TEXT NOT NULL CHECK(state IN ('observed','verified','unattributed','attributed','ambiguous','reconciled')),
+      outcome TEXT NOT NULL,
+      evidence_hash TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,
+      reconciled_at TEXT NOT NULL,
+      UNIQUE(publication_id, evidence_hash),
+      FOREIGN KEY(publication_id) REFERENCES publishing_feedback_publications(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS publishing_feedback_poll_runs (
+      id TEXT PRIMARY KEY,
+      owner TEXT NOT NULL,
+      scheduled_for TEXT NOT NULL,
+      status TEXT NOT NULL CHECK(status IN ('running','completed','failed','overlap_skipped')),
+      summary_json TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      UNIQUE(owner, scheduled_for)
+    );
+
+    CREATE TABLE IF NOT EXISTS publishing_feedback_poll_claims (
+      owner TEXT PRIMARY KEY,
+      poll_id TEXT NOT NULL,
+      claimed_at TEXT NOT NULL,
+      expires_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS publishing_audit_events (
       sequence INTEGER PRIMARY KEY AUTOINCREMENT,
       id TEXT NOT NULL UNIQUE,
@@ -232,8 +342,10 @@ function createSchema(database: SqliteDatabase): void {
   const now = new Date().toISOString();
   database.prepare(`
     INSERT INTO publishing_schema_meta(schema_name, schema_version, created_at, updated_at)
-    VALUES('deterministic-self-identification-publishing-engine', 1, ?, ?)
-    ON CONFLICT(schema_name) DO NOTHING
+    VALUES('deterministic-self-identification-publishing-engine', 2, ?, ?)
+    ON CONFLICT(schema_name) DO UPDATE SET
+      schema_version=MAX(schema_version, excluded.schema_version),
+      updated_at=excluded.updated_at
   `).run(now, now);
 }
 
@@ -941,6 +1053,14 @@ export class PublishingStore {
       "publishing_metrics",
       "publishing_conversations",
       "publishing_attribution_edges",
+      "publishing_feedback_publications",
+      "publishing_feedback_metric_observations",
+      "publishing_feedback_conversations",
+      "publishing_feedback_conversation_observations",
+      "publishing_feedback_attribution_edges",
+      "publishing_feedback_reconciliations",
+      "publishing_feedback_poll_runs",
+      "publishing_feedback_poll_claims",
       "publishing_audit_events",
     ];
     return Object.fromEntries(tables.map((table) => {
