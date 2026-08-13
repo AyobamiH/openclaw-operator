@@ -44,6 +44,7 @@ const PRODUCTION_ADAPTER_TIMEOUT_OVERRIDES_MS: Record<string, number> = {
   "production.instagram-publication-readback.v2": 5 * 60_000,
   "production.threads-publication-readback.v1": 5 * 60_000,
   "production.meta-reply-readback.v1": 5 * 60_000,
+  "production.threads-readiness-prepare.v1": 15 * 60_000,
 };
 
 export function effectiveNodeTimeoutMs(node: Pick<GraphNodeDefinition, "handler" | "timeoutMs">): number {

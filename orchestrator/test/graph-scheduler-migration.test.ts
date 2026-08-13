@@ -10,7 +10,7 @@ import {
 } from "../src/graph/scheduler-store.js";
 import { transferSchedulerOwnership } from "../src/graph/scheduler-cutover.js";
 import { buildGovernedGraphJob, GOVERNED_SCHEDULER_PORTFOLIO } from "../src/graph/scheduler-portfolio.js";
-import { liveCapableSocialPublicationGraph, metaReplyMonitorGraph } from "../src/graph/workflows.js";
+import { liveCapableSocialPublicationGraph, metaReplyMonitorGraph, threadsReadinessGraph } from "../src/graph/workflows.js";
 import { effectiveNodeTimeoutMs } from "../src/graph/engine.js";
 import {
   executeGovernedSchedule,
@@ -395,6 +395,9 @@ describe("graph scheduler migration registry", () => {
 
   it("executes an injected-clock zero-write portfolio trigger through the graph API contract", async () => {
     const item = GOVERNED_SCHEDULER_PORTFOLIO.get("threads-readiness-v1")!;
+    const readinessNode = threadsReadinessGraph().nodes.find((node) => node.id === "prepare_next_opportunity")!;
+    expect(readinessNode.timeoutMs).toBe(60_000);
+    expect(effectiveNodeTimeoutMs(readinessNode)).toBe(15 * 60_000);
     const value = await fixture();
     const legacyJob = { id: item.declaration.scheduleId, declarationKey: item.declaration.declarationKey, enabled: true, schedule: { kind: "cron", expr: item.declaration.cronExpression, tz: item.declaration.timezone }, payload: { kind: "command", argv: ["node", "/workspace/legacy.mjs"] } };
     const graphJob = buildGovernedGraphJob(legacyJob, item.declaration.migrationId, "/workspace/orchestrator/scripts/trigger-governed-graph-schedule.ts", "node");
