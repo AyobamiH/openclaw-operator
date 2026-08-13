@@ -1,5 +1,6 @@
-import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readApiCredentialReference } from "../src/auth/credential-reference.js";
 import { GraphSchedulerStore } from "../src/graph/scheduler-store.js";
@@ -9,6 +10,7 @@ const BASE_URL = "http://127.0.0.1:3312";
 const CREDENTIAL_FILE = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/credentials/orchestrator.env";
 export const PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/database/graph-scheduler.sqlite";
 const EVIDENCE_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers";
+const CONTINUOUS_MARKETING_DIGEST_OUTPUT_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/artifacts/business-value/marketing";
 export const GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS = 10_000;
 export const GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS = 60;
 export const GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS = 180;
@@ -68,6 +70,12 @@ type ExecutionAcceptance = {
   correlationId: string;
   acceptedAt: string;
   durable: true;
+};
+
+type DigestArtifactEvidence = {
+  path: string;
+  sha256: string;
+  bytes: number;
 };
 
 const EARLY_NATURAL_SLOT_TOLERANCE_MINUTES = 5;
@@ -364,7 +372,8 @@ export function formatGovernedScheduleOutput(result: Record<string, unknown>, fa
   if (!report) {
     return `Graph-owned ${String(result.migrationId ?? fallbackMigrationId)} ${String(result.outcome)}\nTrigger: ${String(trigger.triggerId)}\nRun: ${String(trigger.graphRunId ?? "none")}\nProvider writes: ${String(result.providerWrites ?? 0)}; Browser Relay calls: 0\n`;
   }
-  return [
+  const digestArtifact = result.digestArtifact as DigestArtifactEvidence | undefined;
+  const lines = [
     `Graph-owned ${String(result.migrationId ?? fallbackMigrationId)} ${report.finalClassification}`,
     `Graph execution outcome: ${report.graphExecutionOutcome}`,
     `Scheduler completion contract: ${report.schedulerCompletionContractStatus}`,
@@ -383,8 +392,38 @@ export function formatGovernedScheduleOutput(result: Record<string, unknown>, fa
     `Recovery required: ${report.recoveryRequired ? "yes" : "no"}`,
     `Recovery result: ${report.recoveryResult}`,
     `Final classification: ${report.finalClassification}`,
-    "",
-  ].join("\n");
+  ];
+  if (digestArtifact) {
+    lines.push(
+      `Digest artifact: ${digestArtifact.path}`,
+      `Digest SHA-256: ${digestArtifact.sha256}; bytes: ${digestArtifact.bytes}`,
+      `MEDIA:${digestArtifact.path}`,
+    );
+  }
+  lines.push("");
+  return lines.join("\n");
+}
+
+export function resolveDigestArtifactEvidence(args: {
+  result: Record<string, unknown>;
+  outputRoot?: string;
+  readFile?: (path: string) => Buffer;
+}): DigestArtifactEvidence | null {
+  const report = args.result.publicationReport as PublicationReport | undefined;
+  if (args.result.migrationId !== "continuous-marketing-digest-v1"
+    || report?.finalClassification !== "published"
+    || report.schedulerCompletionContractStatus !== "passed") return null;
+  const trigger = args.result.trigger as Record<string, unknown> | undefined;
+  const scheduledFor = new Date(String(trigger?.scheduledFor ?? ""));
+  if (!Number.isFinite(scheduledFor.getTime())) throw new Error("continuous_marketing_digest_scheduled_time_missing");
+  const outputRoot = resolve(args.outputRoot ?? CONTINUOUS_MARKETING_DIGEST_OUTPUT_ROOT);
+  const artifactPath = resolve(join(outputRoot, localParts(scheduledFor, "Europe/London").date, "graph-owned-daily-growth-digest.md"));
+  if (artifactPath !== outputRoot && !artifactPath.startsWith(`${outputRoot}${sep}`)) throw new Error("continuous_marketing_digest_artifact_outside_output_root");
+  const bytes = (args.readFile ?? readFileSync)(artifactPath);
+  if (bytes.length === 0 || !bytes.toString("utf8", 0, Math.min(bytes.length, 128)).startsWith("# Graph-owned daily growth digest")) {
+    throw new Error("continuous_marketing_digest_artifact_invalid");
+  }
+  return { path: artifactPath, sha256: createHash("sha256").update(bytes).digest("hex"), bytes: bytes.length };
 }
 
 function sleep(ms: number): Promise<void> {
@@ -899,7 +938,9 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
 async function main(): Promise<void> {
   if ((process.argv.length !== 4 && process.argv.length !== 6) || process.argv[2] !== "--migration-id" || !process.argv[3]) throw new Error("graph_scheduler_trigger_requires_exact_migration_reference");
   if (process.argv.length === 6 && process.argv[4] !== "--recover-trigger-id") throw new Error("graph_scheduler_recovery_requires_exact_trigger_reference");
-  const result = await executeGovernedSchedule({ migrationId: process.argv[3], recoveryTriggerId: process.argv[5] });
+  const scheduleResult = await executeGovernedSchedule({ migrationId: process.argv[3], recoveryTriggerId: process.argv[5] });
+  const digestArtifact = resolveDigestArtifactEvidence({ result: scheduleResult });
+  const result = digestArtifact ? { ...scheduleResult, digestArtifact } : scheduleResult;
   const trigger = result.trigger as Record<string, unknown>;
   mkdirSync(EVIDENCE_ROOT, { recursive: true, mode: 0o700 });
   const evidencePath = join(EVIDENCE_ROOT, `${String(trigger.triggerId)}.json`);

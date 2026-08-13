@@ -23,6 +23,7 @@ import {
   requestGraphSchedulerJson,
   resolveGraphSchedulerReadRetryDelayMs,
   resolveGovernedSchedulerDatabasePath,
+  resolveDigestArtifactEvidence,
   resolveInputTemplate,
   resolveNaturalSlot,
   waitForApprovalBoundary,
@@ -57,6 +58,41 @@ async function fixture() {
   const path = join(root, "graph-scheduler.sqlite");
   return { path, store: new GraphSchedulerStore(path) };
 }
+
+it("binds the exact graph-owned digest artifact to the existing Telegram result", async () => {
+  const root = await mkdtemp(join(tmpdir(), "graph-digest-artifact-"));
+  const body = Buffer.from("# Graph-owned daily growth digest\n\nExact evidence.\n", "utf8");
+  const result = {
+    migrationId: "continuous-marketing-digest-v1",
+    outcome: "completed",
+    trigger: { triggerId: "gst_digest", graphRunId: "run-digest", scheduledFor: "2026-08-04T07:30:00.000Z" },
+    publicationReport: {
+      graphExecutionOutcome: "completed",
+      schedulerCompletionContractStatus: "passed",
+      publicationOutcome: "published",
+      recoveryResult: "not_required",
+      policyOrSkipReason: "published",
+      candidateId: null,
+      targetId: null,
+      providerWrites: 1,
+      providerPostId: null,
+      providerPostUrl: null,
+      historicalProviderWrites: 0,
+      historicalProviderPostId: null,
+      historicalProviderPostUrl: null,
+      verifierResult: "digest-delivery-verified:passed",
+      recoveryRequired: false,
+      finalClassification: "published",
+    },
+  };
+  const artifact = resolveDigestArtifactEvidence({ result, outputRoot: root, readFile: () => body });
+  expect(artifact).toMatchObject({ path: join(root, "2026-08-04", "graph-owned-daily-growth-digest.md"), bytes: body.length });
+  expect(artifact?.sha256).toMatch(/^[a-f0-9]{64}$/);
+  const output = formatGovernedScheduleOutput({ ...result, digestArtifact: artifact }, result.migrationId);
+  expect(output).toContain(`Digest artifact: ${artifact?.path}`);
+  expect(output).toContain(`MEDIA:${artifact?.path}`);
+  expect(output.match(/MEDIA:/g)).toHaveLength(1);
+});
 
 describe("graph scheduler migration registry", () => {
   it("binds the complete governed scheduler portfolio to exact immutable cron jobs", async () => {
