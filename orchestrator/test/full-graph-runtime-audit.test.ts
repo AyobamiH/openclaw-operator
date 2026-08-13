@@ -5,7 +5,7 @@ describe("full graph multi-agent runtime audit", () => {
   it("proves complete governed runtime capabilities across graphs, ToolGate and child receipts", async () => {
     const report = await auditFullGraphMultiAgentRuntime();
     expect(report.verdict).toBe("passed");
-    expect(report.graphDefinitions).toBe(13);
+    expect(report.graphDefinitions).toBe(14);
     expect(report.graphFamilies).toBe(8);
     expect(report.productionAdapters).toBe(17);
     expect(report.registeredAgents).toBe(19);
