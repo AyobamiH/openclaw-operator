@@ -93,6 +93,41 @@ describe("graph definition and state invariants", () => {
     expect(runtime.store.activeRunCount("single-active-capacity", "1.0.0")).toBe(1);
     expect(() => runtime.engine.start(request("single-active-capacity", { sources: [], claims: [] }))).toThrow("graph_definition_concurrency_exhausted");
   });
+
+  it("separates live Graph work from retained stale runs and expired approval waits", async () => {
+    const { runtime } = await createTestRuntime({ zeroWriteOnly: false });
+    const now = new Date("2026-08-13T09:00:00.000Z");
+
+    const staleCreated = runtime.engine.start(request("research-to-action", { sources: [], claims: [] }));
+    runtime.store.saveRun({
+      ...staleCreated,
+      status: "running",
+      updatedAt: now.toISOString(),
+    }, staleCreated.revision, []);
+
+    const waitingCreated = runtime.engine.start(request(
+      "deterministic-social-publication",
+      { dryRun: false, payload: { caption: "approval projection" } },
+      "external_public",
+    ));
+    const waiting = await runtime.engine.runUntilSettled(waitingCreated.runId);
+    const pending = runtime.store.approvals(waiting.runId)[0]!;
+    runtime.store.decideApproval(
+      pending.approvalId,
+      "granted",
+      "test-operator",
+      new Date(now.getTime() - 1).toISOString(),
+    );
+
+    expect(runtime.store.healthRunProjection(now)).toEqual({
+      live: 0,
+      staleRetained: 1,
+      waiting: 0,
+      approvalLive: 0,
+      approvalExpired: 1,
+      blocked: 0,
+    });
+  });
 });
 
 describe("representative graph workflows", () => {

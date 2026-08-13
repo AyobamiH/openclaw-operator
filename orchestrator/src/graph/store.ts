@@ -39,6 +39,15 @@ export type GraphStoreOptions = {
   migrationFailurePoint?: GraphMigrationFailurePoint;
 };
 
+export type GraphHealthRunProjection = {
+  live: number;
+  staleRetained: number;
+  waiting: number;
+  approvalLive: number;
+  approvalExpired: number;
+  blocked: number;
+};
+
 function errorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -372,6 +381,74 @@ export class GraphStore {
       now.toISOString(),
     ) as { count: number };
     return Number(row.count);
+  }
+
+  healthRunProjection(now = new Date()): GraphHealthRunProjection {
+    const row = this.database.prepare(`
+      SELECT
+        SUM(CASE
+          WHEN run.status IN ('created','running','compensating')
+           AND (
+             run.status='created'
+             OR EXISTS (
+               SELECT 1
+               FROM graph_node_attempts attempt
+               WHERE attempt.run_id=run.run_id
+                 AND attempt.node_id=run.current_node_id
+                 AND attempt.status='running'
+                 AND attempt.lease_expires_at>?
+             )
+           )
+          THEN 1 ELSE 0 END) AS live,
+        SUM(CASE
+          WHEN run.status IN ('created','running','compensating')
+           AND run.status<>'created'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM graph_node_attempts attempt
+             WHERE attempt.run_id=run.run_id
+               AND attempt.node_id=run.current_node_id
+               AND attempt.status='running'
+               AND attempt.lease_expires_at>?
+           )
+          THEN 1 ELSE 0 END) AS stale_retained,
+        SUM(CASE WHEN run.status='waiting' THEN 1 ELSE 0 END) AS waiting,
+        SUM(CASE
+          WHEN run.status='waiting_for_approval'
+           AND EXISTS (
+             SELECT 1
+             FROM graph_approvals approval
+             WHERE approval.run_id=run.run_id
+               AND approval.status IN ('pending','granted')
+               AND approval.expires_at>?
+           )
+          THEN 1 ELSE 0 END) AS approval_live,
+        SUM(CASE
+          WHEN run.status='waiting_for_approval'
+           AND NOT EXISTS (
+             SELECT 1
+             FROM graph_approvals approval
+             WHERE approval.run_id=run.run_id
+               AND approval.status IN ('pending','granted')
+               AND approval.expires_at>?
+           )
+          THEN 1 ELSE 0 END) AS approval_expired,
+        SUM(CASE WHEN run.status='blocked' THEN 1 ELSE 0 END) AS blocked
+      FROM graph_runs run
+    `).get(
+      now.toISOString(),
+      now.toISOString(),
+      now.toISOString(),
+      now.toISOString(),
+    ) as Record<string, number | null>;
+    return {
+      live: Number(row.live ?? 0),
+      staleRetained: Number(row.stale_retained ?? 0),
+      waiting: Number(row.waiting ?? 0),
+      approvalLive: Number(row.approval_live ?? 0),
+      approvalExpired: Number(row.approval_expired ?? 0),
+      blocked: Number(row.blocked ?? 0),
+    };
   }
 
   hasLiveCurrentAttempt(runId: string, now = new Date()): boolean {
