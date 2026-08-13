@@ -103,7 +103,7 @@ type MetaReplyRunnerModule = {
   reconcileReceiptOnly(runId: string): Promise<{ entry: Record<string, any> }>;
 };
 type ThreadsReadinessModule = {
-  prepareNextThreadsOpportunity(now: Date): Record<string, unknown>;
+  prepareNextThreadsOpportunity(now: Date): Record<string, unknown> | Promise<Record<string, unknown>>;
 };
 async function loadWorkspaceModule<T>(configured: string | undefined, fallback: string, symbols: string[]): Promise<T> {
   const path = resolve(configured || fallback);
@@ -647,7 +647,7 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
     execute: async (inputValue, context) => {
       const input = ThreadsReadinessInputSchema.parse(inputValue);
       const runner = await loadThreadsReadiness();
-      const output = ThreadsReadinessOutputSchema.parse(runner.prepareNextThreadsOpportunity(new Date(input.observedAt)));
+      const output = ThreadsReadinessOutputSchema.parse(await runner.prepareNextThreadsOpportunity(new Date(input.observedAt)));
       return { outcome: "succeeded", output: output as unknown as Record<string, JsonValue>, patches: [{ op: "set", path: "threadsReadiness", value: output as unknown as JsonValue }], evidence: [
         { kind: "threads-readiness-receipt", uri: `graph://${context.run.runId}/threads/readiness`, sha256: sha256(output), summary: "The next Threads opportunity was prepared under injected-clock zero-write rules", checker: "production.threads-readiness-prepare.v1" },
         { kind: "zero-provider-writes", uri: `graph://${context.run.runId}/threads/readiness-writes`, sha256: sha256({ providerWrites: 0 }), summary: "Readiness preparation performed zero provider writes", checker: "production.threads-readiness-prepare.v1" },

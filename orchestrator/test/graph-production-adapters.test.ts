@@ -222,6 +222,60 @@ describe("production adapter registry", () => {
     expect(() => runtime.engine.register(unknown)).toThrow("production_adapter_not_registered");
   });
 
+  it("awaits the asynchronous zero-write Threads readiness preparer contract", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-threads-readiness-fixture-"));
+    const readinessPath = join(root, "threads-readiness-fixture.mjs");
+    await writeFile(readinessPath, `export async function prepareNextThreadsOpportunity() {
+  await new Promise((resolve) => setImmediate(resolve));
+  return {
+    outcome: "complete",
+    preparationHorizonHours: 24,
+    repairAttemptsMaximum: 6,
+    providerWrites: 0,
+    browserRelayCalls: 0,
+    opportunity: { slotId: "threads:2026-08-13:08:00:fixture" },
+    attempts: [],
+    runnerSummary: "asynchronous fixture completed"
+  };
+}\n`);
+    const priorReadinessPath = process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH;
+    process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH = readinessPath;
+    cleanups.push(async () => {
+      if (priorReadinessPath === undefined) delete process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH;
+      else process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH = priorReadinessPath;
+      await rm(root, { recursive: true, force: true });
+    });
+
+    const runtime = await testRuntime();
+    const run = runtime.engine.start({
+      graphId: "threads-readiness",
+      version: "1.0.0",
+      objective: "Verify asynchronous Threads readiness preparation",
+      input: {
+        provider: "threads",
+        accountKey: "threads:owner",
+        jobId: "abb3e214-0ff6-4813-a18d-6d8ffb9080ad",
+        observedAt: "2026-08-13T07:00:00+01:00",
+        shadowMode: true,
+        maximumProviderMutations: 0,
+      },
+      authority: { maximum: "local_persistent", grantedBy: "fixture" },
+    });
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.externalEffects).toEqual([]);
+    expect(completed.data.threadsReadiness).toMatchObject({
+      outcome: "complete",
+      providerWrites: 0,
+      browserRelayCalls: 0,
+      runnerSummary: "asynchronous fixture completed",
+    });
+    expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining([
+      "threads-readiness-receipt",
+      "zero-provider-writes",
+    ]));
+  });
+
   it("completes injected Threads and Meta shadows without reaching their live effect adapters", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-social-stage-fixtures-"));
     const threadsPath = join(root, "threads-fixture.mjs");
