@@ -1,3 +1,5 @@
+
+
 # OpenClaw Operator
 
 OpenClaw Operator is a self-hosted specialist orchestration layer built on
@@ -78,7 +80,7 @@ In the live runtime it feeds:
 
 Treat the flow as:
 
-`openclaw-docs/` -> `drift-repair` -> `logs/knowledge-packs/` -> `reddit-helper`
+`openclaw-docs/` -> `drift-repair` -> `logs/knowledge-packs/` -> `reddit-response`
 
 Recommended commit policy:
 
