@@ -8,12 +8,30 @@
     "expectedVersion": "0.2.3",
     "versionPin": "0.2.3"
   },
-  "compatibleSkillIds": ["repo-map"],
+  "compatibleSkillIds": [
+    "repo-map",
+    "route-trace",
+    "env-audit",
+    "secret-audit",
+    "api-contract-audit",
+    "migration-review",
+    "github-handoff",
+    "deployment-preflight"
+  ],
   "adapters": [
     {
       "id": "openclaw-operator",
       "version": "1.0.0",
-      "skillIds": ["repo-map"]
+      "skillIds": [
+        "repo-map",
+        "route-trace",
+        "env-audit",
+        "secret-audit",
+        "api-contract-audit",
+        "migration-review",
+        "github-handoff",
+        "deployment-preflight"
+      ]
     }
   ],
   "validationCommand": "node <shared-core>/scripts/validate-project-adapters.mjs <project-root>",

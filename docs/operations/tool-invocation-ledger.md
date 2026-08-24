@@ -2819,3 +2819,32 @@
 - Evidence:
   `docs/operations/openclaw-incident-recovery-activated-2026-08-20.md` and
   `/home/oneclickwebsitedesignfactory/.openclaw/state/incidents/openclaw-estate-2026-08-20-activation/activation-result.json`.
+
+## 2026-08-24 — Coding adapter boundary upgrade
+
+- Requested task/workflow lane: start upgrading `openclaw-operator` from a
+  repo-map-only coding adapter into a project-boundary adapter that covers the
+  current read-only audit surface.
+- Tools/source: `coding_validate_project`, `coding_validate_adapters`,
+  `coding_repo_map`, `coding_route_trace`, `coding_env_audit`,
+  `coding_secret_audit`, `coding_api_contract_audit`,
+  `coding_migration_review`, `coding_deployment_preflight`, and
+  `coding_github_handoff`.
+- Changed-state declaration: adapter metadata and this ledger only. No target
+  builds, tests, runtime checks, package installs, service mutations,
+  deployments, migrations, provider calls, credential reads, or secret-file
+  reads were performed by the coding-audit tools.
+- Adapter result: project validation accepted one adapter with eight audit-only
+  skills: repo map, route trace, environment audit, secret/private-surface
+  audit, API contract audit, migration review, GitHub handoff, and deployment
+  preflight.
+- Boundary result: private/runtime directories such as local OpenClaw state,
+  databases, logs, temp output, generated artifacts, dependency/build output,
+  local memory, and deployed-agent output are excluded from adapter safe reads.
+- Evidence limitation: secret/private-surface audit is now complete instead of
+  partial, but it surfaces pre-existing redacted static pattern findings in
+  tracked docs/config examples. Those findings require separate classification
+  before claiming a clean private-surface result.
+- Next safe step: keep this adapter metadata bounded, validate and push it, then
+  handle any redacted pattern findings as a separate cleanup/classification
+  change.

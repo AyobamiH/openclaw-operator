@@ -28,29 +28,116 @@
       "id": "repo-map",
       "compatibleVersions": ["0.2.3"],
       "declaredMode": "audit-only"
+    },
+    {
+      "id": "route-trace",
+      "compatibleVersions": ["0.2.3", "0.2.x"],
+      "declaredMode": "audit-only"
+    },
+    {
+      "id": "env-audit",
+      "compatibleVersions": ["0.2.3", "0.2.x"],
+      "declaredMode": "audit-only"
+    },
+    {
+      "id": "secret-audit",
+      "compatibleVersions": ["0.2.3", "0.2.x"],
+      "declaredMode": "audit-only"
+    },
+    {
+      "id": "api-contract-audit",
+      "compatibleVersions": ["0.2.3", "0.2.x"],
+      "declaredMode": "audit-only"
+    },
+    {
+      "id": "migration-review",
+      "compatibleVersions": ["0.2.3", "0.2.x"],
+      "declaredMode": "audit-only"
+    },
+    {
+      "id": "github-handoff",
+      "compatibleVersions": ["0.2.3", "0.2.x"],
+      "declaredMode": "audit-only"
+    },
+    {
+      "id": "deployment-preflight",
+      "compatibleVersions": ["0.2.3", "0.2.x"],
+      "declaredMode": "audit-only"
     }
   ],
   "extensions": {
     "safeReadPaths": [
+      ".coding-agent",
+      ".github/workflows",
+      "AGENTS.md",
+      "ASSISTANT_WORKFLOW.md",
+      "Dockerfile",
+      "QUICKSTART.md",
       "README.md",
+      "config",
+      "docker-compose.yml",
       "docs/README.md",
       "docs/INDEX.md",
+      "docs/architecture",
+      "docs/concepts",
+      "docs/guides",
+      "docs/operations",
+      "docs/reference",
+      "governance",
       "package.json",
+      "package-lock.json",
+      "orchestrator/Dockerfile",
+      "orchestrator/docker-compose.yml",
+      "orchestrator/docs",
       "orchestrator/package.json",
+      "orchestrator/scripts",
+      "orchestrator/src",
+      "orchestrator/test",
+      "orchestrator/tsconfig.json",
+      "orchestrator/vitest.config.ts",
+      "orchestrator_config.json",
+      "operator-s-console/docs",
       "operator-s-console/package.json",
-      "agents",
-      "docs",
+      "operator-s-console/postcss.config.js",
       "operator-s-console/src",
-      "orchestrator/src"
+      "operator-s-console/tailwind.config.ts",
+      "operator-s-console/tsconfig.app.json",
+      "operator-s-console/tsconfig.json",
+      "operator-s-console/tsconfig.node.json",
+      "operator-s-console/vite.config.ts",
+      "operator-s-console/vitest.config.ts",
+      "agents",
+      "scripts",
+      "security",
+      "site/docs",
+      "site/.vitepress",
+      "systemd"
     ],
     "ignoredPaths": [
       ".git",
+      ".openclaw",
+      ".npmrc",
       "node_modules",
       "dist",
       "build",
       "coverage",
+      "out",
       "artifacts",
-      "validation-output"
+      "validation-output",
+      "database",
+      "logs",
+      "memory",
+      "tmp",
+      "agents-deployed",
+      "openai-cookbook",
+      "openclaw-docs/.generated",
+      "openclaw-docs/assets",
+      "openclaw-docs/images",
+      "operator-s-console/dist",
+      "orchestrator/data",
+      "orchestrator/dist",
+      "orchestrator/sqlite:",
+      "site/public"
     ],
     "documentationPrecedence": [
       "README.md",
@@ -70,12 +157,40 @@
       "root README",
       "package map",
       "documentation map",
-      "orchestrator and operator-console boundaries"
+      "orchestrator and operator-console boundaries",
+      "source surface classification",
+      "public documentation classification",
+      "generated artifact and build-output exclusions",
+      "runtime state and SQLite exclusions",
+      "local environment name audit without secret values",
+      "secret/private-surface redaction statement",
+      "API route and client contract surfaces",
+      "migration and schema review surfaces",
+      "deployment/preflight config surfaces",
+      "GitHub handoff working-tree summary",
+      "approval boundary for provider-capable work",
+      "not-verified credential-store and live-runtime areas"
     ],
     "expectedRuntimeManagers": ["systemd-user"],
     "expectedPackageManagers": ["npm"]
   },
-  "approvalRequirements": [],
+  "approvalRequirements": [
+    {
+      "operation": "read-outside-declared-scope",
+      "required": true,
+      "reason": "The adapter boundary covers only the declared openclaw-operator project root."
+    },
+    {
+      "operation": "read-named-excluded-file",
+      "required": true,
+      "reason": "Excluded runtime, environment, generated, or private paths may contain local state or sensitive evidence."
+    },
+    {
+      "operation": "authenticated-health-check",
+      "required": true,
+      "reason": "Authenticated runtime checks cross from static audit into live operator authority."
+    }
+  ],
   "inheritance": {
     "sharedRestrictions": "required",
     "deniedOperationCategories": [
