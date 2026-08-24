@@ -51,8 +51,8 @@ function isSocialHandler(value: string): value is (typeof SOCIAL_LIVE_CAPABILITY
 }
 
 function expectedDigestCapabilityBindings(args: { run: GraphRunState; approval: GraphApproval; definitionHash: string }) {
-  const target = String((args.run.data as Record<string, unknown>).target ?? "digest-delivery:deliver_notification");
   const ingressId = String(args.run.input.ingressId ?? args.run.correlationId ?? args.run.runId);
+  const target = String((args.run.data as Record<string, unknown>).target ?? `digest-delivery:${ingressId}`);
   const idempotencyKey = sha256({ runId: args.run.runId, nodeId: "deliver_notification", target, payloadHash: args.approval.payloadHash, operationType: "production.digest-delivery.v1" });
   const envelopeHash = sha256({ graphId: args.run.graphId, graphVersion: args.run.graphVersion, runId: args.run.runId, input: args.run.input, definitionHash: args.definitionHash });
   return {
@@ -208,7 +208,9 @@ export function issueOneRunLiveCapability(args: {
     const approval = args.store.approvals(run.runId).find((item) => item.approvalId === args.approvalId);
     if (!approval || approval.status !== "granted" || Date.parse(approval.expiresAt) <= now.getTime()) throw new Error("one_run_live_capability_approval_not_granted");
     const nodeHandler = run.graphId === "threads-publication" ? "production.threads-publication-live.v1" : run.graphId === "meta-reply-monitor" ? "production.meta-reply-live.v1" : "production.digest-delivery.v1";
-    const expectedTarget = String((run.data as Record<string, unknown>).target ?? `${run.graphId}:${nodeId}`);
+    const digestIngressId = String(run.input.ingressId ?? run.correlationId ?? run.runId);
+    const defaultTarget = run.graphId === "digest-delivery" ? `digest-delivery:${digestIngressId}` : `${run.graphId}:${nodeId}`;
+    const expectedTarget = String((run.data as Record<string, unknown>).target ?? defaultTarget);
     const recomputedApprovalPayloadHash = buildApprovalPayloadHash({ objective: run.objective, input: run.input, data: run.data });
     if (approval.nodeId !== nodeId || approval.action !== nodeHandler || approval.target !== expectedTarget || approval.payloadHash !== recomputedApprovalPayloadHash) throw new Error("one_run_live_capability_approval_envelope_mismatch");
     if (args.store.externalEffects(run.runId).length !== 0) throw new Error("one_run_live_capability_effect_already_exists");

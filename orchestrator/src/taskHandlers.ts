@@ -55,8 +55,9 @@ import { runAutonomousController } from "./autonomy/controller.js";
 import { normalizeApprovedIntake } from "./autonomy/runtime-hardening.js";
 import { readProviderRateLimitBridge } from "./autonomy/runtime-hardening.js";
 import type { ApprovedIntakeRecord, AutonomousWorkItem, ContextSnapshot, ControllerCheckpoint, ProviderRateLimitEvent, ToolResult } from "./autonomy/types.js";
-import { runCampaignFactoryShadowCycle } from "./publishing/campaign-factory-shadow-cycle.js";
+import { runCampaignFactoryScheduledCycle } from "./publishing/campaign-factory-shadow-cycle.js";
 import { runCampaignOperationsCycle } from "./publishing/campaign-operations.js";
+import { parseCampaignMediaDelivery } from "./publishing/media-artifact.js";
 import { ExecutionReceiptStore, executeControlledCommand } from "./executionReceipts.js";
 import { loadBaselines } from "./worktreeIntegrity.js";
 import { docChangePathsFromPayload } from "./doc-change-ingress.js";
@@ -4369,18 +4370,24 @@ const campaignContentFactoryHandler: TaskHandler = async (task, context) => {
       : join(dirname(String(task.payload.databasePath)), "graph-scheduler.sqlite"),
   });
   if (operations.externalWrites !== 0) throw new Error("campaign operations detected an external write");
-  const result = await runCampaignFactoryShadowCycle({
+  const mediaDelivery = task.payload.mediaDelivery === undefined || task.payload.mediaDelivery === null
+    ? null
+    : parseCampaignMediaDelivery(task.payload.mediaDelivery);
+  const allowProviderWrite = task.payload.allowProviderWrite === true;
+  const result = await runCampaignFactoryScheduledCycle({
     registryPath: String(task.payload.registryPath), integrationPath: String(task.payload.integrationPath), databasePath: String(task.payload.databasePath),
     artifactRoot: String(task.payload.artifactRoot), rendererEntrypoint: String(task.payload.rendererEntrypoint), observedAt,
     opportunityId: typeof task.payload.opportunityId === "string" ? task.payload.opportunityId : "auto",
     nodeExecutable: typeof task.payload.nodeExecutable === "string" ? task.payload.nodeExecutable : undefined,
     openclawBin: typeof task.payload.openclawBin === "string" ? task.payload.openclawBin : undefined,
     workspace: typeof task.payload.workspace === "string" ? task.payload.workspace : undefined,
+    allowProviderWrite,
+    mediaDelivery,
   });
-  if (result.externalWrites !== 0) throw new Error("campaign-content-factory graph effect adapter detected an external write");
+  if (result.externalWrites !== 0 && allowProviderWrite !== true) throw new Error("campaign-content-factory graph effect adapter detected an unapproved external write");
   const terminalOutcome = typeof result.terminalOutcome === "string" ? result.terminalOutcome : "completed_unique_opportunity";
   recordTaskExecutionResultSummary(context, task, { success: true, terminalOutcome, campaignContentFactory: result, campaignOperations: operations });
-  return `campaign-content-factory ${terminalOutcome} for ${String(result.localDate ?? "unknown-date")} with zero external writes`;
+  return `campaign-content-factory ${terminalOutcome} for ${String(result.localDate ?? "unknown-date")} with ${String(result.externalWrites ?? 0)} external writes`;
 };
 
 const CODING_TOOL_COMMANDS: Record<string, string> = {

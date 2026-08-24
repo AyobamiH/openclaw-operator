@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import {
@@ -10,6 +10,7 @@ import {
   loadCampaignMediaArtifact,
   renderCampaignMediaLocally,
   type CampaignMediaArtifact,
+  type CampaignMediaDelivery,
 } from "./media-artifact.js";
 import { decideProductionOpportunity, loadProductionIntegration } from "./production-integration.js";
 import { runProductionOpportunity } from "./production-runner.js";
@@ -82,6 +83,16 @@ async function existingArtifact(input: {
   return manifest;
 }
 
+async function existingPath(path: string | undefined): Promise<string | undefined> {
+  if (!path) return undefined;
+  try {
+    await access(path);
+    return path;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function ensureCampaignMediaForDate(input: {
   registryPath: string;
   integrationPath: string;
@@ -103,15 +114,12 @@ export async function ensureCampaignMediaForDate(input: {
   const nodeExecutable = resolve(input.nodeExecutable ?? process.execPath);
   const registry = await loadRegistryBundle(registryPath);
   const integration = await loadProductionIntegration(integrationPath, registry);
-  if (integration.mode !== "shadow") {
-    throw new Error("campaign_factory_shadow_cycle_requires_shadow_mode");
-  }
   const planned = planCampaignFactoryContentForDate({
     registry,
     integration,
     localDate: input.localDate,
     opportunityIds: input.opportunityIds,
-    historyDatabasePath: input.databasePath,
+    historyDatabasePath: await existingPath(input.databasePath),
   });
   const results: CampaignFactoryMediaResult[] = [];
   const artifacts: CampaignMediaArtifact[] = [];
@@ -162,6 +170,139 @@ export async function ensureCampaignMediaForDate(input: {
     });
   }
   return { results, artifacts, planned };
+}
+
+export async function runCampaignFactoryScheduledCycle(input: {
+  registryPath: string;
+  integrationPath: string;
+  databasePath: string;
+  artifactRoot: string;
+  rendererEntrypoint: string;
+  observedAt?: Date;
+  opportunityId?: string;
+  nodeExecutable?: string;
+  openclawBin?: string;
+  workspace?: string;
+  allowProviderWrite?: boolean;
+  mediaDelivery?: CampaignMediaDelivery | null;
+  toolInvoker?: ProductionToolInvoker;
+}): Promise<Record<string, unknown>> {
+  const observedAt = input.observedAt ?? new Date();
+  const registry = await loadRegistryBundle(resolve(input.registryPath));
+  const integration = await loadProductionIntegration(resolve(input.integrationPath), registry);
+  if (integration.mode === "shadow") {
+    return runCampaignFactoryShadowCycle(input);
+  }
+
+  const localDate = londonDate(observedAt);
+  const uniqueness = decideProductionOpportunity(integration, input.opportunityId ?? "auto", observedAt);
+  if (uniqueness.outcome === "completed_no_eligible_opportunity") {
+    const opportunity = await runProductionOpportunity({
+      registryPath: input.registryPath,
+      integrationPath: input.integrationPath,
+      databasePath: input.databasePath,
+      opportunityId: input.opportunityId ?? "auto",
+      scheduledFor: observedAt,
+      mode: integration.mode,
+      allowProviderWrite: false,
+      openclawBin: input.openclawBin,
+      workspace: input.workspace,
+      toolInvoker: input.toolInvoker,
+    });
+    return {
+      schemaVersion: "1.2.0",
+      factoryId: "campaigns-content-factory",
+      mode: integration.mode,
+      localDate,
+      uniquenessDecision: uniqueness,
+      media: [],
+      audit: null,
+      opportunity,
+      terminalOutcome: "completed_no_eligible_opportunity",
+      providerDispatchSuppressed: true,
+      externalWrites: 0,
+    };
+  }
+
+  const opportunityIds = [uniqueness.opportunity.id];
+  const media = await ensureCampaignMediaForDate({
+    registryPath: input.registryPath,
+    integrationPath: input.integrationPath,
+    localDate,
+    artifactRoot: input.artifactRoot,
+    rendererEntrypoint: input.rendererEntrypoint,
+    nodeExecutable: input.nodeExecutable,
+    opportunityIds,
+    databasePath: input.databasePath,
+  });
+  const deliveries = input.mediaDelivery ? [input.mediaDelivery] : [];
+  const audit = await auditCampaignContentFactory({
+    registryPath: input.registryPath,
+    integrationPath: input.integrationPath,
+    localDate,
+    mediaArtifacts: media.artifacts,
+    mediaDeliveries: deliveries,
+    opportunityIds,
+    plannedContent: media.planned,
+  });
+  const readyOpportunity = audit.opportunities[0];
+  if (!readyOpportunity || readyOpportunity.contentReady !== true || readyOpportunity.mediaArtifactReady !== true) {
+    throw new Error(`campaign_factory_promotion_candidate_not_ready:${audit.verdict}`);
+  }
+  if (integration.mode === "canary" && uniqueness.opportunity.canaryEligible !== true) {
+    throw new Error(`campaign_factory_canary_opportunity_not_allowed:${uniqueness.opportunity.id}`);
+  }
+  if (input.allowProviderWrite !== true) {
+    return {
+      schemaVersion: "1.2.0",
+      factoryId: "campaigns-content-factory",
+      mode: integration.mode,
+      localDate,
+      uniquenessDecision: uniqueness,
+      media: media.results,
+      audit,
+      opportunity: {
+        opportunityId: uniqueness.opportunity.id,
+        platformId: uniqueness.opportunity.platformId,
+        scheduledFor: uniqueness.scheduledFor.toISOString(),
+        contentSpecId: readyOpportunity.contentSpecId,
+        payloadHash: readyOpportunity.payloadHash,
+      },
+      terminalOutcome: "approval_required",
+      providerDispatchSuppressed: true,
+      approvalBoundary: "Campaign Factory canary/live provider writes require exact explicit approval; pass allowProviderWrite only for that approved run.",
+      externalWrites: 0,
+    };
+  }
+  if (readyOpportunity.durableDeliveryReady !== true) {
+    throw new Error(`campaign_factory_promotion_delivery_not_ready:${readyOpportunity.format ?? "unknown"}`);
+  }
+
+  const opportunity = await runProductionOpportunity({
+    registryPath: input.registryPath,
+    integrationPath: input.integrationPath,
+    databasePath: input.databasePath,
+    opportunityId: input.opportunityId ?? "auto",
+    scheduledFor: observedAt,
+    mode: integration.mode,
+    allowProviderWrite: true,
+    openclawBin: input.openclawBin,
+    workspace: input.workspace,
+    mediaDelivery: input.mediaDelivery,
+    toolInvoker: input.toolInvoker,
+  });
+  return {
+    schemaVersion: "1.2.0",
+    factoryId: "campaigns-content-factory",
+    mode: integration.mode,
+    localDate,
+    uniquenessDecision: uniqueness,
+    media: media.results,
+    audit,
+    opportunity,
+    terminalOutcome: opportunity.result === "verified" ? "published_verified" : String(opportunity.result ?? "unknown"),
+    externalWrites: opportunity.externalWrites,
+  };
 }
 
 export async function runCampaignFactoryShadowCycle(input: {

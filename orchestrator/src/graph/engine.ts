@@ -301,7 +301,10 @@ export class GraphExecutor {
     const inputProjection = Object.fromEntries(node.inputProjection.map((path) => [path, readPath(run, path) ?? null]));
     const payloadHash = buildApprovalPayloadHash(inputProjection);
     const action = node.handler;
-    const target = String(readPath(run, "data.target") ?? `${run.graphId}:${node.id}`);
+    const defaultTarget = run.graphId === "digest-delivery" && node.id === "deliver_notification"
+      ? `digest-delivery:${String(run.input.ingressId ?? run.correlationId ?? run.runId)}`
+      : `${run.graphId}:${node.id}`;
+    const target = String(readPath(run, "data.target") ?? defaultTarget);
     const externalMutation = this.authorityRank(node.sideEffectClass) >= this.authorityRank("external_reversible");
     if (externalMutation && this.runtimePolicy.zeroWriteOnly === true && node.handler === "graph.external-disabled") {
       const reason = "runtime_zero_write_policy";

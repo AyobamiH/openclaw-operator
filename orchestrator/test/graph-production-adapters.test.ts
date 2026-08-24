@@ -742,6 +742,7 @@ describe("production adapter registry", () => {
     expect(waiting.status).toBe("waiting_for_approval");
     expect(waiting.currentNodeId).toBe("deliver_notification");
     const approval = runtime.store.approvals(run.runId)[0]!;
+    expect(approval.target).toBe("digest-delivery:digest-slot-one");
     const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
     runtime.engine.decideApproval(run.runId, approval.approvalId, "granted", "fixture", expiresAt);
     const capability = issueOneRunLiveCapability({ store: runtime.store, runId: run.runId, approvalId: approval.approvalId, issuedBy: "fixture", expiresAt, globalZeroWrite: true });
@@ -750,6 +751,7 @@ describe("production adapter registry", () => {
     expect(completed.status).toBe("completed");
     expect(runtime.store.oneRunLiveCapability(capability.capabilityId)?.status).toBe("consumed");
     expect(runtime.store.liveCapabilityDispatches(capability.capabilityId)).toMatchObject([{ stepId: "notification_effect", dispatchCount: 1, state: "succeeded" }]);
+    expect(runtime.store.externalEffects(run.runId)[0]).toMatchObject({ target: "digest-delivery:digest-slot-one", state: "effect_verified" });
     expect(runtime.store.verifyChildRunReceiptChain(run.runId)).toBe(true);
   });
 
