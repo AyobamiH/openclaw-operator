@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "laneId": "self-identification-engine",
   "timezone": "Europe/London",
-  "mode": "shadow",
+  "mode": "live",
   "schedulerLatenessToleranceMinutes": 10,
   "runtimeOwner": "deterministic-self-identification-runner",
   "workerAgentId": "social-publication-worker",

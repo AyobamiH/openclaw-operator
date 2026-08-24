@@ -21,6 +21,19 @@ const integrationPath = resolve(
   "config/publishing/production-integration.v1.json",
 );
 
+async function writeIntegrationFixture(
+  directory: string,
+  mode: "shadow" | "canary" | "live",
+  mutate?: (fixture: Record<string, unknown>) => void,
+): Promise<string> {
+  const fixture = JSON.parse(await readFile(integrationPath, "utf8")) as Record<string, unknown>;
+  fixture.mode = mode;
+  mutate?.(fixture);
+  const fixturePath = join(directory, `production-integration-${mode}.json`);
+  await writeFile(fixturePath, `${JSON.stringify(fixture)}\n`);
+  return fixturePath;
+}
+
 describe("production publishing integration", () => {
   it("classifies zero, one, duplicate and multiple candidates at exact time boundaries", async () => {
     const registry = await loadRegistryBundle(registryPath);
@@ -42,10 +55,10 @@ describe("production publishing integration", () => {
   it("persists a legitimate zero-candidate terminal no-op and suppresses restart replay", async () => {
     const directory = await mkdtemp(join(tmpdir(), "publishing-production-no-op-"));
     try {
-      const integrationFixturePath = join(directory, "production-integration.json");
-      const fixture = JSON.parse(await readFile(integrationPath, "utf8")) as { opportunities: Array<{ id: string; enabled: boolean }> };
-      fixture.opportunities.find((item) => item.id === "self-id-0700")!.enabled = false;
-      await writeFile(integrationFixturePath, `${JSON.stringify(fixture)}\n`);
+      const integrationFixturePath = await writeIntegrationFixture(directory, "shadow", (fixture) => {
+        (fixture.opportunities as Array<{ id: string; enabled: boolean }>)
+          .find((item) => item.id === "self-id-0700")!.enabled = false;
+      });
       const databasePath = join(directory, "publishing.sqlite");
       let providerCalls = 0;
       const first = await runProductionOpportunity({
@@ -77,7 +90,7 @@ describe("production publishing integration", () => {
   it("allocates exactly the five product opportunities and protects four legacy jobs", async () => {
     const registry = await loadRegistryBundle(registryPath);
     const integration = await loadProductionIntegration(integrationPath, registry);
-    expect(integration.mode).toBe("shadow");
+    expect(integration.mode).toBe("live");
     expect(integration.schedulerLatenessToleranceMinutes).toBe(10);
     expect(integration.opportunities.map((item) => item.localTime).sort()).toEqual([
       "05:00",
@@ -141,8 +154,9 @@ describe("production publishing integration", () => {
     const directory = await mkdtemp(join(tmpdir(), "publishing-production-shadow-"));
     const calls: Array<Record<string, unknown>> = [];
     try {
+      const shadowIntegrationPath = await writeIntegrationFixture(directory, "shadow");
       const result = await runProductionOpportunity({
-        integrationPath,
+        integrationPath: shadowIntegrationPath,
         registryPath,
         databasePath: join(directory, "publishing.sqlite"),
         opportunityId: "auto",
@@ -181,7 +195,7 @@ describe("production publishing integration", () => {
       expect(calls).toHaveLength(1);
 
       const recovered = await runProductionOpportunity({
-        integrationPath,
+        integrationPath: shadowIntegrationPath,
         registryPath,
         databasePath: join(directory, "publishing.sqlite"),
         opportunityId: "self-id-1500",
@@ -206,9 +220,10 @@ describe("production publishing integration", () => {
     const directory = await mkdtemp(join(tmpdir(), "publishing-production-shadow-denied-"));
     let calls = 0;
     try {
+      const shadowIntegrationPath = await writeIntegrationFixture(directory, "shadow");
       const databasePath = join(directory, "publishing.sqlite");
       const result = await runProductionOpportunity({
-        integrationPath,
+        integrationPath: shadowIntegrationPath,
         registryPath,
         databasePath,
         opportunityId: "auto",
@@ -239,7 +254,7 @@ describe("production publishing integration", () => {
       expect(calls).toBe(1);
 
       const recovered = await runProductionOpportunity({
-        integrationPath,
+        integrationPath: shadowIntegrationPath,
         registryPath,
         databasePath,
         opportunityId: "self-id-1700",
@@ -264,9 +279,10 @@ describe("production publishing integration", () => {
     const directory = await mkdtemp(join(tmpdir(), "publishing-production-shadow-resume-"));
     let attempts = 0;
     try {
+      const shadowIntegrationPath = await writeIntegrationFixture(directory, "shadow");
       const databasePath = join(directory, "publishing.sqlite");
       await expect(runProductionOpportunity({
-        integrationPath,
+        integrationPath: shadowIntegrationPath,
         registryPath,
         databasePath,
         opportunityId: "self-id-1500",
@@ -279,7 +295,7 @@ describe("production publishing integration", () => {
       })).rejects.toThrow(/simulated interruption/);
 
       const resumed = await runProductionOpportunity({
-        integrationPath,
+        integrationPath: shadowIntegrationPath,
         registryPath,
         databasePath,
         opportunityId: "self-id-1500",
@@ -314,8 +330,9 @@ describe("production publishing integration", () => {
   it("cannot enter canary or live mode while the approved integration is shadow", async () => {
     const directory = await mkdtemp(join(tmpdir(), "publishing-production-mode-"));
     try {
+      const shadowIntegrationPath = await writeIntegrationFixture(directory, "shadow");
       await expect(runProductionOpportunity({
-        integrationPath,
+        integrationPath: shadowIntegrationPath,
         registryPath,
         databasePath: join(directory, "publishing.sqlite"),
         opportunityId: "self-id-1500",
