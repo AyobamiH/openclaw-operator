@@ -11,6 +11,7 @@ import {
   PublishingConnectorRegistry,
   WorkerBackedPublishingConnector,
 } from "../src/publishing/connectors.js";
+import { OpenClawOfficialApiWorkerClient } from "../src/publishing/official-worker.js";
 import { classifyAssetRelationship } from "../src/publishing/proof.js";
 import {
   loadRegistryBundle,
@@ -599,6 +600,53 @@ describe("deterministic self-identification publishing engine", () => {
         },
       },
     })).toBe("nested-provider-1");
+  });
+
+  it("matches Instagram owned-feed captions during lost-response reconciliation", async () => {
+    const { engine, store } = await harness();
+    const plan = engine.planSlot({
+      platformId: "instagram",
+      accountId: "tailwaggingwebdesigns",
+      scheduledFor: at("11:00"),
+      now: at("11:00"),
+      selectionSemantics: "provider_verified",
+    });
+    const rendered = deterministicRenderedCandidate(plan.contentSpec!);
+    const worker = new OpenClawOfficialApiWorkerClient({
+      connectorId: "official-meta-instagram-v1",
+      integration: { runtimeOwner: "test-owner", laneId: "self-identification-engine" } as any,
+      opportunity: {
+        id: "self-id-1100",
+        platformId: "instagram",
+        connectorAccountKey: "instagram:owner",
+        canaryEligible: false,
+      } as any,
+      scheduledFor: at("11:00"),
+      mode: "live",
+      allowProviderWrite: true,
+      invoker: async (invocation) => {
+        expect(invocation.tool).toBe("relay_live_business_engagement_discover");
+        return {
+          performed: true,
+          results: {
+            data: [{
+              id: "instagram-provider-caption-match",
+              caption: rendered.text,
+              permalink: "https://www.instagram.com/p/caption-match/",
+            }],
+          },
+        };
+      },
+    });
+
+    await expect(worker.findPossibleDuplicate(plan.contentSpec!)).resolves.toEqual([
+      expect.objectContaining({
+        providerId: "instagram-provider-caption-match",
+        contentHashMatches: true,
+        permalink: "https://www.instagram.com/p/caption-match/",
+      }),
+    ]);
+    store.close();
   });
 
   it("fails connector coverage when an approved worker adapter is missing", async () => {

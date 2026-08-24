@@ -3,9 +3,11 @@ import { resolve } from "node:path";
 import { PublishingConnectorRegistry, WorkerBackedPublishingConnector } from "./connectors.js";
 import {
   DeterministicPublishingEngine,
+  buildSelectionHistory,
   deterministicRenderedCandidate,
   slotKey,
 } from "./engine.js";
+import { validateContentSpec } from "./content.js";
 import {
   renderedCandidateWithDelivery,
   type CampaignMediaDelivery,
@@ -23,6 +25,80 @@ import {
 import { sha256 } from "./canonical.js";
 import { loadRegistryBundle } from "./registry.js";
 import { PublishingStore } from "./store.js";
+import type { ContentSpec, SlotPlan } from "./types.js";
+
+function reservePreparedContentSpec(input: {
+  registry: Awaited<ReturnType<typeof loadRegistryBundle>>;
+  store: PublishingStore;
+  contentSpec: ContentSpec;
+  platformId: string;
+  accountId: string;
+  scheduledFor: Date;
+}): SlotPlan {
+  const key = slotKey(input.scheduledFor);
+  const spec = input.contentSpec;
+  if (spec.slotKey !== key) throw new Error(`prepared_content_spec_slot_mismatch:${spec.slotKey}:${key}`);
+  if (spec.platformId !== input.platformId) {
+    throw new Error(`prepared_content_spec_platform_mismatch:${spec.platformId}:${input.platformId}`);
+  }
+  if (spec.accountId !== input.accountId) {
+    throw new Error(`prepared_content_spec_account_mismatch:${spec.accountId}:${input.accountId}`);
+  }
+  const slotRunId = `slot_${sha256(key).slice(0, 24)}`;
+  const validationHistory = buildSelectionHistory(input.store, input.scheduledFor, "provider_verified");
+  const exactContentHashes = new Set(validationHistory.exactContentHashes);
+  exactContentHashes.delete(spec.contentHash);
+  input.store.startSlot(
+    slotRunId,
+    key,
+    spec.platformId,
+    spec.accountId,
+    input.scheduledFor.toISOString(),
+    input.scheduledFor,
+  );
+  const existingSpec = input.store.contentSpec(spec.id);
+  if (existingSpec && existingSpec.contentHash !== spec.contentHash) {
+    throw new Error(`prepared_content_spec_hash_mismatch:${spec.id}`);
+  }
+  if (!existingSpec) input.store.saveContentSpec(spec);
+  const validation = validateContentSpec(input.registry, spec, {
+    ...validationHistory,
+    exactContentHashes,
+  }, input.scheduledFor);
+  input.store.saveValidation(spec.id, validation, input.scheduledFor);
+  if (!validation.passed) {
+    const reasons = validation.findings
+      .filter((item) => item.status === "failed")
+      .map((item) => item.code);
+    input.store.completeSlot(slotRunId, "failed_closed", reasons, null, spec.id, input.scheduledFor);
+    return {
+      slotRunId,
+      slotKey: key,
+      result: "failed_closed",
+      candidate: null,
+      contentSpec: spec,
+      validation,
+      reasons,
+      reservation: null,
+    };
+  }
+  const reservation = input.store.reserve(slotRunId, spec, input.scheduledFor);
+  return {
+    slotRunId,
+    slotKey: key,
+    result: "reserved",
+    candidate: null,
+    contentSpec: spec,
+    validation,
+    reasons: [
+      "campaign-factory-prepared-content-spec",
+      "content-spec-immutable",
+      "validation-passed",
+      "reservation-acquired",
+    ],
+    reservation,
+  };
+}
 
 export async function runProductionOpportunity(input: {
   integrationPath: string;
@@ -36,6 +112,7 @@ export async function runProductionOpportunity(input: {
   openclawBin?: string;
   workspace?: string;
   mediaDelivery?: CampaignMediaDelivery | null;
+  preparedContentSpec?: ContentSpec | null;
 }): Promise<Record<string, unknown>> {
   const registry = await loadRegistryBundle(resolve(input.registryPath));
   const integration = await loadProductionIntegration(
@@ -123,12 +200,13 @@ export async function runProductionOpportunity(input: {
     let existingPublication: ReturnType<PublishingStore["publication"]> = null;
     if (existingSlot) {
       existingPublication = store.publicationForSlotKey(String(existingSlot.slot_key));
-      if (existingSlot.result || (existingPublication && ![
+      const publicationEligibleForRecovery = existingPublication && [
         "reserved",
         "publishing",
         "published_unverified",
         "reconciliation_required",
-      ].includes(existingPublication.state))) {
+      ].includes(existingPublication.state);
+      if ((existingSlot.result && !publicationEligibleForRecovery) || (existingPublication && !publicationEligibleForRecovery)) {
         return {
           mode,
           laneId: integration.laneId,
@@ -149,7 +227,16 @@ export async function runProductionOpportunity(input: {
     }
     const plan = existingPublication
       ? null
-      : engine.planSlot({
+      : input.preparedContentSpec
+        ? reservePreparedContentSpec({
+          registry,
+          store,
+          contentSpec: input.preparedContentSpec,
+          platformId: opportunity.platformId,
+          accountId: opportunity.accountId,
+          scheduledFor,
+        })
+        : engine.planSlot({
         platformId: opportunity.platformId,
         accountId: opportunity.accountId,
         scheduledFor,

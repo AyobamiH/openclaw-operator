@@ -351,12 +351,21 @@ export class OpenClawOfficialApiWorkerClient implements OfficialApiWorkerClient 
         limit: 100,
         relayAvailable: false,
       },
-      idempotencyKey: `${contentSpec.contentHash}:official-owned-history`,
+      idempotencyKey: `${contentSpec.contentHash}:official-owned-history:caption-readback-v1`,
     });
     const expected = sha256(renderedText(contentSpec));
     return collectRecords(result)
-      .filter((record) => typeof record.id === "string" && typeof record.text === "string")
-      .filter((record) => sha256(String(record.text)) === expected)
+      .map((record) => ({
+        record,
+        text: typeof record.text === "string"
+          ? record.text
+          : typeof record.caption === "string"
+            ? record.caption
+            : null,
+      }))
+      .filter((item) => typeof item.record.id === "string" && item.text !== null)
+      .filter((item) => sha256(String(item.text)) === expected)
+      .map(({ record }) => record)
       .map((record) => ({
         found: true,
         providerId: String(record.id),

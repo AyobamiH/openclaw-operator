@@ -519,7 +519,10 @@ export class PublishingStore {
     this.database.prepare(`
       UPDATE publishing_slot_runs
       SET result=?, selected_candidate_json=?, content_spec_id=?, reasons_json=?, completed_at=?
-      WHERE id=? AND completed_at IS NULL
+      WHERE id=? AND (
+        completed_at IS NULL
+        OR result IN ('reconciliation_required', 'published_unverified')
+      )
     `).run(
       result,
       candidate ? canonicalJson(candidate) : null,

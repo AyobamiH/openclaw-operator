@@ -277,6 +277,12 @@ export async function runCampaignFactoryScheduledCycle(input: {
   if (readyOpportunity.durableDeliveryReady !== true) {
     throw new Error(`campaign_factory_promotion_delivery_not_ready:${readyOpportunity.format ?? "unknown"}`);
   }
+  const preparedContent = media.planned.find(
+    (item) => item.contentSpec.id === readyOpportunity.contentSpecId,
+  )?.contentSpec;
+  if (!preparedContent) {
+    throw new Error(`campaign_factory_prepared_content_spec_missing:${readyOpportunity.contentSpecId ?? "unknown"}`);
+  }
 
   const opportunity = await runProductionOpportunity({
     registryPath: input.registryPath,
@@ -289,6 +295,7 @@ export async function runCampaignFactoryScheduledCycle(input: {
     openclawBin: input.openclawBin,
     workspace: input.workspace,
     mediaDelivery: input.mediaDelivery,
+    preparedContentSpec: preparedContent,
     toolInvoker: input.toolInvoker,
   });
   return {

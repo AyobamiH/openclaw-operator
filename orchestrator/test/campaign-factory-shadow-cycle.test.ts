@@ -163,6 +163,12 @@ describe("campaign factory shadow cycle", () => {
       uploadReceipt: { provider: "test-public-media-staging", id: "upload-self-id-1500" },
       uploadedSha256: rendered.artifacts[0]!.sha256,
     });
+    const approvedContentSpec = rendered.planned.find((item) => item.opportunityId === "self-id-1500")!.contentSpec;
+    const approvedText = [
+      approvedContentSpec.renderedIntent.hook,
+      approvedContentSpec.renderedIntent.body,
+      approvedContentSpec.renderedIntent.cta,
+    ].join("\n\n");
     const promoted = await runCampaignFactoryScheduledCycle({
       ...common,
       databasePath: join(root, "publishing-approved.sqlite"),
@@ -179,6 +185,7 @@ describe("campaign factory shadow cycle", () => {
             dryRun: false,
             explicitWriteApproval: true,
             imageUrl: "https://cdn.example.com/campaign-factory/self-id-1500.png",
+            text: approvedText,
           });
           return { outcome: "success", providerId: "thread-canary-provider-id" };
         }
