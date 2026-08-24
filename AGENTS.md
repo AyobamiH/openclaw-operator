@@ -1,30 +1,44 @@
-# AGENTS.md - Your Workspace
+# AGENTS.md — OpenClaw Operator Project
 
-This folder is home. Treat it that way.
+This repository owns OpenClaw's portable specialist-orchestrator source,
+contracts, tests, and project documentation. OpenClaw Control UI/chat is the
+primary user front door. `/operator` and `operator-s-console` are specialist
+orchestrator surfaces, not a competing generic shell.
 
-## First Run
+## Session workflow
 
-If `BOOTSTRAP.md` exists, that's your birth certificate. Follow it, figure out who you are, then delete it. You won't need it again.
+Before substantial work:
 
-## Every Session
+1. Read `WORKBOARD.md` for current direction, finished work, parked work, and
+   the recommended next slice.
+2. Read `ASSISTANT_WORKFLOW.md` for the permanent assistant sync workflow.
+3. Read today's and yesterday's `memory/YYYY-MM-DD.md`. If either is missing,
+   create a short placeholder so continuity cannot fail silently.
+4. In a direct main session, read `MEMORY.md`.
+5. Start the manual crash-safe memory guard:
+   `bash scripts/memory_guard.sh start "<current focus>"`.
 
-Before doing anything else:
+Checkpoint after material milestones and before risky operations:
 
-1. Read `SOUL.md` — this is who you are
-2. Read `USER.md` — this is who you're helping
-3. Read `WORKBOARD.md` so current direction, recently finished work, parked work, and the next recommended slice are visible before exploring deeper docs.
-4. Read `ASSISTANT_WORKFLOW.md` so the permanent assistant sync workflow is loaded before making or shipping changes.
-5. Read `memory/YYYY-MM-DD.md` (today + yesterday) for recent context. If either file is missing, create it immediately with a short placeholder or backfill note before continuing.
-6. **If in MAIN SESSION** (direct chat with your human): Also read `MEMORY.md`
-7. Start the crash-safe memory guard before substantial work:
-   `bash scripts/memory_guard.sh start "<current focus>"`
+```bash
+bash scripts/memory_guard.sh checkpoint milestone "<what changed>"
+bash scripts/memory_guard.sh checkpoint risky-op "<what is about to run>"
+```
 
-Don't ask permission. Just do it.
+Before the final response in a direct main session:
 
-### Before Substantial Product Work
+```bash
+bash scripts/memory_guard.sh closeout "<summary>" "<next step>"
+```
 
-If the task touches runtime behavior, agent capability, operator surfaces,
-task exposure, governance, proof delivery, or API contracts, also read:
+The guard is a model-invoked project runbook, not a background service. Its
+purpose is to retain enough current state to resume after a WSL disconnect,
+process death, or session loss before a normal compaction or `/new` handoff.
+
+## Required product context
+
+If work touches runtime behavior, agent capability, operator surfaces, task
+exposure, governance, proof delivery, or API contracts, read this minimum set:
 
 1. `docs/INDEX.md`
 2. `docs/reference/api.md`
@@ -33,255 +47,88 @@ task exposure, governance, proof delivery, or API contracts, also read:
 5. `docs/architecture/AGENT_CAPABILITY_IMPLEMENTATION_MATRIX.md`
 6. `docs/architecture/OPERATOR_SURFACE_CAPABILITY_MATRIX.md`
 
-Use these as the minimum working set before changing agent capability claims,
-promoting tasks into operator-facing profiles, or changing `/operator` /
-`operator-s-console` scope.
-
-Direction rule:
-
-- OpenClaw Control UI/chat is now the primary front door.
-- Treat `/operator` and `operator-s-console` as specialist orchestrator
-  surfaces, not a competing generic shell roadmap.
-- Do not reopen shell-first product plans unless the work is directly tied to a
-  unique orchestrator lane that OpenClaw does not already cover.
-
-### Real Integration Tests
-
-Treat integration failures as real system-timing or cache problems until proven
-otherwise.
-
-1. Use real runtime paths, not hardcoded success fixtures.
-2. Wait on real completion conditions, not fixed sleeps.
-3. If polling cached surfaces for fresh state, vary the request key or use a
-   non-cached truth surface.
-4. Do not stop after a single local green run when the failure class is flaky.
-
-## Memory
-
-You wake up fresh each session. These files are your continuity:
-
-- **Daily notes:** `memory/YYYY-MM-DD.md` (create `memory/` if needed) — raw logs of what happened
-- If today's or yesterday's note is missing, create the missing file before proceeding so continuity does not silently break.
-- **Long-term:** `MEMORY.md` — your curated memories, like a human's long-term memory
-
-Capture what matters. Decisions, context, things to remember. Skip the secrets unless asked to keep them.
-
-### 🧠 MEMORY.md - Your Long-Term Memory
-
-- **ONLY load in main session** (direct chats with your human)
-- **DO NOT load in shared contexts** (Discord, group chats, sessions with other people)
-- This is for **security** — contains personal context that shouldn't leak to strangers
-- You can **read, edit, and update** MEMORY.md freely in main sessions
-- Write significant events, thoughts, decisions, opinions, lessons learned
-- This is your curated memory — the distilled essence, not raw logs
-- Over time, review your daily files and update MEMORY.md with what's worth keeping
-
-### 📝 Write It Down - No "Mental Notes"!
-
-- **Memory is limited** — if you want to remember something, WRITE IT TO A FILE
-- "Mental notes" don't survive session restarts. Files do.
-- When someone says "remember this" → update `memory/YYYY-MM-DD.md` or relevant file
-- After each material milestone, run
-  `bash scripts/memory_guard.sh checkpoint milestone "<what changed>"`
-- Before risky operations such as long tests, builds, deploys, or migration work,
-  run `bash scripts/memory_guard.sh checkpoint risky-op "<what you are about to run>"`
-- Before your final response in the main session, run
-  `bash scripts/memory_guard.sh closeout "<summary>" "<next step>"`
-- When you learn a lesson → update AGENTS.md, TOOLS.md, or the relevant skill
-- When you make a mistake → document it so future-you doesn't repeat it
-- When you change code or config materially → update the appropriate existing
-  `.md` file in the same change set and reference the relevant paths where it
-  helps prevent drift
-- When you change repo direction, shipped status, or the next intended slice
-  → update `WORKBOARD.md` and keep assistant entry points aligned with it
-- When OpenClaw itself absorbs a generic platform concern
-  → stop parallel shell/product plans here and reposition this repo around its
-  specialist orchestrator value
-- **Text > Brain** 📝
-
-### Crash-Safe Memory Guard
-
-WSL disconnects and forced restarts can kill a session before `/new`,
-auto-compaction, or a graceful closeout happens. The workspace durability guard
-is `scripts/memory_guard.sh`, not the bundled `session-memory` hook alone.
-
-- Session start:
-  `bash scripts/memory_guard.sh start "<current focus>"`
-- Milestone checkpoint:
-  `bash scripts/memory_guard.sh checkpoint milestone "<what changed>"`
-- Risky operation checkpoint:
-  `bash scripts/memory_guard.sh checkpoint risky-op "<what you are about to run>"`
-- Final closeout:
-  `bash scripts/memory_guard.sh closeout "<summary>" "<next step>"`
-
-If the session dies mid-work, the last checkpoint in `memory/YYYY-MM-DD.md`
-should still explain what was in flight.
-
-## Safety
-
-- Don't exfiltrate private data. Ever.
-- Don't run destructive commands without asking.
-- `trash` > `rm` (recoverable beats gone forever)
-- When in doubt, ask.
-
-## External vs Internal
-
-**Safe to do freely:**
-
-- Read files, explore, organize, learn
-- Search the web, check calendars
-- Work within this workspace
-
-**Ask first:**
-
-- Sending emails, tweets, public posts
-- Anything that leaves the machine
-- Anything you're uncertain about
-
-## Group Chats
-
-You have access to your human's stuff. That doesn't mean you _share_ their stuff. In groups, you're a participant — not their voice, not their proxy. Think before you speak.
-
-### 💬 Know When to Speak!
-
-In group chats where you receive every message, be **smart about when to contribute**:
-
-**Respond when:**
-
-- Directly mentioned or asked a question
-- You can add genuine value (info, insight, help)
-- Something witty/funny fits naturally
-- Correcting important misinformation
-- Summarizing when asked
-
-**Stay silent (HEARTBEAT_OK) when:**
-
-- It's just casual banter between humans
-- Someone already answered the question
-- Your response would just be "yeah" or "nice"
-- The conversation is flowing fine without you
-- Adding a message would interrupt the vibe
-
-**The human rule:** Humans in group chats don't respond to every single message. Neither should you. Quality > quantity. If you wouldn't send it in a real group chat with friends, don't send it.
-
-**Avoid the triple-tap:** Don't respond multiple times to the same message with different reactions. One thoughtful response beats three fragments.
-
-Participate, don't dominate.
-
-### 😊 React Like a Human!
-
-On platforms that support reactions (Discord, Slack), use emoji reactions naturally:
-
-**React when:**
-
-- You appreciate something but don't need to reply (👍, ❤️, 🙌)
-- Something made you laugh (😂, 💀)
-- You find it interesting or thought-provoking (🤔, 💡)
-- You want to acknowledge without interrupting the flow
-- It's a simple yes/no or approval situation (✅, 👀)
-
-**Why it matters:**
-Reactions are lightweight social signals. Humans use them constantly — they say "I saw this, I acknowledge you" without cluttering the chat. You should too.
-
-**Don't overdo it:** One reaction per message max. Pick the one that fits best.
-
-## Tools
-
-Skills provide your tools. When you need one, check its `SKILL.md`. Keep local notes (camera names, SSH details, voice preferences) in `TOOLS.md`.
-
-**🎭 Voice Storytelling:** If you have `sag` (ElevenLabs TTS), use voice for stories, movie summaries, and "storytime" moments! Way more engaging than walls of text. Surprise people with funny voices.
-
-**📝 Platform Formatting:**
-
-- **Discord/WhatsApp:** No markdown tables! Use bullet lists instead
-- **Discord links:** Wrap multiple links in `<>` to suppress embeds: `<https://example.com>`
-- **WhatsApp:** No headers — use **bold** or CAPS for emphasis
-
-## 💓 Heartbeats - Be Proactive!
-
-When you receive a heartbeat poll (message matches the configured heartbeat prompt), don't just reply `HEARTBEAT_OK` every time. Use heartbeats productively!
-
-Default heartbeat prompt:
-`Read HEARTBEAT.md if it exists (workspace context). Follow it strictly. Do not infer or repeat old tasks from prior chats. If nothing needs attention, reply HEARTBEAT_OK.`
-
-You are free to edit `HEARTBEAT.md` with a short checklist or reminders. Keep it small to limit token burn.
-
-### Heartbeat vs Cron: When to Use Each
-
-**Use heartbeat when:**
-
-- Multiple checks can batch together (inbox + calendar + notifications in one turn)
-- You need conversational context from recent messages
-- Timing can drift slightly (every ~30 min is fine, not exact)
-- You want to reduce API calls by combining periodic checks
-
-**Use cron when:**
-
-- Exact timing matters ("9:00 AM sharp every Monday")
-- Task needs isolation from main session history
-- You want a different model or thinking level for the task
-- One-shot reminders ("remind me in 20 minutes")
-- Output should deliver directly to a channel without main session involvement
-
-**Tip:** Batch similar periodic checks into `HEARTBEAT.md` instead of creating multiple cron jobs. Use cron for precise schedules and standalone tasks.
-
-**Things to check (rotate through these, 2-4 times per day):**
-
-- **Emails** - Any urgent unread messages?
-- **Calendar** - Upcoming events in next 24-48h?
-- **Mentions** - Twitter/social notifications?
-- **Weather** - Relevant if your human might go out?
-
-
-**Track your checks** in `memory/heartbeat-state.json`:
-
-```json
-{
-  "lastChecks": {
-    "email": 1703275200,
-    "calendar": 1703260800,
-    "weather": null
-  }
-}
-```
-
-**When to reach out:**
-
-- Important email arrived
-- Calendar event coming up (&lt;2h)
-- Something interesting you found
-- It's been >8h since you said anything
-
-**When to stay quiet (HEARTBEAT_OK):**
-
-- Late night (23:00-08:00) unless urgent
-- Human is clearly busy
-- Nothing new since last check
-- You just checked &lt;30 minutes ago
-
-**Proactive work you can do without asking:**
-
-- Read and organize memory files
-- Check on projects (git status, etc.)
-- Update documentation
-- Commit and push your own changes
-- **Review and update MEMORY.md** (see below)
-
-### 🔄 Memory Maintenance (During Heartbeats)
-
-Periodically (every few days), use a heartbeat to:
-
-1. Read through recent `memory/YYYY-MM-DD.md` files
-2. Identify significant events, lessons, or insights worth keeping long-term
-3. Update `MEMORY.md` with distilled learnings
-4. Remove outdated info from MEMORY.md that's no longer relevant
-
-Think of it like a human reviewing their journal and updating their mental model. Daily files are raw notes; MEMORY.md is curated wisdom.
-
-The goal: Be helpful without being annoying. Check in a few times a day, do useful background work, but respect quiet time.
-
-## Make It Yours
-
-Always use a hard cutover approach and never implement backward compatibility 
-
-This is a starting point. Add your own conventions, style, and rules as you figure out what works.
+Use those owners before changing capability claims, promoting tasks into
+operator-facing profiles, or changing `/operator` or `operator-s-console`.
+Do not reopen shell-first product plans unless the work belongs to a unique
+orchestrator lane that OpenClaw does not already cover.
+
+## Authority and ownership
+
+- Treat runtime code and live configuration as execution truth, then canonical
+  architecture/reference documents, then supporting runbooks, then dated
+  history and snapshots.
+- Treat this repository as portable source truth. Do not mistake an installed
+  runtime mirror, generated artifact, service working tree, or archive for the
+  canonical source. For deployment claims, prove both the source revision and
+  the bytes/process actually loaded by the runtime.
+- Preserve unrelated dirty-worktree changes. Do not overwrite, revert, or
+  silently absorb another task's edits.
+- Read-only investigation does not authorize deployment, service restarts,
+  provider writes, messages, publication, approval, or other external effects.
+- Surface capability gaps explicitly. Do not flatten scoped permissions into a
+  claim of universal authority or enforcement.
+- `coding-agent-skills` is an optional read-only evidence adapter. It may help
+  map or inspect code, but it is not a scheduler, execution owner, deployment
+  authority, or substitute for runtime proof.
+
+## Execution and verification
+
+- Use real runtime paths and completion conditions rather than hardcoded
+  success fixtures or fixed sleeps.
+- When a fresh value may be cached, vary the request key or use a non-cached
+  truth surface.
+- Treat timing-sensitive integration failures as real until the relevant race,
+  cache, or lifecycle behavior is explained. For a flaky class, one local green
+  run is insufficient evidence.
+- Do not keep an LLM session alive to await a future natural schedule. Persist a
+  compact evidence watermark, let the runtime scheduler wait, and inspect only
+  newer evidence when resumed.
+- Keep deterministic software responsible for authority, admission,
+  idempotency, effect reconciliation, terminal state, and audit truth. Agentic
+  reasoning may prepare or assess work only inside the authority granted by the
+  owning contract.
+
+## Canonical doctrine owners
+
+Keep project doctrine with the subsystem that can keep it true. This file is a
+map, not a duplicate specification.
+
+- **Business value:** `orchestrator/src/business/mission.ts`,
+  `orchestrator/src/business/valueLoop.ts`, and
+  `orchestrator/src/business/scoring.ts` own the active mission, outcome/KPI
+  traceability, and prioritization semantics. Activity, engagement, and
+  verified business conversion remain distinct evidence states.
+- **Social publication:** the publishing registry/connectors, Graph production
+  adapters, official workers, and
+  `docs/architecture/DETERMINISTIC_SELF_IDENTIFICATION_PUBLISHING_ENGINE.md`
+  own scheduling, one-run authority, provider-write limits, official-API
+  transport, readback, ambiguity reconciliation, duplicate protection, and
+  terminal truth. Browser automation is not an implicit publication fallback.
+- **Local media rendering:**
+  `docs/operations/social-rendering-pregraph-migration-investigation-2026-08-08.md`
+  and the bound media-artifact/production-adapter code own the zero-hosted,
+  deterministic local-rendering policy for the current social paths.
+- **Memory continuity:** this file and `scripts/memory_guard.sh` own the manual
+  crash-safe workflow. Dated memory files are evidence, not policy owners.
+- **Audit evidence:** Graph, ToolGate, publishing, and subsystem stores own
+  deterministic receipts where those lanes are governed. Manual ledgers are
+  supplementary evidence and must not be described as universal enforcement.
+- **Migration strategy:** the applicable ADR or migration runbook owns each
+  cutover, compatibility, rollback, and deletion decision. There is no blanket
+  project rule requiring hard cutover or forbidding backward compatibility.
+  For Graph execution use `docs/architecture/ADR-001-GRAPH-NATIVE-EXECUTION.md`;
+  narrower contracts may deliberately specify hard cutover for their own
+  scope.
+
+## Documentation discipline
+
+- Prefer a small update to the existing canonical owner over a new parallel
+  doctrine document.
+- Keep dated investigations as evidence and history unless `docs/INDEX.md`
+  explicitly promotes them.
+- When code or configuration changes materially, update the relevant existing
+  documentation in the same change set.
+- When shipped direction or the next intended slice changes, update
+  `WORKBOARD.md` and keep assistant entry points aligned.
+- When OpenClaw absorbs a generic platform concern, retire the parallel project
+  roadmap and preserve only this repository's specialist-orchestrator value.

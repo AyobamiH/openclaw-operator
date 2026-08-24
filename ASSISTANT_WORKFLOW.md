@@ -11,7 +11,20 @@ Use it to keep Codex, Copilot, and any future assistant aligned on:
 
 It is a workflow contract, not a runtime spec.
 
-Last updated: `2026-04-09`
+Last updated: `2026-08-15`
+
+## Production Checkout Rule
+
+The installed orchestrator service executes source directly from the ordinary
+project checkout. That checkout is production source, not a development
+workspace. All changes to loaded code must be built on a separate branch and
+worktree, validated there (including Crabbox where its isolated SSH contract
+is applicable), then activated as one exact tested delta with before/after
+hash and rollback evidence. Claw Patch may review or prepare a bounded patch;
+it does not silently become deployment authority.
+
+The complete procedure is
+[docs/operations/live-runtime-branch-first-development.md](./docs/operations/live-runtime-branch-first-development.md).
 
 ## Direction Guardrail
 
@@ -141,11 +154,13 @@ push, not just the first visible assertion.
 
 For material work:
 
-1. implement the code
-2. verify it
-3. if the change is headed to `main`, run `npm run verify:main`
-4. update `WORKBOARD.md`
-5. update assistant entry points if needed
-6. commit and push
+1. prove whether the checkout is loaded by a live process
+2. create a branch and separate worktree when it is production-loaded
+3. implement and verify in that isolated worktree
+4. if the change is headed to `main`, run `npm run verify:main`
+5. update `WORKBOARD.md`
+6. update assistant entry points if needed
+7. checkpoint/commit the tested branch
+8. activate only the tested delta and verify loaded hashes
 
 That keeps assistant guidance synchronized with shipped repo state.

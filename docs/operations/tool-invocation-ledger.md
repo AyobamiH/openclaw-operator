@@ -2499,3 +2499,323 @@
   build green. Focused remote run `run_58a1fbeeb6a8` also passed `27/27`,
   `1/1`, and `4/4`; its exact remote work root was removed. Commit/push,
   runtime load and natural proof remain the next stages.
+## 2026-08-09 — Threads duplicate-reporting repair push and runtime load
+
+- Requested task/workflow lane: verify, test, push and load commit `a410276`,
+  then prove that a duplicate-suppressed Threads invocation reports zero current
+  provider writes while preserving any previous publication only as historical
+  evidence.
+- Approval and operation: John explicitly approved the exact commit push and
+  orchestrator load/restart. One `daemon-reload` and one
+  `orchestrator.service` restart were submitted after the successful push.
+- Tools and source: coding-agent `repo-map` and deployment-preflight evidence
+  were consulted first; deployment-preflight was adapter-limited, so bounded
+  core `git`, `npm`, Vitest, TypeScript, `systemctl --user`, `journalctl`,
+  loopback `curl`, `ss`, and named `openclaw config get`/`cron list` reads were
+  used. The exact push used local Git because the GitHub skill designates Git
+  for pushes and the deployment connector could not express an exact commit ref
+  without also pushing the later audit commit.
+- Validation: focused Graph scheduler/adapter tests passed `77/77`; exact
+  duplicate replay passed `1/1`; protected `verify:main` passed builds, docs,
+  `97/97` fixture tests, `35/35` runtime integration tests, `34/34` operator UI
+  tests and typechecks. The successful push hook ran the protected gate without
+  its skip variable.
+- Push evidence: `origin/main` changed by non-force exact ref push from
+  `78733d7dc3a4684f41455dc55c5cfc969b48bf27` to
+  `a410276d429d35da6e7f5181ca0db768fc678bf3`. Audit-only `80ec317` was not
+  pushed.
+- Runtime evidence: PID/start changed from `239207` / `2026-08-08 20:31:36
+  BST` to `391978` / `2026-08-09 16:06:40 BST`; service is active/running,
+  both health endpoints returned HTTP `200`, loopback `3312` listens, startup
+  registered ten Graph definitions with recovery `0/0`, and eight enabled cron
+  schedules remain loaded. Target/worktree scheduler and adapter Git blobs are
+  identical.
+- State comparison: resolved pre/post adjacent configuration hashes both equal
+  `47a3c17fb18efc8561d8c8bfd6fc20353996c4a98f44c862a5f18765de77f835`.
+- Changed state: true for remote `origin/main`, one daemon reload, one
+  orchestrator restart, this evidence report, audit status, ledger and daily
+  continuity. `verify:main` also regenerated the uncommitted
+  `site/docs/INDEX.md` audit-index line. No new commit was made.
+- External-effect declaration: provider writes `0`; Browser Relay calls `0`;
+  no live Threads post, live replay, Instagram reconciliation, scheduler/Graph
+  state mutation, cron edit, config/permission change, install, migration,
+  rollback or second restart.
+- Evidence: `docs/operations/threads-duplicate-reporting-repair-deployment-2026-08-09.md`.
+- Next safe step and boundary: observe the next natural Threads slot for live
+  message proof. Instagram ambiguity reconciliation and any additional service,
+  scheduler, config, provider or source-control change remain separate actions.
+
+## 2026-08-09 — Instagram ambiguous-effect reconciliation and natural-slot proof
+
+- Requested task/workflow lane: independently prove the exact 8 August
+  Instagram upload-only Graph effect absent, reconcile only that historical
+  effect through the canonical deterministic path with zero provider writes,
+  prove guard and runtime health, then observe the next natural slot without
+  forcing it.
+- Tools and source: coding-agent `repo-map` was consulted first and returned
+  adapter/repository metadata only; bounded core `rg`, `git`, Vitest, SQLite
+  backup/read queries, table-dump hashing, loopback HTTP reads, `systemctl
+  --user`, and the repository's owner-only credential-reference resolver were
+  used for exact source/runtime evidence. OpenClaw cron `get`/`runs` supplied
+  scheduler truth. Official API-only Relay status, account, capability,
+  discover, inspect and verify reads supplied Meta evidence; Browser Relay was
+  unavailable and not used.
+- Approved mutation: one authenticated canonical
+  `POST /api/graphs/runs/grzwcanary_2e731574-cfef-4795-8a5b-014d2e95b0e9/effects/reconcile`
+  for exact effect `gex_2ae1e769-4d7b-416e-8b53-c1cbd1cb8142`, observation
+  `confirmed_absent`, no provider operation ID, and three evidence references.
+  The call returned HTTP 200 and was not retried.
+- Changed-state declaration: Graph state changed only for the target effect,
+  target run revision/snapshot, and two append-only reconciliation events.
+  Unrelated runs, effects and all pre-existing events retained identical
+  hashes; definitions, approvals, checkpoints, attempts, receipts,
+  capabilities, dispatches, leases, evidence and schema metadata were
+  unchanged. Scheduler and deterministic-publishing databases were
+  byte-identical before/after. Documentation and this ledger were updated.
+- External-effect declaration: reconciliation provider writes `0`; Browser
+  Relay calls `0`; no replay, forced trigger, manual publication, schedule
+  mutation, restart, permission expansion, commit, push or deployment occurred.
+  The later pre-existing approved 17:00 natural Reel slot made one intended
+  provider publication; it was scheduler-owned, not reconciliation-owned.
+- Verification: historical effect remains `confirmed_absent`; ambiguous effect
+  and account-guard counts are `0`; Graph health is healthy; service PID
+  `391978` remained unchanged; health and persistence endpoints returned HTTP
+  200. Natural trigger `gst_3d52d25f28a889b149601340c04726fe` routed to run
+  `grzwcanary_4e334aa9-92cd-4a44-85b4-f4a010b451bd`, completed successfully,
+  passed all three completion assertions, and produced verified provider object
+  `18146423119532276` with zero Browser Relay calls. Independent official Meta
+  inspect/verify readback matched the Graph result.
+- Evidence:
+  `docs/operations/instagram-ambiguous-effect-reconciliation-and-natural-slot-2026-08-09.md`.
+- Next safe step: no Instagram recovery action remains. Continue only with the
+  separately governed campaign-rotation, GitHub-monitor coalescing, scheduler
+  ownership, legacy-cron, and measurement gaps recorded in the full audit.
+
+## 2026-08-09 — Campaign Factory portfolio-rotation repair and blocked runtime closeout
+
+- Requested task/workflow lane: prove and repair Campaign Factory starvation,
+  define shadow portfolio-history semantics, replay all thirteen campaigns,
+  test, commit, push, load the runtime, and verify it without provider writes or
+  experiment activation.
+- Tools and source: coding-agent `repo-map`, `deployment-preflight`, and
+  `github-handoff` were consulted first. The latter two were adapter-limited and
+  could not inspect or execute this project workflow, so bounded core `rg`, Git,
+  SQLite read queries, Vitest, TypeScript, systemd, journal, socket, loopback
+  HTTP and named OpenClaw configuration reads were used. The fallback reason is
+  the project adapter's declared support for `repo-map` only.
+- Root cause and repair: per-opportunity `:memory:` stores reset all selection
+  history, while shadow terminal decisions never entered the verified-provider
+  history. The repair adds explicit `provider_verified` and `shadow_portfolio`
+  selection histories, carries one planning projection across daily slots,
+  merges canonical history read-only, and keeps shadow decisions outside all
+  provider-effect evidence.
+- Validation: focused suites passed `43/43`; broader publishing/Graph suites
+  passed `130/130`; production integration/dependency/operations passed
+  `14/14`; TypeScript passed; and the protected `verify:main` gate passed. A
+  deterministic 60-day/300-slot replay selected all 13 eligible campaigns,
+  preserved daily caps/cooldowns and the primary daily floor, excluded a paused
+  negative control, maintained a valid audit chain, and recorded zero provider
+  publications/writes.
+- Source control: local commit `3c1917e` and isolated remote commit `9de0aff`
+  have identical stable patch ID `ae004bb8455b2012728ef664b4c9a7d6f6afe7b5`.
+  `origin/main` advanced non-force from `a410276` to `9de0aff`; local audit-only
+  commit `80ec317` was excluded. One automatic hook rerun timed out in unrelated
+  readiness tests under host pressure and a second stalled in the UI build; the
+  exact commit was pushed without a third hook rerun only after the complete
+  protected gate had passed independently.
+- Approved runtime mutation: exactly one `orchestrator.service` restart was
+  submitted. PID/start changed from `391978` / `16:06:40 BST` to `422781` /
+  `18:26:48 BST`; the old process shut down gracefully and the new process
+  passed its initial security-posture checks from the canonical source tree.
+- Blocker: loopback `3312` has not reopened, Graph/scheduler initialization has
+  not appeared, and runtime health is not proven. Multiple orphaned
+  `openclaw-hooks` workers outside `orchestrator.service` have sustained high
+  CPU/memory use for more than twenty minutes, leaving the new process in
+  filesystem wait. Killing those workers or restarting the gateway is a new
+  lifecycle authority and was not attempted.
+- Changed-state declaration: campaign source/tests/report, local and remote Git,
+  one orchestrator restart, this ledger and daily continuity changed. No Graph
+  schedule/database, campaign registry status, experiment, provider adapter,
+  permission, configuration, migration or approval surface was changed.
+- External-effect declaration: provider writes `0`; Browser Relay calls `0`;
+  no campaign execution, provider publication, forced trigger or experiment
+  activation occurred.
+- Evidence:
+  `docs/operations/campaign-factory-portfolio-rotation-repair-2026-08-09.md`.
+- Next safe step and approval boundary: explicitly authorize termination of the
+  orphaned hook workers or an `openclaw-gateway.service` restart, then finish
+  Graph registration, schedule, source, adjacent-config, health, persistence and
+  canonical read-only projection verification without a second orchestrator
+  restart unless separately approved.
+
+## 2026-08-09 — Approved gateway recovery check and Campaign Factory runtime verification
+
+- Requested task/workflow lane: use one approved gateway restart only if still
+  required to clear orphaned hook workers, then complete read-only runtime proof
+  for Campaign Factory commit `9de0aff`; inspect two Telegram-visible tasks
+  without mutating them.
+- Tools and source: bounded core `systemctl --user`, `journalctl`, `ps`, `ss`,
+  loopback `curl`, Git, SQLite read-only queries, OpenClaw cron/task reads,
+  authenticated Graph health read using the repository credential-reference
+  resolver, and official API-only Meta account/capability reads. Browser Relay
+  remained unavailable and unused.
+- Gateway decision: the approved restart was not submitted. Before dispatch,
+  hook workers were absent, gateway PID `371950` and start time remained
+  unchanged, and the orchestrator had recovered. Restarting a healthy gateway
+  would not have been the smallest safe action.
+- Verification: current orchestrator PID `426880` is active/running from the
+  canonical source tree, port `3312` listens, health and persistence return HTTP
+  200, Graph health returns HTTP 200 with ten definitions, and changed Campaign
+  Factory source paths match remote `9de0aff`. A canonical read-only projection
+  selects five distinct campaigns and leaves publishing DB/WAL hashes unchanged.
+- Degraded finding: three stale governed-task Graph runs consume three of four
+  concurrency slots. Three automatic systemd restarts followed unhandled
+  definition-concurrency failures; a natural Meta monitor deferred for the same
+  reason. No stale run was cancelled, reconciled or otherwise mutated.
+- Task records: `1991c393-d67d-45f6-9e42-4adf7031d1d8` (Threads readiness) and
+  `5d00d842-a79b-483a-86b7-1da47198800d` (Instagram Reel) are terminal failed
+  system-schedule tasks caused by the local orchestrator outage. They are
+  unrelated to Campaign Factory selection and were inspected read-only.
+- Changed-state declaration: documentation and continuity only. Natural
+  scheduler activity and automatic systemd restarts changed runtime state; this
+  verification initiated no gateway restart, second orchestrator restart,
+  Graph/task/schedule/config mutation, campaign run or provider action.
+- External-effect declaration: provider writes `0`; Browser Relay calls `0`;
+  experiments remained inactive and no publication was forced.
+- Evidence:
+  `docs/operations/campaign-factory-portfolio-rotation-repair-2026-08-09.md`.
+- Next safe step: separately approve a source repair that makes startup
+  concurrency exhaustion non-fatal, regression tests, canonical reconciliation
+  of only stale governed-task runs, commit/push, and a post-repair orchestrator
+  restart. The suspected hook-worker leak also needs bounded lifecycle
+  instrumentation before root cause can be declared.
+
+## 2026-08-09 — Graph recovery/concurrency repair and stale-run reconciliation
+
+- Requested task/workflow lane: repair Graph recovery and non-fatal concurrency
+  admission, reconcile only three proven stale governed-task runs, deploy with
+  one approved orchestrator restart, and observe the next natural Meta slot.
+- Tools and source: coding-lane repository map first; bounded fallback core Git,
+  `rg`, SQLite backups/read-only comparisons, test/typecheck/build commands,
+  `systemctl --user`, `journalctl`, loopback HTTP, credential-reference-based
+  authenticated Graph reads/writes, and read-only OpenClaw cron status/history.
+  The repository map was metadata-only, so narrow source/state inspection was
+  required to prove lifecycle semantics.
+- Source/test result: focused `85/85`, Graph/OpenAPI `163/163`, TypeScript and
+  protected `verify:main` passed. Isolated commits `8b73ab6` and `d8566ed` were
+  pushed; remote is exactly `d8566ed5488b9cf97180533542ffdde8761548d6`.
+- Approved mutations: exactly one `orchestrator.service` restart and exactly one
+  run-specific recovery request for each of the three authorized run IDs. No
+  generic recovery, cancel, force-run, schedule or gateway mutation was used.
+- Verification: PID `445998`, no automatic restarts, port/health/persistence
+  healthy, ten Graph definitions loaded, scheduler chains valid, runtime paths
+  byte-match remote, three parents and orphan receipts terminalized, and no
+  pre-existing non-target history changed. All fixed adjacent configuration and
+  unit/drop-in hashes matched pre/post.
+- Natural proof: the unforced 20:15 Meta monitor completed as
+  `missed / zero_write:prepared_reply` in run `grzwcanary_c730c571-...`, with a
+  passed verifier and no concurrency deferral.
+- External-effect declaration: repair/reconciliation provider writes `0`;
+  natural monitor provider writes `0`; Browser Relay calls `0`; no social
+  publication or experiment activation occurred.
+- Hook-worker classification: separate `PROCESS_LIFECYCLE_LEAK_SUSPECTED`; no
+  causal evidence connects gateway/Codex hook processes to durable Graph
+  run/attempt/receipt state.
+- Evidence:
+  `docs/operations/graph-recovery-concurrency-exhaustion-repair-2026-08-09.md`.
+- Next safe step: separately investigate hook-worker parent/lease/exit ownership
+  and orphan cleanup; do not treat this Graph repair as that lifecycle fix.
+
+## 2026-08-09 — GitHub workflow-monitor single-flight repair
+
+- Requested task/workflow lane: prove GitHub monitor overlap, implement
+  deterministic in-flight coalescing, commit/push, load with at most one
+  orchestrator restart, and observe several natural five-minute ticks.
+- Tools and source: coding-lane repository map first; bounded fallback core Git,
+  `rg`, SQLite read-only history queries, focused/full/protected tests,
+  `systemctl --user`, `journalctl`, `ss`, and loopback HTTP. The repository map
+  was metadata-only, so narrow source and canonical-state inspection was needed
+  for lifecycle proof.
+- Source result: isolated commit `23382bf` adds monitor-specific equivalent-run
+  lookup based on existing Graph current-attempt leases. Exact ingress
+  idempotency remains first; stale, expired, failed, terminal and unrelated-lane
+  runs do not coalesce.
+- Test result: focused Graph/single-flight `33/33`; regressions `4/4`; protected
+  gate unit `97/97`, integration `35/35`, UI `34/34`, builds, typechecks, docs
+  links/drift and docs site all passed. The pre-push hook repeated and passed the
+  protected gate.
+- Push/load: `origin/main` advanced `d8566ed → 23382bf`; the five canonical
+  paths byte-match the remote. Exactly one authorized orchestrator restart
+  changed PID `445998 → 473485`; no automatic restart followed.
+- Natural proof: startup plus natural buckets `5954361`, `5954362`, and
+  `5954363` all completed in 1.4–1.6 seconds. Observed overlap pairs `0`,
+  non-terminal monitor runs `0`, monitor external effects `0`, deferrals `0`.
+- Changed-state declaration: isolated source/docs commit, normal push, and one
+  approved orchestrator restart only. No schedule, Graph history,
+  reconciliation, experiment, provider-authority or Telegram task mutation.
+- External-effect declaration: provider writes `0`; Browser Relay calls `0`.
+- Host-pressure classification: monitor overlap is proven to have contributed
+  to Graph/queue pressure and stale definition concurrency. It is not proven to
+  have caused the separate orphaned `openclaw-hooks` processes; that remains
+  `PROCESS_LIFECYCLE_LEAK_SUSPECTED`.
+- Evidence:
+  `docs/operations/github-workflow-monitor-single-flight-repair-2026-08-09.md`.
+- Next safe step: no forced monitor action is required; continue ordinary
+  cadence observation and investigate hook-worker lifecycle separately only
+  under its own bounded mission.
+
+## 2026-08-13 — Threads readiness Graph repair, live transport proof, and restart boundary
+
+- Requested task/workflow lane: repair `threads-publication-readiness-preparer`
+  through its Graph-owned `threads-readiness-v1` schedule until zero-write
+  readiness and runtime transport are both healthy.
+- Tools/source: coding-agent `repo-map` and `migration-review` were consulted
+  first. Migration review was not enabled by the project adapter, so bounded
+  core Git/source, read-only SQLite, systemd, journal, loopback HTTP and local
+  Node/Vitest/TypeScript checks were used. OpenClaw cron `get`, `runs`, and one
+  exact `run` supplied live scheduler evidence.
+- Source/test result: the readiness preparer uses an asynchronous child process,
+  the production adapter awaits it, prepare-only spacing uses the scheduled
+  publication slot, and scheduler fixtures now match the accepted-run API.
+  Host readiness tests passed `19/19`; focused Graph scheduler/adapter tests
+  passed `78/78`; TypeScript passed.
+- Live result: the 08:30 natural-slot invocation completed as cron `ok`; Graph
+  run `grzwcanary_61f576cc-0a91-4035-a579-666d0dc07963` was durably accepted,
+  completed `threads-readiness@1.0.0`, passed its zero-write verifier, and
+  reported provider writes `0` and Browser Relay calls `0`.
+- Remaining defect: continuous loopback sampling showed both `/health` and
+  `/api/persistence/health` time out for roughly 73 seconds during adapter
+  execution, then recover under the unchanged service PID. The running service
+  predates the async source files and still holds the synchronous imported
+  module. A temporary bounded read-retry experiment was removed because it
+  concealed this lifecycle defect and did not satisfy transport-health proof.
+- Changed-state declaration: local source/tests, Graph/scheduler execution
+  history for the one zero-write run, this ledger and daily continuity changed.
+  No cron definition, scheduler ownership, provider state, Browser Relay,
+  config, permission, credential, service lifecycle, commit, push, deployment,
+  or migration changed.
+- Next safe step and approval boundary: explicitly approve one controlled
+  `orchestrator.service` restart. Then verify PID/socket/health/Graph loading and
+  repeat at least two Graph-owned natural-slot executions with continuous
+  health sampling and no transport retry. No Gateway restart or second
+  lifecycle action is implied.
+
+## 2026-08-20 — Preserved incident-recovery activation
+
+- Requested lane: activate the already-tested Aug 16 recovery delta, reissue
+  four exact bounded Meta approvals, verify once and keep Instagram fail-closed.
+- Claw Patch result: the preserved read-only preflight provenance reported five
+  features, zero findings and zero locks. It was used to maintain bounded patch
+  scope and provenance, not as deployment authority and not to mutate runtime.
+- Activation method: exact selected commit blobs were materialized outside the
+  live checkout; only byte-different tested files were applied against the
+  preserved live-before archives. Unrelated dirty work was not reconciled.
+- Validation: ToolGate `78/78`, Graph/notifier/approval `74/74`, Threads/Meta
+  `10/10`, deployment connector `2/2`; service, persistence and authenticated
+  Graph health passed after only orchestrator and Gateway were restarted.
+- External-effect declaration: provider writes `0`, forced publications `0`,
+  Browser Relay calls `0`. One exact Instagram provider-readback attempt failed
+  closed as `UnexpectedExit`, was not retried and left the effect ambiguous.
+- Evidence:
+  `docs/operations/openclaw-incident-recovery-activated-2026-08-20.md` and
+  `/home/oneclickwebsitedesignfactory/.openclaw/state/incidents/openclaw-estate-2026-08-20-activation/activation-result.json`.

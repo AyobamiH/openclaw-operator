@@ -336,14 +336,20 @@ export class GraphSchedulerStore {
     const current = this.trigger(triggerId);
     if (!current) throw new Error("graph_scheduler_trigger_not_found");
     const allowed: Record<GraphSchedulerTriggerStatus, GraphSchedulerTriggerStatus[]> = {
-      reserved: ["reserved","preparing","failed_safe"], preparing: ["preparing","executing","failed_safe","ambiguous"], executing: ["executing","completed","failed_safe","ambiguous"], completed: ["completed"], failed_safe: ["failed_safe","preparing"], ambiguous: ["ambiguous","completed"],
+      reserved: ["reserved","preparing","failed_safe"], preparing: ["preparing","executing","failed_safe","ambiguous"], executing: ["executing","completed","failed_safe","ambiguous"], completed: ["completed"], failed_safe: ["failed_safe","preparing"], ambiguous: ["ambiguous","completed","preparing"],
     };
     if (!allowed[current.status].includes(status)) throw new Error(`graph_scheduler_trigger_transition_forbidden:${current.status}:${status}`);
     const merged = {
       ...current,
       ...fields,
       status,
-      attemptCount: current.status === "failed_safe" && status === "preparing"
+      failureReason:
+        status === "completed" && !Object.prototype.hasOwnProperty.call(fields, "failureReason")
+          ? undefined
+          : Object.prototype.hasOwnProperty.call(fields, "failureReason")
+            ? fields.failureReason
+            : current.failureReason,
+      attemptCount: ["failed_safe","ambiguous"].includes(current.status) && status === "preparing"
         ? current.attemptCount + 1
         : current.attemptCount,
       updatedAt: now.toISOString(),

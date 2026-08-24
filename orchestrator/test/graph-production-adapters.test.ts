@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
-import { classifyInstagramPublicationEffect, reconcilePriorMetaReplyGraphEffects } from "../src/graph/production-adapters.js";
+import { classifyInstagramPublicationEffect, instagramPublicationNodeOutcome, legitimateThreadsPrecommitExclusion, reconcilePriorInstagramGraphEffects, reconcilePriorMetaReplyGraphEffects } from "../src/graph/production-adapters.js";
 import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
 import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../src/graph/workflows.js";
 import { compareShadowDecisions, prepareProductionPublishingShadowDecision, type ShadowDecisionEnvelope } from "../src/publishing/shadow-equivalence.js";
@@ -90,6 +90,7 @@ describe("production adapter registry", () => {
       instagramPublishCalls: 0,
       browserRelayCalls: 0,
     })).toBe("confirmed_absent");
+    expect(instagramPublicationNodeOutcome("confirmed_absent")).toBe("failed_terminal");
     expect(classifyInstagramPublicationEffect({
       status: "blocked",
       providerResultId: "unexpected-provider-id",
@@ -343,6 +344,35 @@ describe("production adapter registry", () => {
     expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining(["social-preparation-receipt", "zero-provider-writes"]));
   });
 
+  it("turns legitimate Threads precommit exclusions into zero-write terminal skips", async () => {
+    expect(legitimateThreadsPrecommitExclusion(new Error("Threads precommit spacing guard failed"))).toBe("precommit_spacing_guard");
+    expect(legitimateThreadsPrecommitExclusion(new Error("Threads precommit duplicate guard failed"))).toBeNull();
+    expect(legitimateThreadsPrecommitExclusion(new Error("Threads exact approval guard failed"))).toBeNull();
+    const root = await mkdtemp(join(tmpdir(), "graph-threads-policy-skip-"));
+    const threadsPath = join(root, "threads-policy-skip.mjs");
+    await writeFile(threadsPath, `export async function runOpportunity(){ throw new Error("Threads precommit spacing guard failed"); }\nexport async function reconcileOutboxEntry(){ throw new Error("live readback must be unreachable after policy skip"); }\n`);
+    const priorThreads = process.env.OPENCLAW_THREADS_RUNNER_PATH;
+    process.env.OPENCLAW_THREADS_RUNNER_PATH = threadsPath;
+    cleanups.push(async () => {
+      if (priorThreads === undefined) delete process.env.OPENCLAW_THREADS_RUNNER_PATH;
+      else process.env.OPENCLAW_THREADS_RUNNER_PATH = priorThreads;
+      await rm(root, { recursive: true, force: true });
+    });
+    const runtime = await testRuntime();
+    const run = runtime.engine.start({
+      graphId: "threads-publication",
+      version: "1.0.0",
+      objective: "Threads policy exclusion",
+      input: { provider: "threads", accountKey: "threads:owner", jobId: "68b10c5c-f604-4567-9213-d0d1eab08106", observedAt: "2026-08-04T05:00:00+01:00", shadowMode: false, maximumProviderMutations: 1 },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    const completed = await runtime.engine.runUntilSettled(run.runId);
+    expect(completed.status).toBe("completed");
+    expect(completed.data.socialEffect).toMatchObject({ status: "precommit_spacing_guard", action: "skip", providerWrites: 0, browserRelayCalls: 0 });
+    expect(completed.externalEffects).toEqual([]);
+    expect(completed.budgets.externalRequestsConsumed).toBe(0);
+  });
+
   it("keeps blocked Instagram preparation terminal and zero-write with the canonical readiness reason", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-instagram-prep-block-"));
     const runnerPath = join(root, "instagram-prep-block.mjs");
@@ -379,6 +409,177 @@ describe("production adapter registry", () => {
     expect(completed.data.target).toBe("instagram:2026-08-05:13:00:24afbb84-457c-41bb-92c9-24a19725e984");
     expect(completed.data.publicationLive).toMatchObject({ status: "blocked", providerWrites: 0 });
     expect(completed.evidence.map((item) => item.kind)).toEqual(expect.arrayContaining(["candidate-claim", "zero-provider-writes"]));
+  });
+
+  it("blocks a later Instagram slot before loading the renderer when account reconciliation is outstanding", async () => {
+    const priorRunner = process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH;
+    process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH = "/must-not-load-while-account-effect-is-ambiguous.mjs";
+    cleanups.push(async () => {
+      if (priorRunner === undefined) delete process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH;
+      else process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH = priorRunner;
+    });
+    const runtime = await testRuntime();
+    const target = "instagram:17841453638630920";
+    const prior = runtime.engine.start({
+      graphId: "deterministic-social-publication",
+      version: "2.0.0",
+      objective: "Prior ambiguous Instagram publication",
+      input: {
+        provider: "instagram",
+        accountKey: "instagram:owner",
+        expectedAccountId: "17841453638630920",
+        jobId: "9fde91f9-59d9-42a3-8f76-39ab75af5717",
+        kind: "reel",
+        observedAt: "2026-08-14T21:00:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    runtime.store.saveRun({
+      ...prior,
+      status: "blocked",
+      externalEffects: [{
+        effectId: "gex_prior_instagram_ambiguity",
+        runId: prior.runId,
+        nodeId: "publish_provider_object",
+        idempotencyKey: "prior-instagram-idempotency",
+        operationType: "production.instagram-publication-live.v2",
+        target,
+        payloadHash: "a".repeat(64),
+        state: "ambiguous",
+        evidenceRefs: [],
+      }],
+    }, prior.revision, []);
+    const next = runtime.engine.start({
+      graphId: "deterministic-social-publication",
+      version: "2.0.0",
+      objective: "Later Instagram slot",
+      input: {
+        provider: "instagram",
+        accountKey: "instagram:owner",
+        expectedAccountId: "17841453638630920",
+        jobId: "24afbb84-457c-41bb-92c9-24a19725e984",
+        kind: "image",
+        observedAt: "2026-08-15T13:00:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    const completed = await runtime.engine.runUntilSettled(next.runId);
+    expect(completed).toMatchObject({ status: "failed", terminalOutcome: "idempotency_conflict" });
+    expect(completed.lastError).toMatchObject({ category: "idempotency_conflict", message: "instagram_account_effect_reconciliation_required" });
+    expect(completed.data.publicationLive).toMatchObject({ status: "blocked", providerWrites: 0 });
+    expect(completed.data.target).toBe(target);
+    expect(completed.externalEffects).toEqual([]);
+    expect(completed.budgets.externalRequestsConsumed).toBe(0);
+  });
+
+  it("reconciles a prior ambiguous Instagram graph effect through the canonical outbox before blocking later slots", async () => {
+    const runtime = await testRuntime();
+    const target = "instagram:17841453638630920";
+    const outboxId = "instagram:reel:2026-08-22:21:00:2c7071ff-35dd-40d0-bf77-b1ed53de256e";
+    const prior = runtime.engine.start({
+      graphId: "deterministic-social-publication",
+      version: "2.0.0",
+      objective: "Prior ambiguous Instagram publication",
+      input: {
+        provider: "instagram",
+        accountKey: "instagram:owner",
+        expectedAccountId: "17841453638630920",
+        jobId: "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+        kind: "reel",
+        observedAt: "2026-08-22T21:00:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    runtime.store.saveRun({
+      ...prior,
+      status: "blocked",
+      data: { publicationLive: { result: { outboxId } } },
+      externalEffects: [{
+        effectId: "gex_prior_instagram_reconciles",
+        runId: prior.runId,
+        nodeId: "publish_provider_object",
+        idempotencyKey: "prior-instagram-idempotency",
+        operationType: "production.instagram-publication-live.v2",
+        target,
+        payloadHash: "a".repeat(64),
+        state: "ambiguous",
+        evidenceRefs: [],
+      }],
+    }, prior.revision, []);
+    const projection = {
+      outboxId,
+      provider: "instagram",
+      accountKey: "instagram:owner",
+      representedAccountId: "17841453638630920",
+      jobId: "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+      kind: "reel",
+      publicationType: "REELS",
+      localDate: "2026-08-22",
+      slot: "21:00",
+      candidateId: "fixture-candidate",
+      campaignId: "market-authority",
+      sequenceId: "fixture-sequence",
+      policyVersion: "2.0.0",
+      caption: "Fixture caption",
+      payloadSha256: "b".repeat(64),
+      mediaPath: "/tmp/fixture.mp4",
+      mediaSha256: "c".repeat(64),
+      mediaSizeBytes: 123,
+      mimeType: "video/mp4",
+      contentSpecSha256: "d".repeat(64),
+      materialContentSha256: "e".repeat(64),
+      storyboardSha256: null,
+      creativeFingerprint: null,
+      rendererVersion: null,
+      layoutVerification: null,
+      layoutVerificationSha256: null,
+      layoutAudit: null,
+      layoutAuditSha256: null,
+      readingTimeVerification: null,
+      readingTimeVerificationSha256: null,
+      claim: null,
+      providerResultId: "18119492089706464",
+      permalink: "https://www.instagram.com/reel/DcWu8lKEmTF/",
+      status: "verified",
+      verification: { canonicalVerify: true },
+      generatedMediaUploadCalls: 1,
+      instagramPublishCalls: 1,
+      browserRelayCalls: 0,
+    };
+    const runner = {
+      reconcileInstagramOutboxEntry: async (requestedOutboxId: string) => {
+        expect(requestedOutboxId).toBe(outboxId);
+        return { entry: { id: requestedOutboxId } };
+      },
+      instagramGraphPublicationProjection: async () => projection,
+    };
+
+    const reconciled = await reconcilePriorInstagramGraphEffects(runtime.store, runner as any, {
+      target,
+      excludeRunId: "next-run",
+    });
+
+    expect(reconciled).toEqual([{
+      runId: prior.runId,
+      effectId: "gex_prior_instagram_reconciles",
+      outboxId,
+      state: "effect_verified",
+    }]);
+    expect(runtime.store.externalEffects(prior.runId)[0]).toMatchObject({
+      state: "effect_verified",
+      providerOperationId: "18119492089706464",
+    });
+    expect(runtime.store.getRun(prior.runId)?.externalEffects[0]).toMatchObject({
+      state: "effect_verified",
+      providerOperationId: "18119492089706464",
+    });
+    expect(runtime.store.events(prior.runId).map((event) => event.type)).toContain("external_effect_verified");
   });
 
   it("requires and consumes one exact capability before an injected Threads provider effect", async () => {
@@ -480,6 +681,59 @@ describe("production adapter registry", () => {
     ]);
   });
 
+  it("can issue a fresh Threads Image recovery capability after an earlier prepared capability expired without dispatch", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-threads-image-recovery-capability-"));
+    const mediaPath = join(root, "threads-image.png");
+    const media = Buffer.from("exact-frozen-threads-image-recovery-bytes");
+    await writeFile(mediaPath, media);
+    const mediaHash = createHash("sha256").update(media).digest("hex");
+    const runnerPath = join(root, "threads-image-recovery-fixture.mjs");
+    const entry = {
+      id: "threads:2026-08-04:11:30:083e3560-40fd-4487-9d78-674f64866ef7",
+      status: "prepared",
+      selection: {
+        text: "Exact prepared Threads Image recovery fixture",
+        mediaType: "IMAGE",
+        topicTag: "AI Threads",
+        creativeFingerprint: "d".repeat(64),
+        approval: { approvalId: "fixture-image-recovery-approval" },
+      },
+      mediaPath,
+      mediaSha256: mediaHash,
+      rendererReceipt: {
+        renderer: { version: "fixture" },
+        checks: { fullDecode: true, textFitAndSafeMargins: true, contrast: true },
+      },
+      externalWriteCount: 0,
+    };
+    await writeFile(runnerPath, `const prepared=${JSON.stringify(entry)};\nexport async function runOpportunity(){return{entry:prepared};}\nexport async function reconcileOutboxEntry(){return{entry:prepared};}\n`);
+    const prior = process.env.OPENCLAW_THREADS_RUNNER_PATH;
+    process.env.OPENCLAW_THREADS_RUNNER_PATH = runnerPath;
+    cleanups.push(async () => { if (prior === undefined) delete process.env.OPENCLAW_THREADS_RUNNER_PATH; else process.env.OPENCLAW_THREADS_RUNNER_PATH = prior; await rm(root, { recursive: true, force: true }); });
+    const runtime = await testRuntime();
+    const input = { provider: "threads", accountKey: "threads:owner", jobId: "083e3560-40fd-4487-9d78-674f64866ef7", observedAt: "2026-08-04T11:30:00+01:00", shadowMode: false, maximumProviderMutations: 1 };
+    const first = runtime.engine.start({ graphId: "threads-publication", version: "1.0.0", objective: "Exact Threads Image first prepared capability", input, authority: { maximum: "external_public", grantedBy: "fixture" } });
+    const firstWaiting = await runtime.engine.runUntilSettled(first.runId);
+    const firstApproval = runtime.store.approvals(first.runId)[0]!;
+    const firstExpiry = new Date(Date.now() + 5 * 60_000).toISOString();
+    runtime.engine.decideApproval(first.runId, firstApproval.approvalId, "granted", "fixture", firstExpiry);
+    const firstCapability = issueOneRunLiveCapability({ store: runtime.store, runId: first.runId, approvalId: firstApproval.approvalId, issuedBy: "fixture", expiresAt: firstExpiry, globalZeroWrite: true });
+    expect(runtime.store.liveCapabilityDispatches(firstCapability.capabilityId)).toMatchObject([{ state: "prepared", dispatchCount: 0 }, { state: "prepared", dispatchCount: 0 }]);
+    runtime.store.expireOneRunLiveCapabilities(new Date(Date.now() + 6 * 60_000), "fixture-expiry");
+    expect(runtime.store.oneRunLiveCapability(firstCapability.capabilityId)?.status).toBe("expired");
+
+    const second = runtime.engine.start({ graphId: "threads-publication", version: "1.0.0", objective: "Exact Threads Image recovery prepared capability", input, authority: { maximum: "external_public", grantedBy: "fixture" } });
+    const secondWaiting = await runtime.engine.runUntilSettled(second.runId);
+    expect(secondWaiting.status).toBe("waiting_for_approval");
+    const secondApproval = runtime.store.approvals(second.runId)[0]!;
+    const secondExpiry = new Date(Date.now() + 5 * 60_000).toISOString();
+    runtime.engine.decideApproval(second.runId, secondApproval.approvalId, "granted", "fixture", secondExpiry);
+    const secondCapability = issueOneRunLiveCapability({ store: runtime.store, runId: second.runId, approvalId: secondApproval.approvalId, issuedBy: "fixture", expiresAt: secondExpiry, globalZeroWrite: true });
+    expect(firstWaiting.data.socialEffect).toMatchObject({ outboxId: entry.id, mediaHash });
+    expect(secondCapability.slotId).toBe(entry.id);
+    expect(secondCapability.claimId).not.toBe(firstCapability.claimId);
+  });
+
   it("requires and consumes one exact capability around a graph-owned digest notification", async () => {
     const runtime = await testRuntime();
     runtime.attachChildDispatcher((request) => ({ taskId: `task-${request.runId}`, completion: Promise.resolve({ status: "succeeded", outcome: "fixture_complete", output: { phase: request.phase }, evidence: { phase: request.phase } }) }));
@@ -543,7 +797,7 @@ describe("production adapter registry", () => {
     const created = runtime.engine.start(request(definition.graphId, definition.version, { shadowMode: true }, "external_public"));
     const result = await runtime.engine.runUntilSettled(created.runId);
     expect(calls).toBe(0);
-    expect(result.status).toBe("failed");
+    expect(result.status).toBe("blocked");
     expect(result.lastError?.category).toBe("unsafe_operation");
     expect(result.externalEffects).toHaveLength(0);
   });

@@ -9,7 +9,7 @@ describe("full graph multi-agent runtime audit", () => {
     expect(report.graphFamilies).toBe(8);
     expect(report.productionAdapters).toBe(17);
     expect(report.registeredAgents).toBe(19);
-    expect(report.governedTaskBindings).toBe(24);
+    expect(report.governedTaskBindings).toBe(25);
     expect(report.findings.find((finding) => finding.id === "graph-definition-registration")?.status).toBe("passed");
     expect(report.findings.find((finding) => finding.id === "agent-manifest-validation")?.status).toBe("passed");
     expect(report.findings.find((finding) => finding.id === "task-agent-skill-bindings")?.status).toBe("passed");

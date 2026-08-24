@@ -1015,6 +1015,13 @@ describe('ToolGate runtime wiring', () => {
     expect(denied.reason).toContain('not assigned');
   });
 
+  it('binds the semantic workspace boundary to the current checkout root', () => {
+    expect(gate.canReadPath('build-refactor-agent', resolve(process.cwd(), 'package.json')).allowed).toBe(true);
+    const outside = gate.canReadPath('build-refactor-agent', '/tmp/unrelated/workspace/escape.ts');
+    expect(outside.allowed).toBe(false);
+    expect(outside.reason).toContain('read allowlist');
+  });
+
   it('allows permitted skill preflight from agent config', async () => {
     const result = await gate.preflightSkillAccess('market-research-agent', 'sourceFetch', {
       mode: 'test',
@@ -3193,24 +3200,17 @@ function buildPublicProofOverview() {
   it('agent-deploy copies the selected template into the deployment directory and records deployment state', async () => {
     const { resolveTaskHandler } = await import('../src/taskHandlers.ts');
     const fixtureRoot = await mkdtemp(join(tmpdir(), 'agent-deploy-handler-'));
-    const templateDir = join(fixtureRoot, 'template');
     const deployBaseDir = join(fixtureRoot, 'deployments');
     const state = createDefaultState();
     let saveCalls = 0;
 
     try {
-      await mkdir(templateDir, { recursive: true });
-      await writeFile(join(templateDir, 'agent.config.json'), JSON.stringify({ id: 'template-agent' }, null, 2), 'utf-8');
-      await writeFile(join(templateDir, 'README.md'), '# Template Agent\n', 'utf-8');
-
       const task = {
         id: 'agent-deploy-1',
         type: 'agent-deploy' as const,
         payload: {
           agentName: 'ops-agent',
           template: 'doc-specialist',
-          templatePath: templateDir,
-          notes: 'Deploy for runtime validation.',
         },
         createdAt: Date.now(),
       };
@@ -3249,6 +3249,19 @@ function buildPublicProofOverview() {
         template: 'doc-specialist',
       });
       expect(message).toContain('deployed ops-agent');
+
+      const overrideTask = {
+        ...task,
+        id: 'agent-deploy-override',
+        payload: { ...task.payload, repoPath: join(fixtureRoot, 'outside') },
+      };
+      await expect(resolveTaskHandler(overrideTask)(overrideTask, {
+        config: { deployBaseDir } as any,
+        state,
+        saveState: async () => {},
+        enqueueTask: () => { throw new Error('unexpected enqueue'); },
+        logger: console,
+      })).rejects.toThrow('agent_deploy_path_override_forbidden');
     } finally {
       vi.restoreAllMocks();
       await rm(fixtureRoot, { recursive: true, force: true });
@@ -4013,7 +4026,7 @@ describe('SkillAudit contract wiring', () => {
     const result = await executeRegisteredSkill(
       'documentParser',
       {
-        filePath: 'artifacts/private.csv',
+        filePath: '/tmp/private.csv',
         format: 'csv',
       },
       'data-extraction-agent',

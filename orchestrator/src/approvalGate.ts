@@ -1,4 +1,67 @@
+import { createHash } from "node:crypto";
 import { ApprovalRecord, OrchestratorConfig, OrchestratorState, Task } from "./types.js";
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonicalize(item)]),
+    );
+  }
+  return value;
+}
+
+export function operatorApprovalDecisionDigest(approval: ApprovalRecord): string {
+  return createHash("sha256").update(JSON.stringify(canonicalize({
+    taskId: approval.taskId,
+    type: approval.type,
+    payload: approval.payload,
+    requestedAt: approval.requestedAt,
+    status: approval.status,
+    decidedAt: approval.decidedAt ?? null,
+    decidedBy: approval.decidedBy ?? null,
+    note: approval.note ?? null,
+  }))).digest("hex");
+}
+
+const REPLAY_METADATA_KEYS = new Set([
+  "idempotencyKey",
+  "approvedFromTaskId",
+  "approvalDecisionId",
+  "approvalDecisionDigest",
+  "__actor",
+  "__role",
+  "__requestId",
+]);
+
+function approvedPayloadForComparison(payload: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key]) => !REPLAY_METADATA_KEYS.has(key)),
+  );
+}
+
+function approvalReplayBindingReason(task: Task, approval: ApprovalRecord): string | null {
+  if (approval.status !== "approved") return "approval_replay_not_approved";
+  if (approval.type !== task.type) return "approval_replay_task_type_mismatch";
+  const digest = operatorApprovalDecisionDigest(approval);
+  if (task.payload.approvalDecisionDigest !== digest) return "approval_replay_digest_mismatch";
+  if (task.payload.approvalDecisionId !== `approval-decision:${digest}`) return "approval_replay_decision_id_mismatch";
+  if (
+    JSON.stringify(canonicalize(approvedPayloadForComparison(task.payload))) !==
+    JSON.stringify(canonicalize(approvedPayloadForComparison(approval.payload)))
+  ) return "approval_replay_payload_mismatch";
+
+  const agentProof = approval.payload.agentProof;
+  if (agentProof && typeof agentProof === "object") {
+    const expiresAt = String((agentProof as Record<string, unknown>).expiresAt ?? "");
+    if (!Number.isFinite(Date.parse(expiresAt)) || Date.now() >= Date.parse(expiresAt)) {
+      return "approval_replay_authority_expired";
+    }
+  }
+  return null;
+}
 
 function requestedTaskTypes(config: OrchestratorConfig): Set<string> {
   const configured = config.approvalRequiredTaskTypes ?? ["agent-deploy", "build-refactor"];
@@ -24,7 +87,7 @@ function recordPendingApproval(task: Task, state: OrchestratorState): void {
   state.approvals.push({
     taskId: task.id,
     type: task.type,
-    payload: task.payload,
+    payload: structuredClone(task.payload),
     requestedAt: new Date().toISOString(),
     status: "pending",
   });
@@ -48,14 +111,16 @@ export function assertApprovalIfRequired(
   const replayId = isReplayWithApproval(task);
   if (replayId) {
     const replayApproval = findApproval(state, replayId);
-    if (replayApproval?.status === "approved") {
-      return { allowed: true };
-    }
+    if (!replayApproval) return { allowed: false, reason: "approval_replay_source_missing" };
+    const bindingFailure = approvalReplayBindingReason(task, replayApproval);
+    return bindingFailure
+      ? { allowed: false, reason: bindingFailure }
+      : { allowed: true, reason: "approval_replay_payload_bound" };
   }
 
   const current = findApproval(state, task.id);
   if (current?.status === "approved") {
-    return { allowed: true };
+    return { allowed: false, reason: "approved_task_requires_bound_replay" };
   }
 
   recordPendingApproval(task, state);

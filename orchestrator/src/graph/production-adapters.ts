@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
-import { resolve, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
@@ -26,6 +26,8 @@ import {
 } from "./live-publication.js";
 import { expectedCapabilityBindings } from "./live-capability.js";
 import type { GraphChildRunCoordinator } from "./child-runs.js";
+import { ExecutionReceiptStore, executeControlledCommand } from "../executionReceipts.js";
+import { loadBaselines } from "../worktreeIntegrity.js";
 
 const execFileAsync = promisify(execFile);
 const PROJECT_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/projects";
@@ -71,6 +73,7 @@ const ThreadsGraphInputSchema = z.object({
   provider: z.literal("threads"), accountKey: z.literal("threads:owner"),
   jobId: z.enum(["68b10c5c-f604-4567-9213-d0d1eab08106", "083e3560-40fd-4487-9d78-674f64866ef7"]),
   observedAt: z.string().datetime({ offset: true }), shadowMode: z.boolean(), maximumProviderMutations: z.literal(1),
+  recoveryOutboxId: z.string().optional(),
 }).strict();
 const MetaReplyGraphInputSchema = z.object({
   provider: z.literal("meta"), accountKey: z.literal("meta:owner"), jobId: z.literal("4de811aa-f213-4cc3-b1aa-6c2cffb6a847"),
@@ -164,6 +167,77 @@ export async function reconcilePriorMetaReplyGraphEffects(
       }]);
       reconciled.push({ runId: priorRun.runId, effectId: effect.effectId, outboxId, state });
     }
+  }
+  return reconciled;
+}
+
+function instagramPriorOutboxId(run: { data?: Record<string, JsonValue> }): string {
+  const publicationLive = run.data?.publicationLive as Record<string, unknown> | undefined;
+  const result = publicationLive?.result as Record<string, unknown> | undefined;
+  const projection = publicationLive?.projection as Record<string, unknown> | undefined;
+  return String(result?.outboxId ?? projection?.outboxId ?? "");
+}
+
+export async function reconcilePriorInstagramGraphEffects(
+  graphStore: GraphStore,
+  runner: Awaited<ReturnType<typeof loadInstagramRunner>>,
+  options: { target?: string; excludeRunId?: string } = {},
+): Promise<Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }>> {
+  const reconciled: Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }> = [];
+  const effects = options.target
+    ? graphStore.unresolvedExternalEffectsForTarget(options.target, options.excludeRunId)
+    : graphStore.listRuns({ graphId: "deterministic-social-publication", limit: 250 })
+      .filter((run) => run.runId !== options.excludeRunId)
+      .flatMap((run) => graphStore.externalEffects(run.runId))
+      .filter((effect) => ["ambiguous", "provider_accepted"].includes(effect.state));
+  for (const effect of effects) {
+    if (
+      effect.operationType !== "production.instagram-publication-live.v2" ||
+      !["provider_accepted", "ambiguous"].includes(effect.state) ||
+      (options.target && effect.target !== options.target)
+    ) continue;
+    const priorRun = graphStore.getRun(effect.runId);
+    if (!priorRun) continue;
+    const outboxId = instagramPriorOutboxId(priorRun);
+    if (!outboxId) continue;
+    const result = await runner.reconcileInstagramOutboxEntry(outboxId) as { entry?: unknown };
+    const projection = PublicationProjectionSchema.parse(
+      await runner.instagramGraphPublicationProjection(result.entry),
+    );
+    const state = classifyInstagramPublicationEffect({
+      status: projection.status,
+      providerResultId: projection.providerResultId,
+      permalink: projection.permalink,
+      generatedMediaUploadCalls: projection.generatedMediaUploadCalls,
+      instagramPublishCalls: projection.instagramPublishCalls,
+      browserRelayCalls: projection.browserRelayCalls,
+    });
+    if (state === "ambiguous") continue;
+    const evidenceRefs = [
+      projection.permalink,
+      `graph://${priorRun.runId}/publication/local-state`,
+      `instagram-outbox:${outboxId}`,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+    graphStore.reconcileEffect(
+      priorRun.runId,
+      effect.effectId,
+      state,
+      projection.providerResultId ?? undefined,
+      evidenceRefs,
+    );
+    const latest = graphStore.getRun(priorRun.runId);
+    if (!latest) throw new Error(`instagram_prior_graph_run_missing:${priorRun.runId}`);
+    graphStore.saveRun({
+      ...latest,
+      externalEffects: graphStore.externalEffects(priorRun.runId),
+      updatedAt: new Date().toISOString(),
+    }, latest.revision, [{
+      type: state === "effect_verified" ? "external_effect_verified" : "external_effect_reconciled",
+      nodeId: effect.nodeId,
+      actor: "adapter:production.instagram-publication-prepare.v2",
+      payload: { effectId: effect.effectId, state, providerOperationId: projection.providerResultId ?? null, evidenceRefs },
+    }]);
+    reconciled.push({ runId: priorRun.runId, effectId: effect.effectId, outboxId, state });
   }
   return reconciled;
 }
@@ -270,6 +344,12 @@ function zeroWriteSocialSkip(status: string): z.infer<typeof SocialPreparationOu
     providerWrites: 0,
     browserRelayCalls: 0,
   };
+}
+
+export function legitimateThreadsPrecommitExclusion(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/Threads precommit (capacity|spacing) guard failed/i);
+  return match ? `precommit_${match[1]!.toLowerCase()}_guard` : null;
 }
 
 const PublishingInputSchema = z.object({
@@ -387,6 +467,10 @@ export function classifyInstagramPublicationEffect(value: {
   return "ambiguous";
 }
 
+export function instagramPublicationNodeOutcome(state: ReturnType<typeof classifyInstagramPublicationEffect>): "succeeded" | "failed_terminal" | "blocked" {
+  return state === "effect_verified" ? "succeeded" : state === "confirmed_absent" ? "failed_terminal" : "blocked";
+}
+
 export function createProductionAdapterRegistry(graphStore?: GraphStore, childRuns?: GraphChildRunCoordinator): ProductionAdapterRegistry {
   const registry = new ProductionAdapterRegistry();
   registry.register({
@@ -415,8 +499,18 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const dispatchGate = socialDispatchGate(graphStore, context);
       await dispatchGate.reserve("notification_effect", "production.digest-delivery.v1");
       const result = await childRuns.executeGovernedTask(input as never, context);
-      const dispatchState = result.outcome === "succeeded" ? "succeeded" : result.outcome === "failed_repairable" ? "confirmed_absent" : "ambiguous";
-      await dispatchGate.complete("notification_effect", dispatchState, { providerOperationId: (result.output as { childRunId?: unknown } | undefined)?.childRunId, outcome: result.outcome });
+      const failureMessage = result.failure?.message ?? "";
+      const dispatchState = result.outcome === "succeeded"
+        ? "succeeded"
+        : failureMessage.includes("notification_delivery_confirmed_absent")
+          ? "confirmed_absent"
+          : "ambiguous";
+      const effectState = result.outcome === "succeeded"
+        ? "effect_verified"
+        : dispatchState === "confirmed_absent"
+          ? "confirmed_absent"
+          : "ambiguous";
+      await dispatchGate.complete("notification_effect", dispatchState, { outcome: result.outcome });
       return {
         ...result,
         externalEffect: {
@@ -424,7 +518,7 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
           operationType: "digest-notification",
           target: "configured-notification-channel",
           payloadHash: context.effectPayloadHash,
-          state: result.outcome === "succeeded" ? "effect_verified" : result.outcome === "failed_repairable" ? "confirmed_absent" : "ambiguous",
+          state: effectState,
           lastObservedAt: new Date().toISOString(),
         },
       };
@@ -460,9 +554,20 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const script = scripts[action];
       if (!script) return { outcome: "failed_terminal", output: { action, exitCode: 1, outputHash: sha256("unsupported"), skipped: true }, failure: failure("tool_unavailable", `No allowlisted package command for node ${action}`) };
       try {
-        const result = await execFileAsync("npm", ["run", script], { cwd: repositoryPath, timeout: context.node.timeoutMs, maxBuffer: 4 * 1024 * 1024, signal: context.signal });
-        const outputText = `${result.stdout ?? ""}${result.stderr ?? ""}`;
-        const output = { action, exitCode: 0, outputHash: sha256(outputText), skipped: false };
+        const stateDir = join(process.env.OPENCLAW_OPERATOR_STATE_DIR ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator", "worktree-integrity");
+        const result = await executeControlledCommand({
+          executable: "npm",
+          argv: ["run", script],
+          cwd: repositoryPath,
+          timeoutMs: context.node.timeoutMs,
+          receiptStore: new ExecutionReceiptStore(stateDir),
+          context: { agent: "production.repo-command", sessionId: context.run.correlationId, taskId: context.node.id, runId: context.run.runId, repoRoot: repositoryPath, worktreePath: repositoryPath },
+          destructive: true,
+          guard: { protectedPaths: loadBaselines(stateDir).map((baseline) => ({ repoRoot: baseline.repoRoot, worktreePath: baseline.worktreePath, registered: true })) },
+        });
+        const outputText = `${result.stdout}${result.stderr}`;
+        const output = { action, exitCode: result.exitStatus, outputHash: sha256(outputText), skipped: false };
+        if (result.exitStatus !== 0) return { outcome: "failed_repairable", output, failure: failure("tool_contract_error", `npm ${script} exited with ${result.exitStatus}`), progressFingerprint: sha256({ nodeId: context.node.id, outputHash: output.outputHash }) };
         return { outcome: "succeeded", output, evidence: [{ kind: action === "build" ? "build-output" : "test-output", uri: `graph://${context.run.runId}/${action}`, sha256: output.outputHash, summary: `Allowlisted npm ${script} completed`, checker: "production.repo-command.v1" }], progressFingerprint: sha256({ nodeId: context.node.id, outputHash: output.outputHash }) };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -494,7 +599,37 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
     retryableFailures: ["state_conflict", "timeout"], evidenceProduced: ["candidate-claim", "payload-hash", "media-hash", "frozen-envelope", "zero-provider-writes"], redactedKeys: ["credential", "token", "secret"],
     execute: async (inputValue, context) => {
       const input = inputValue as LivePublicationInput;
-      const runner = await loadInstagramRunner();
+      let runner: Awaited<ReturnType<typeof loadInstagramRunner>> | null = null;
+      if (!input.shadowMode && graphStore) {
+        const target = `instagram:${input.expectedAccountId}`;
+        let unresolved = graphStore.unresolvedExternalEffectsForTarget(target, context.run.runId);
+        if (unresolved.some((effect) => instagramPriorOutboxId(graphStore.getRun(effect.runId) ?? { data: {} }))) {
+          runner = await loadInstagramRunner();
+          await reconcilePriorInstagramGraphEffects(graphStore, runner, {
+            target,
+            excludeRunId: context.run.runId,
+          });
+          unresolved = graphStore.unresolvedExternalEffectsForTarget(target, context.run.runId);
+        }
+        if (unresolved.length > 0) {
+          const blocked = instagramPreparationBlockResult({
+            id: target,
+            status: "blocked",
+            reason: "instagram_account_effect_reconciliation_required",
+            generatedMediaUploadCalls: 0,
+            instagramPublishCalls: 0,
+            browserRelayCalls: 0,
+          }, context);
+          return {
+            ...blocked,
+            failure: failure("idempotency_conflict", "instagram_account_effect_reconciliation_required", {
+              target,
+              unresolvedEffectIds: unresolved.map((effect) => effect.effectId),
+            }),
+          };
+        }
+      }
+      runner ??= await loadInstagramRunner();
       let projection: PublicationProjection;
       let status: "previewed" | "prepared";
       if (input.shadowMode) {
@@ -590,7 +725,7 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const state = classifyInstagramPublicationEffect(output);
       const correct = state === "effect_verified";
       return {
-        outcome: correct ? "succeeded" : state === "confirmed_absent" ? "failed_repairable" : "blocked",
+        outcome: instagramPublicationNodeOutcome(state),
         output,
         patches: [{ op: "set", path: "publicationLive.result", value: verified as unknown as JsonValue }],
         evidence: correct ? [
@@ -662,8 +797,20 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
     execute: async (inputValue, context) => {
       const input = ThreadsGraphInputSchema.parse(inputValue);
       const runner = await loadThreadsRunner();
-      const prepared = await runner.runOpportunity(input.jobId, { prepareOnly: true, now: new Date(input.observedAt), observedAt: new Date(input.observedAt) });
-      const output = await socialPreparation(prepared.entry, input, "publish");
+      let output: z.infer<typeof SocialPreparationOutputSchema>;
+      try {
+        const prepared = await runner.runOpportunity(input.jobId, {
+          prepareOnly: true,
+          now: new Date(input.observedAt),
+          observedAt: new Date(input.observedAt),
+          recoveryOutboxId: input.recoveryOutboxId,
+        });
+        output = await socialPreparation(prepared.entry, input, "publish");
+      } catch (error) {
+        const exclusion = legitimateThreadsPrecommitExclusion(error);
+        if (!exclusion) throw error;
+        output = zeroWriteSocialSkip(exclusion);
+      }
       return { outcome: "succeeded", output: output as unknown as Record<string, JsonValue>, patches: [{ op: "set", path: "socialEffect", value: output as unknown as JsonValue }, { op: "set", path: "target", value: output.outboxId ?? "threads:none" }], evidence: [
         { kind: "social-preparation-receipt", uri: `graph://${context.run.runId}/threads/preparation`, sha256: sha256(output), summary: `Threads preparation reached ${output.status}`, checker: "production.threads-publication-prepare.v1" },
         { kind: "payload-hash", uri: `graph://${context.run.runId}/threads/payload`, sha256: output.payloadHash ?? sha256(null), summary: output.payloadHash ? "Exact Threads payload frozen" : "No eligible Threads payload", checker: "production.threads-publication-prepare.v1" },
@@ -695,7 +842,12 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       }
       if (!graphStore) throw new Error("threads_graph_store_missing");
       const runner = await loadThreadsRunner();
-      const result = await runner.runOpportunity(input.jobId, { now: new Date(input.observedAt), graphAuthorization: { runId: context.run.runId, nodeId: context.node.id, idempotencyKey: context.idempotencyKey }, graphDispatchGate: socialDispatchGate(graphStore, context) });
+      const result = await runner.runOpportunity(input.jobId, {
+        now: new Date(input.observedAt),
+        recoveryOutboxId: input.recoveryOutboxId,
+        graphAuthorization: { runId: context.run.runId, nodeId: context.node.id, idempotencyKey: context.idempotencyKey },
+        graphDispatchGate: socialDispatchGate(graphStore, context),
+      });
       if (String(result.entry?.id) !== prepared.outboxId) throw new Error("threads_graph_outbox_binding_changed");
       const verified = result.entry?.status === "published_verified";
       const writes = Number(result.entry?.externalWriteCount ?? 0);

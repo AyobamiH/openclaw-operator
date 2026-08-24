@@ -1,0 +1,11 @@
+[Unit]
+Description=OpenClaw worktree integrity witness schedule
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=openclaw-worktree-integrity.service
+
+[Install]
+WantedBy=timers.target

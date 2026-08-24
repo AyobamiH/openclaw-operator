@@ -51,6 +51,48 @@ describe("graph definition and state invariants", () => {
       .toThrow("unsafe_state_patch_path");
   });
 
+  it("persists a blocked adapter result without inventing a missing transition", async () => {
+    const { runtime } = await createTestRuntime();
+    const source = codingChangeGraph();
+    const entry = source.nodes.find((node) => node.id === source.entryNodeId)!;
+    const definition: GraphDefinition = {
+      ...source,
+      graphId: "blocked-adapter-result",
+      description: "Blocked adapter result fixture",
+      nodes: source.nodes.map((node) => node.id === entry.id
+        ? { ...node, type: "tool", handler: "legacy.command", possibleOutcomes: [...new Set([...node.possibleOutcomes, "blocked"])] }
+        : node),
+      edges: source.edges.filter((edge) => !(edge.from === entry.id && edge.on === "blocked")),
+      evidenceRequirements: [],
+    };
+    runtime.engine.register(definition);
+    runtime.legacy.register("blocked-fixture", async (context) => ({
+      outcome: "blocked",
+      output: { reconciled: false },
+      failure: failure("idempotency_conflict", "provider effect requires exact readback"),
+      externalEffect: {
+        idempotencyKey: context.idempotencyKey,
+        operationType: "fixture-provider-write",
+        target: "fixture-account",
+        payloadHash: context.effectPayloadHash,
+        state: "ambiguous",
+        evidenceRefs: [],
+      },
+      progressFingerprint: "blocked-fixture",
+    }));
+    const created = runtime.engine.start(request("blocked-adapter-result", { legacyTaskId: "blocked-fixture" }));
+    const blocked = await runtime.engine.step(created.runId);
+    expect(blocked.status).toBe("blocked");
+    expect(blocked.currentNodeId).toBe(entry.id);
+    expect(blocked.lastError?.message).toBe("provider effect requires exact readback");
+    expect(runtime.store.externalEffects(created.runId)).toHaveLength(1);
+    expect(runtime.store.externalEffects(created.runId)[0]?.state).toBe("ambiguous");
+    expect(runtime.store.attempts(created.runId)[0]).toMatchObject({ status: "ambiguous" });
+    expect(runtime.store.events(created.runId).some((event) => event.type === "graph_blocked")).toBe(true);
+    expect(runtime.store.events(created.runId).some((event) => JSON.stringify(event.payload).includes("graph_transition_missing"))).toBe(false);
+    expect(runtime.store.verifyEventChain(created.runId)).toBe(true);
+  });
+
   it("prevents duplicate worker acquisition across database clients", async () => {
     const { runtime: first, root } = await createTestRuntime();
     const second = createGraphRuntime(join(root, "graph.sqlite"));

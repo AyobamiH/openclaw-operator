@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenClaw deterministic worktree integrity witness
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/.openclaw/workspace/projects/.worktrees/worktree-integrity-attribution-20260822/orchestrator
+Environment=OPENCLAW_OPERATOR_STATE_DIR=%h/.openclaw/state/openclaw-operator
+ExecStart=%h/.nvm/versions/node/v24.18.0/bin/node --import %h/.openclaw/workspace/projects/openclaw-operator/orchestrator/node_modules/tsx/dist/loader.mjs %h/.openclaw/workspace/projects/.worktrees/worktree-integrity-attribution-20260822/orchestrator/scripts/worktree-integrity-witness.ts check --state-dir %h/.openclaw/state/worktree-integrity --repo %h/.openclaw/workspace --repo %h/.openclaw/workspace/CodeReel --repo %h/.openclaw/workspace/projects/openclaw-operator --repo %h/.openclaw/workspace/projects/agentproof --degraded-exit-zero
+UMask=0077

@@ -9,10 +9,12 @@ import {
   mkdtemp,
   rm,
   readdir,
+  lstat,
+  realpath,
   stat,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, delimiter, dirname, join } from "node:path";
+import { basename, delimiter, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import {
   ApprovalRecord,
   AgentDeploymentRecord,
@@ -55,6 +57,9 @@ import { readProviderRateLimitBridge } from "./autonomy/runtime-hardening.js";
 import type { ApprovedIntakeRecord, AutonomousWorkItem, ContextSnapshot, ControllerCheckpoint, ProviderRateLimitEvent, ToolResult } from "./autonomy/types.js";
 import { runCampaignFactoryShadowCycle } from "./publishing/campaign-factory-shadow-cycle.js";
 import { runCampaignOperationsCycle } from "./publishing/campaign-operations.js";
+import { ExecutionReceiptStore, executeControlledCommand } from "./executionReceipts.js";
+import { loadBaselines } from "./worktreeIntegrity.js";
+import { docChangePathsFromPayload } from "./doc-change-ingress.js";
 
 // Central task allowlist (deny-by-default enforcement)
 export const ALLOWED_TASK_TYPES = [
@@ -164,6 +169,7 @@ export const TASK_AGENT_SKILL_REQUIREMENTS: Readonly<
   "github-workflow-monitor": { agentId: "operations-analyst-agent", skillId: "runtimeStateReader" },
   "campaign-content-factory": { agentId: "content-agent", skillId: "documentParser" },
   "send-digest": { agentId: "operations-analyst-agent", skillId: "notificationSender" },
+  "agent-deploy": { agentId: "deployment-ops-agent", skillId: "agentTemplateDeploy" },
 };
 
 /**
@@ -2320,8 +2326,9 @@ const startupHandler: TaskHandler = async (task, context) => {
 };
 
 const docChangeHandler: TaskHandler = async (task, context) => {
-  const path = String(task.payload.path ?? "unknown");
-  ensureDocChangeStored(path, context);
+  const paths = docChangePathsFromPayload(task.payload);
+  for (const path of paths) ensureDocChangeStored(path, context);
+  const path = paths[0] ?? "unknown";
   let autoRepairTaskId: string | null = null;
   let autoRepairSuppressionReason: string | null = null;
   const pendingPaths = [...context.state.pendingDocChanges];
@@ -4042,28 +4049,67 @@ const heartbeatHandler: TaskHandler = async (task) => {
   return `heartbeat (${task.payload.reason ?? "interval"})`;
 };
 
+const AGENT_DEPLOY_NAME = /^[a-z0-9][a-z0-9-]{0,62}$/;
+const SECRET_LIKE_CONFIG_KEY = /(secret|token|password|credential|api[_-]?key|private[_-]?key)/i;
+
+function assertContainedPath(root: string, target: string, code: string) {
+  const rel = relative(root, target);
+  if (rel === "" || (!rel.startsWith("..") && !isAbsolute(rel))) return;
+  throw new Error(code);
+}
+
+function assertNoSecretLikeConfigKeys(value: unknown, path: string = "config") {
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => assertNoSecretLikeConfigKeys(entry, `${path}[${index}]`));
+    return;
+  }
+  if (!value || typeof value !== "object") return;
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (SECRET_LIKE_CONFIG_KEY.test(key)) throw new Error(`agent_deploy_secret_config_key_forbidden:${path}.${key}`);
+    assertNoSecretLikeConfigKeys(entry, `${path}.${key}`);
+  }
+}
+
+async function assertTemplateTreeHasNoSymlinks(root: string, current: string = root): Promise<void> {
+  for (const entry of await readdir(current, { withFileTypes: true })) {
+    const entryPath = join(current, entry.name);
+    const metadata = await lstat(entryPath);
+    if (metadata.isSymbolicLink()) throw new Error(`agent_deploy_template_symlink_forbidden:${relative(root, entryPath)}`);
+    if (metadata.isDirectory()) await assertTemplateTreeHasNoSymlinks(root, entryPath);
+  }
+}
+
 const agentDeployHandler: TaskHandler = async (task, context) => {
+  await assertToolGatePermission(task, context, "agent-deploy");
+  if ("templatePath" in task.payload || "repoPath" in task.payload) {
+    throw new Error("agent_deploy_path_override_forbidden");
+  }
   const deploymentId = randomUUID();
-  const agentName = String(
-    task.payload.agentName ?? `agent-${deploymentId.slice(0, 6)}`,
-  );
+  const agentName = String(task.payload.agentName ?? `agent-${deploymentId.slice(0, 6)}`);
   const template = String(task.payload.template ?? "doc-specialist");
-  const templatePath = String(
-    task.payload.templatePath ?? join(process.cwd(), "..", "agents", template),
+  if (!AGENT_DEPLOY_NAME.test(agentName)) throw new Error("agent_deploy_agent_name_invalid");
+  if (!AGENT_DEPLOY_NAME.test(template)) throw new Error("agent_deploy_template_name_invalid");
+  const agentRoot = await realpath(resolve(process.cwd(), "..", "agents"));
+  const templatePath = await realpath(resolve(agentRoot, template));
+  assertContainedPath(agentRoot, templatePath, "agent_deploy_template_outside_agent_root");
+  if (dirname(templatePath) !== agentRoot) throw new Error("agent_deploy_template_must_be_direct_child");
+  const templateMetadata = await lstat(templatePath);
+  if (!templateMetadata.isDirectory() || templateMetadata.isSymbolicLink()) throw new Error("agent_deploy_template_invalid");
+  await assertTemplateTreeHasNoSymlinks(templatePath);
+  const deployBase = resolve(
+    context.config.deployBaseDir ?? join(process.cwd(), "..", "agents-deployed"),
   );
-  const deployBase =
-    context.config.deployBaseDir ??
-    join(process.cwd(), "..", "agents-deployed");
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const repoPath = String(
-    task.payload.repoPath ?? join(deployBase, `${agentName}-${timestamp}`),
-  );
   const config =
     typeof task.payload.config === "object" && task.payload.config !== null
       ? (task.payload.config as Record<string, unknown>)
       : {};
+  assertNoSecretLikeConfigKeys(config);
 
   await mkdir(deployBase, { recursive: true });
+  const deployBaseReal = await realpath(deployBase);
+  const repoPath = resolve(deployBaseReal, `${agentName}-${timestamp}`);
+  assertContainedPath(deployBaseReal, repoPath, "agent_deploy_destination_outside_deploy_root");
   await cp(templatePath, repoPath, { recursive: true });
 
   const deploymentNotes = {
@@ -4073,7 +4119,7 @@ const agentDeployHandler: TaskHandler = async (task, context) => {
     templatePath: basename(templatePath),
     deployedAt: new Date().toISOString(),
     runHint: "npm install && npm run dev -- <payload.json>",
-    payload: task.payload,
+    config,
   };
   await writeFile(
     join(repoPath, "DEPLOYMENT.json"),
@@ -4089,7 +4135,6 @@ const agentDeployHandler: TaskHandler = async (task, context) => {
     config,
     status: "deployed",
     deployedAt: new Date().toISOString(),
-    notes: task.payload.notes ? String(task.payload.notes) : undefined,
   };
 
   context.state.agentDeployments.push(record);
@@ -4191,11 +4236,12 @@ const sendDigestHandler: TaskHandler = async (task, context) => {
       for (const key of ["observedAt", "sourceRoot", "missionPath", "outputRoot"] as const) if (typeof task.payload[key] !== "string" || !String(task.payload[key]).trim()) throw new Error(`continuous-marketing digest requires ${key}`);
       const digest = await buildContinuousMarketingDigest({ observedAt: String(task.payload.observedAt), sourceRoot: String(task.payload.sourceRoot), missionPath: String(task.payload.missionPath), outputRoot: String(task.payload.outputRoot) });
       const notifierConfig = buildNotifierConfig(config);
-      if (notifierConfig) await sendNotification(notifierConfig, { title: "Daily growth evidence — last 24h", summary: digest.summary, count: digest.verifiedLinks.length, digest: { evidenceFiles: digest.evidenceFiles, blockers: digest.blockers.length, approvals: digest.approvals.length }, url: digest.outputPath }, logger);
-      else logger.log(`[send-digest] ${digest.summary}`);
+      if (!notifierConfig) throw new Error("notification_delivery_confirmed_absent:provider_configuration_missing");
+      const delivery = await sendNotification(notifierConfig, { title: "Daily growth evidence — last 24h", summary: digest.summary, count: digest.verifiedLinks.length, digest: { evidenceFiles: digest.evidenceFiles, blockers: digest.blockers.length, approvals: digest.approvals.length }, url: digest.outputPath }, logger);
+      if (delivery.state !== "effect_verified") throw new Error("notification_delivery_confirmed_absent:external_delivery_not_configured");
       context.state.lastDigestNotificationAt = new Date().toISOString();
       await context.saveState();
-      recordTaskExecutionResultSummary(context, task, { success: true, continuousMarketingDigest: digest });
+      recordTaskExecutionResultSummary(context, task, { success: true, notificationDelivery: delivery, continuousMarketingDigest: digest });
       return `continuous marketing digest sent (${digest.verifiedLinks.length} verified social objects)`;
     }
     const files = await readdir(digestDir);
@@ -4215,8 +4261,8 @@ const sendDigestHandler: TaskHandler = async (task, context) => {
 
     // Build and send notification
     const notifierConfig = buildNotifierConfig(config);
-    if (notifierConfig) {
-      await sendNotification(
+    if (!notifierConfig) throw new Error("notification_delivery_confirmed_absent:provider_configuration_missing");
+    const delivery = await sendNotification(
         notifierConfig,
         {
           title: `🚀 ${itemCount} Reddit Leads Ready for Review`,
@@ -4227,14 +4273,11 @@ const sendDigestHandler: TaskHandler = async (task, context) => {
         },
         logger,
       );
-    } else {
-      logger.log(
-        `[send-digest] ${itemCount} leads ready (no notification channel configured; use log fallback)`,
-      );
-    }
+    if (delivery.state !== "effect_verified") throw new Error("notification_delivery_confirmed_absent:external_delivery_not_configured");
 
     context.state.lastDigestNotificationAt = new Date().toISOString();
     await context.saveState();
+    recordTaskExecutionResultSummary(context, task, { success: true, notificationDelivery: delivery });
 
     return `digest notification sent (${itemCount} leads)`;
   } catch (error) {
@@ -4354,14 +4397,19 @@ export async function executeGovernedCodingTool(tool: string, args: Record<strin
   if (!command) return { handled: false, status: "unavailable", changedState: false, safety: { readOnly: true }, summary: `Unsupported governed coding tool: ${tool}` };
   const projectRoot = String(args.projectRoot ?? process.cwd());
   const cliArgs = command === "validate-pack" ? [command, "--json"] : [command, projectRoot, "--json"];
-  const output = await new Promise<{ code: number; stdout: string; stderr: string }>((resolve, reject) => {
-    const child = spawn("coding-agent-skills", cliArgs, { shell: false, stdio: ["ignore", "pipe", "pipe"], timeout: 120_000, env: buildAllowlistedChildEnv({}) });
-    let stdout = "", stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    child.once("error", reject);
-    child.once("close", (code) => resolve({ code: code ?? 1, stdout, stderr }));
+  const stateDir = join(process.env.OPENCLAW_OPERATOR_STATE_DIR ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator", "worktree-integrity");
+  const controlled = await executeControlledCommand({
+    executable: "coding-agent-skills",
+    argv: cliArgs,
+    cwd: projectRoot,
+    timeoutMs: 120_000,
+    env: buildAllowlistedChildEnv({}),
+    receiptStore: new ExecutionReceiptStore(stateDir),
+    context: { agent: "coding-agent-skills", sessionId: process.env.CODEX_SESSION_ID, taskId: tool, repoRoot: projectRoot, worktreePath: projectRoot },
+    destructive: true,
+    guard: { protectedPaths: loadBaselines(stateDir).map((baseline) => ({ repoRoot: baseline.repoRoot, worktreePath: baseline.worktreePath, registered: true })) },
   });
+  const output = { code: controlled.exitStatus, stdout: controlled.stdout, stderr: controlled.stderr };
   let parsed: Record<string, unknown> = {};
   try { parsed = JSON.parse(output.stdout) as Record<string, unknown>; } catch { parsed = { success: false, summary: output.stderr || "Invalid coding-agent-skills JSON" }; }
   await mkdir(evidenceDir, { recursive: true });

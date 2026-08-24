@@ -913,6 +913,14 @@ export class GraphStore {
     return (this.database.prepare("SELECT * FROM graph_external_effects WHERE run_id=? ORDER BY rowid").all(runId) as Array<Record<string, unknown>>).map((row) => ({ effectId: String(row.effect_id), runId: String(row.run_id), nodeId: String(row.node_id), idempotencyKey: String(row.idempotency_key), operationType: String(row.operation_type), target: String(row.target), payloadHash: String(row.payload_hash), state: String(row.state) as ExternalEffectRecord["state"], providerOperationId: row.provider_operation_id === null ? undefined : String(row.provider_operation_id), lastObservedAt: row.last_observed_at === null ? undefined : String(row.last_observed_at), evidenceRefs: json<string[]>(String(row.evidence_refs_json)) }));
   }
 
+  unresolvedExternalEffectsForTarget(target: string, excludeRunId?: string): ExternalEffectRecord[] {
+    const rows = excludeRunId
+      ? this.database.prepare("SELECT run_id FROM graph_external_effects WHERE target=? AND run_id<>? AND state IN ('ambiguous','provider_accepted') ORDER BY rowid").all(target, excludeRunId)
+      : this.database.prepare("SELECT run_id FROM graph_external_effects WHERE target=? AND state IN ('ambiguous','provider_accepted') ORDER BY rowid").all(target);
+    return (rows as Array<{ run_id: string }>).flatMap((row) => this.externalEffects(String(row.run_id)))
+      .filter((effect) => effect.target === target && ["ambiguous", "provider_accepted"].includes(effect.state));
+  }
+
   checkpointSnapshot(runId: string, checkpointId: string): GraphRunState | null {
     const row = this.database.prepare("SELECT snapshot_json FROM graph_checkpoints WHERE run_id=? AND checkpoint_id=?").get(runId, checkpointId) as { snapshot_json?: string } | undefined;
     return row?.snapshot_json ? json<GraphRunState>(row.snapshot_json) : null;

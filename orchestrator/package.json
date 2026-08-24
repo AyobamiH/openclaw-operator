@@ -36,7 +36,10 @@
     "graph:live-capability": "tsx scripts/manage-one-run-live-capability.ts",
     "graph:scheduler-migration": "tsx scripts/manage-graph-scheduler-migration.ts",
     "graph:scheduler-trigger": "tsx scripts/trigger-governed-graph-schedule.ts",
-    "graph:audit:full": "tsx src/graph/full-runtime-audit-cli.ts"
+    "graph:audit:full": "tsx src/graph/full-runtime-audit-cli.ts",
+    "source:provenance": "tsx scripts/source-provenance-gate.ts",
+    "worktree:integrity": "tsx scripts/worktree-integrity-witness.ts check",
+    "execute:controlled": "tsx scripts/execute-controlled-command.ts"
   },
   "dependencies": {
     "@oneclicksystems/agentproof": "github:AyobamiH/agentproof#0be72f5506d5b42a2463f6ce1d2803b89e525994",

@@ -27,6 +27,7 @@ import {
   resolveInputTemplate,
   resolveNaturalSlot,
   waitForApprovalBoundary,
+  schedulerCompletionContract,
 } from "../scripts/trigger-governed-graph-schedule.js";
 import { executePhaseGSchedule } from "../scripts/trigger-graph-schedule.js";
 
@@ -39,6 +40,40 @@ function jobs() {
     graphJob: buildGovernedGraphJob(legacyJob, PHASE_G_MIGRATION_ID, "/workspace/orchestrator/scripts/trigger-governed-graph-schedule.ts", "node"),
   };
 }
+
+describe("Instagram scheduler terminal safety", () => {
+  it("keeps request-prepared-only effects recovery-safe because no provider call was dispatched", () => {
+    const detail = {
+      run: { runId: "run-prepared-only", status: "failed" },
+      eventChainValid: true,
+      childRunReceiptChainValid: true,
+      verifierReceipts: [],
+      externalEffects: [{ state: "request_prepared" }],
+      liveCapability: null,
+    };
+    expect(schedulerCompletionContract({ detail, slotId: "slot", triggerId: "trigger", maximumExternalWrites: 1 }).recoverySafe).toBe(true);
+    detail.externalEffects[0]!.state = "request_sent";
+    expect(schedulerCompletionContract({ detail, slotId: "slot", triggerId: "trigger", maximumExternalWrites: 1 }).recoverySafe).toBe(false);
+  });
+
+  it("classifies a consumed one-use capability as recovery-safe only after confirmed-absent provider dispatch", () => {
+    const detail = {
+      run: { runId: "run-zero-write", status: "failed" },
+      eventChainValid: true,
+      childRunReceiptChainValid: true,
+      verifierReceipts: [],
+      externalEffects: [{ state: "confirmed_absent" }],
+      liveCapability: { status: "consumed" },
+      liveCapabilityDispatches: [
+        { stepId: "delivery_upload", state: "succeeded", dispatchCount: 1 },
+        { stepId: "instagram_publish", state: "confirmed_absent", dispatchCount: 1 },
+      ],
+    };
+    expect(schedulerCompletionContract({ detail, slotId: "slot", triggerId: "trigger", maximumExternalWrites: 1 }).recoverySafe).toBe(true);
+    detail.liveCapabilityDispatches[1]!.state = "ambiguous";
+    expect(schedulerCompletionContract({ detail, slotId: "slot", triggerId: "trigger", maximumExternalWrites: 1 }).recoverySafe).toBe(false);
+  });
+});
 
 function governedJobs(migrationId = "threads-readiness-v1") {
   const item = GOVERNED_SCHEDULER_PORTFOLIO.get(migrationId)!;
@@ -156,7 +191,72 @@ describe("graph scheduler migration registry", () => {
       integrationPath: expect.stringContaining("/20260808-full-pregraph-v3/"),
       rendererEntrypoint: expect.stringContaining("/20260808-full-pregraph-v3/"),
     });
-    expect(v4.graphJob).toMatchObject({ enabled: true, payload: { argv: expect.arrayContaining(["campaign-content-factory-full-pregraph-v4"]) } });
+    expect(v4.graphJob).toMatchObject({
+      enabled: true,
+      payload: {
+        argv: expect.arrayContaining(["campaign-content-factory-full-pregraph-v4"]),
+        noOutputTimeoutSeconds: 1800,
+      },
+    });
+  });
+
+  it("retries bounded orchestrator startup connection refusals before failing a graph-owned slot", async () => {
+    let attempts = 0;
+    const slept: number[] = [];
+    const result = await requestGraphSchedulerJson({
+      route: "/api/graphs/health",
+      maxConnectivityRetries: 2,
+      sleepFn: async (ms) => { slept.push(ms); },
+      dispatch: async () => {
+        attempts += 1;
+        if (attempts < 3) {
+          const error = new TypeError("fetch failed") as TypeError & { cause: { code: string } };
+          error.cause = { code: "ECONNREFUSED" };
+          throw error;
+        }
+        return new Response(JSON.stringify({ status: "healthy" }), { status: 200 });
+      },
+    });
+    expect(result).toEqual({ status: "healthy" });
+    expect(attempts).toBe(3);
+    expect(slept).toHaveLength(2);
+  });
+
+  it("retries transient graph scheduler read resets without retrying unsafe writes", async () => {
+    let readAttempts = 0;
+    const slept: number[] = [];
+    const result = await requestGraphSchedulerJson({
+      route: "/api/graphs/runs/run-reset",
+      maxConnectivityRetries: 2,
+      sleepFn: async (ms) => { slept.push(ms); },
+      dispatch: async () => {
+        readAttempts += 1;
+        if (readAttempts === 1) {
+          const error = new TypeError("fetch failed") as TypeError & { cause: { code: string } };
+          error.cause = { code: "ECONNRESET" };
+          throw error;
+        }
+        return new Response(JSON.stringify({ run: { status: "completed" } }), { status: 200 });
+      },
+    });
+    expect(result).toEqual({ run: { status: "completed" } });
+    expect(readAttempts).toBe(2);
+    expect(slept).toHaveLength(1);
+
+    let writeAttempts = 0;
+    await expect(requestGraphSchedulerJson({
+      route: "/api/graphs/runs/accepted",
+      init: { method: "POST", body: "{}" },
+      maxConnectivityRetries: 2,
+      sleepFn: async () => undefined,
+      dispatch: async () => {
+        writeAttempts += 1;
+        const error = new TypeError("fetch failed") as TypeError & { cause: { code: string } };
+        error.cause = { code: "ECONNRESET" };
+        throw error;
+      },
+    })).rejects.toMatchObject({ cause: { code: "ECONNRESET" } });
+    expect(writeAttempts).toBe(1);
   });
 
   it("resolves injected clocks only inside exact portfolio cron windows", () => {
@@ -1027,6 +1127,35 @@ describe("graph scheduler migration registry", () => {
     })).rejects.toThrow("graph_scheduler_failed_safe_recovery_requires_zero_effects");
   });
 
+  it("recovers a request-prepared-only failed publication without treating graph intent as a provider write", async () => {
+    const binding = governedJobs("threads-daily-image-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    const reserved = value.store.reserveTrigger(binding.item.declaration.migrationId, `threads:2026-08-04:16:30:${binding.item.declaration.scheduleId}`, "2026-08-04T15:30:00.000Z", "test").trigger;
+    value.store.updateTrigger(reserved.triggerId, "preparing", "test", { graphRunId: "run-prepared-only" });
+    value.store.updateTrigger(reserved.triggerId, "ambiguous", "test", { graphRunId: "run-prepared-only", failureReason: "interrupted_after_request_prepared" });
+    value.store.close();
+    let recoveryInput: any;
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      recoveryTriggerId: reserved.triggerId,
+      schedulerPath: value.path,
+      request: async (route, init) => {
+        if (route === "/api/graphs/health") return { status: "healthy", zeroWriteOnly: true };
+        if (route === "/api/graphs/runs/run-prepared-only") return { run: { runId: "run-prepared-only", status: "failed" }, liveCapability: null, externalEffects: [{ state: "request_prepared" }], eventChainValid: true, childRunReceiptChainValid: true };
+        if (route === "/api/graphs/runs/accepted" && init?.method === "POST") {
+          recoveryInput = JSON.parse(String(init.body));
+          return { run: { runId: "run-prepared-only-recovered", status: "completed" } };
+        }
+        if (route === "/api/graphs/runs/run-prepared-only-recovered") return { run: { runId: "run-prepared-only-recovered", status: "completed" }, approvals: [], liveCapability: { status: "consumed" }, externalEffects: [{ state: "effect_verified", providerOperationId: "threads-provider-one" }], childRunReceipts: [{ receiptId: "receipt-recovered", status: "succeeded", outcome: "completed", receiptHash: "2".repeat(64) }], eventChainValid: true, childRunReceiptChainValid: true };
+        throw new Error(`unexpected fixture route ${route}`);
+      },
+    });
+    expect(recoveryInput).toMatchObject({ correlationId: `${reserved.triggerId}:attempt:2` });
+    expect(result).toMatchObject({ outcome: "completed", providerWrites: 1, publicationReport: { recoveryResult: "original_slot_recovered", finalClassification: "published" } });
+  });
+
   it("honestly marks a zero-write publication with no skip reason as missed", async () => {
     const binding = governedJobs("threads-daily-image-v1");
     const value = await fixture();
@@ -1313,7 +1442,7 @@ describe("graph scheduler migration registry", () => {
     expect(result).toMatchObject({ outcome: "completed", providerWrites: 1 });
   });
 
-  it("keeps failed-safe recovery closed when any external effect exists", async () => {
+  it("moves failed-safe recovery to ambiguous when any external effect exists", async () => {
     const binding = governedJobs("campaign-content-factory-shadow-v1");
     const value = await fixture();
     value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });

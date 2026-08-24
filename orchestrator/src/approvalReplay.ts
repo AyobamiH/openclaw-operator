@@ -1,31 +1,9 @@
-import { createHash } from "node:crypto";
-import { decideApproval } from "./approvalGate.js";
+import { decideApproval, operatorApprovalDecisionDigest } from "./approvalGate.js";
 import { updateTaskQueueAttempt } from "./task-admission.js";
 import type { TaskQueue } from "./taskQueue.js";
 import type { ApprovalRecord, OrchestratorState, Task } from "./types.js";
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]));
-  }
-  return value;
-}
-
-export function operatorApprovalDecisionDigest(approval: ApprovalRecord): string {
-  return createHash("sha256").update(JSON.stringify(canonicalize({
-    taskId: approval.taskId,
-    type: approval.type,
-    payload: approval.payload,
-    requestedAt: approval.requestedAt,
-    status: approval.status,
-    decidedAt: approval.decidedAt ?? null,
-    decidedBy: approval.decidedBy ?? null,
-    note: approval.note ?? null,
-  }))).digest("hex");
-}
+export { operatorApprovalDecisionDigest } from "./approvalGate.js";
 
 export type ApprovalReplayResult = {
   approval: ApprovalRecord;

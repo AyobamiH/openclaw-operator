@@ -533,6 +533,30 @@ export class GraphExecutor {
       result = { ...result, outcome: "failed_terminal", failure: failure("no_progress", `No material progress after ${repeated + 1} equivalent attempts`) };
       run.lastError = result.failure ?? null;
     }
+    if (result.outcome === "blocked") {
+      run.status = "blocked";
+      run.currentNodeId = node.id;
+      run.checkpoints = [...run.checkpoints, checkpoint(run, "blocked_at_node", node.id)];
+      if (attemptId) {
+        this.store.finishAttempt(
+          attemptId,
+          result.externalEffect?.state === "ambiguous" ? "ambiguous" : "failed",
+          result.outcome,
+          result.output,
+          result.failure,
+        );
+      }
+      const blockedEvents: EventInput[] = [
+        { type: "node_output_recorded", nodeId: node.id, attemptNumber, actor: owner, payload: { outputHash: sha256(result.output), evidenceIds: newEvidence.map((item) => item.evidenceId) as unknown as JsonValue } },
+        { type: "node_failed", nodeId: node.id, attemptNumber, actor: owner, payload: { outcome: result.outcome, failureCategory: result.failure?.category ?? null } },
+        { type: "checkpoint_created", nodeId: node.id, attemptNumber, actor: owner, payload: { checkpointId: run.checkpoints.at(-1)!.checkpointId, reason: "blocked_at_node", stateHash: run.checkpoints.at(-1)!.stateHash } },
+        { type: "graph_blocked", nodeId: node.id, attemptNumber, actor: owner, payload: { reason: result.failure?.message ?? "node_blocked", externalEffectState: result.externalEffect?.state ?? null } },
+      ];
+      if (result.externalEffect) {
+        blockedEvents.push({ type: "external_effect_requested", nodeId: node.id, attemptNumber, actor: owner, payload: { operationType: result.externalEffect.operationType, target: result.externalEffect.target, payloadHash: result.externalEffect.payloadHash, state: result.externalEffect.state } });
+      }
+      return this.store.saveRun(run, initialRun.revision, blockedEvents);
+    }
     let edge: GraphEdgeDefinition;
     try {
       edge = resolveTransition(definition, node.id, result, run);
@@ -566,8 +590,6 @@ export class GraphExecutor {
       run.currentNodeId = null;
     } else if (result.outcome === "needs_approval") {
       run.status = "waiting_for_approval";
-    } else if (result.outcome === "blocked") {
-      run.status = "blocked";
     } else if (result.waitUntil) {
       run.status = "waiting";
       run.data.waitUntil = result.waitUntil;

@@ -1,6 +1,7 @@
 {
   "id": "deployment-ops-agent",
   "orchestratorTask": "deployment-ops",
+  "orchestratorTasks": ["deployment-ops", "agent-deploy"],
   "orchestratorStatePath": "../../orchestrator/data/orchestrator-state.json",
   "serviceStatePath": "../../logs/deployment-ops-agent-service.json",
   "name": "Deployment Ops Agent",
@@ -25,6 +26,11 @@
         "allowed": true,
         "maxCalls": 60,
         "reason": "Read bounded deployment files, workflow definitions, and docs parity surfaces."
+      },
+      "agentTemplateDeploy": {
+        "allowed": true,
+        "maxCalls": 1,
+        "reason": "Copy one approved direct-child agent template into the configured deployment root."
       }
     },
     "fileSystem": {

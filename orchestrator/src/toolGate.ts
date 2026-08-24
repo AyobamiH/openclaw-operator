@@ -1,9 +1,19 @@
 /** Durable runtime permission enforcement for every governed task and skill path. */
 import { createHash } from "node:crypto";
-import { posix, join } from "node:path";
+import { posix, join, resolve, sep } from "node:path";
 import type { ToolInvocation, ToolInvocationLog } from "./types.js";
 import { getAgentRegistry, type AgentConfig, type AgentRegistry } from "./agentRegistry.js";
 import { ToolGateStore, type DurableToolGateCapability } from "./toolGateStore.js";
+import {
+  verifyActivationProof,
+  verifyPreEditManifest,
+  verifyRuntimeProof,
+  type ActivationProof,
+  type ObservedSourceState,
+  type ResidentRuntimeProof,
+  type EphemeralRuntimeProof,
+  type SourceProvenanceManifest,
+} from "./sourceProvenanceGate.js";
 
 export { ToolInvocation, ToolInvocationLog };
 
@@ -37,7 +47,12 @@ export class ToolGate {
   private agentRegistry: AgentRegistry | null = null;
   private store: ToolGateStore | null = null;
 
-  constructor(private readonly options: { statePath?: string; agentRegistry?: AgentRegistry } = {}) {}
+  private readonly workspaceRoot: string;
+
+  constructor(private readonly options: { statePath?: string; agentRegistry?: AgentRegistry; workspaceRoot?: string } = {}) {
+    const cwd = resolve(process.cwd());
+    this.workspaceRoot = resolve(options.workspaceRoot ?? (cwd.endsWith(`${sep}orchestrator`) ? join(cwd, "..") : cwd));
+  }
 
   private normalizeBoundaryPath(value: string): string {
     const sanitizedValue = value.replace(/\\/g, "/").trim();
@@ -49,6 +64,10 @@ export class ToolGate {
   private pathMatchesBoundary(targetPath: string, boundary: string): boolean {
     const target = this.normalizeBoundaryPath(targetPath);
     const allowed = this.normalizeBoundaryPath(boundary);
+    if (allowed === "workspace") {
+      const absoluteTarget = resolve(targetPath);
+      return absoluteTarget === this.workspaceRoot || absoluteTarget.startsWith(`${this.workspaceRoot}${sep}`);
+    }
     return Boolean(target && allowed && (target === allowed || target.startsWith(`${allowed}/`) || target.endsWith(`/${allowed}`) || target.includes(`/${allowed}/`)));
   }
 
@@ -72,7 +91,19 @@ export class ToolGate {
     declaredButNotEnforced: string[];
     decisionChainValid: boolean;
   } {
-    return { executionMode: "inline_capability_enforcement", auditPersistence: "sqlite_hash_chain", hostContainment: false, enforcedPolicies: ["agent-exists", "task-assignment", "skill-allowlist", "skill-max-calls", "network-domain-allowlist", "read-path-allowlist", "write-path-allowlist", "single-use-execution-capability", "durable-denial"], declaredButNotEnforced: [], decisionChainValid: this.requireStore().verifyDecisionChain() };
+    return { executionMode: "inline_capability_enforcement", auditPersistence: "sqlite_hash_chain", hostContainment: false, enforcedPolicies: ["agent-exists", "task-assignment", "skill-allowlist", "skill-max-calls", "network-domain-allowlist", "read-path-allowlist", "write-path-allowlist", "single-use-execution-capability", "durable-denial", "source-preedit-binding", "tested-activated-hash-equality", "running-source-hash-proof"], declaredButNotEnforced: [], decisionChainValid: this.requireStore().verifyDecisionChain() };
+  }
+
+  verifySourcePreEdit(manifest: SourceProvenanceManifest, observed: ObservedSourceState) {
+    return verifyPreEditManifest(manifest, observed);
+  }
+
+  verifySourceActivation(proof: ActivationProof) {
+    return verifyActivationProof(proof);
+  }
+
+  verifySourceRuntime(args: { expectedSourcePath: string; activatedHash: string; testedHash: string; runtime: ResidentRuntimeProof | EphemeralRuntimeProof }) {
+    return verifyRuntimeProof(args);
   }
 
   private policy(agent: AgentConfig): unknown {

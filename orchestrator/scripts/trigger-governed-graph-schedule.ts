@@ -16,6 +16,8 @@ export const GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS = 60;
 export const GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS = 180;
 const GRAPH_SCHEDULER_READ_RATE_LIMIT_RETRIES = 3;
 const GRAPH_SCHEDULER_READ_JITTER_WINDOW_MS = 1_000;
+const GRAPH_SCHEDULER_CONNECTIVITY_RETRIES = 6;
+const GRAPH_SCHEDULER_CONNECTIVITY_RETRY_BASE_MS = 2_000;
 
 export type HttpRequest = (route: string, init?: RequestInit) => Promise<any>;
 type PublicationClassification = "published" | "legitimate_skip" | "missed" | "failed" | "deferred";
@@ -139,6 +141,14 @@ export function resolveInputTemplate(value: unknown, slot: { slotId: string; sch
   return value;
 }
 
+function resolveRecoveryInputTemplate(value: unknown, slot: { slotId: string; scheduledFor: string }): unknown {
+  const input = resolveInputTemplate(value, slot);
+  if (input && typeof input === "object" && !Array.isArray(input) && String((input as Record<string, unknown>).provider ?? "") === "threads") {
+    return { ...(input as Record<string, unknown>), recoveryOutboxId: slot.slotId };
+  }
+  return input;
+}
+
 function deterministicReadJitterMs(value: string): number {
   let hash = 2166136261;
   for (const character of value) {
@@ -196,12 +206,25 @@ export async function requestGraphSchedulerJson(args: {
   sleepFn?: (ms: number) => Promise<void>;
   now?: () => number;
   maxReadRateLimitRetries?: number;
+  maxConnectivityRetries?: number;
 }): Promise<any> {
   const method = String(args.init?.method ?? "GET").toUpperCase();
   const isIdempotentRead = method === "GET" || method === "HEAD";
   const maxRetries = args.maxReadRateLimitRetries ?? GRAPH_SCHEDULER_READ_RATE_LIMIT_RETRIES;
+  const maxConnectivityRetries = args.maxConnectivityRetries ?? GRAPH_SCHEDULER_CONNECTIVITY_RETRIES;
   for (let attempt = 0; ; attempt += 1) {
-    const response = await args.dispatch();
+    let response: Response;
+    try {
+      response = await args.dispatch();
+    } catch (error) {
+      const retryableConnectivityFault = isGraphSchedulerConnectionRefused(error)
+        || (isIdempotentRead && isGraphSchedulerTransientConnectivityError(error));
+      if (retryableConnectivityFault && attempt < maxConnectivityRetries) {
+        await (args.sleepFn ?? sleep)(resolveGraphSchedulerConnectivityRetryDelayMs(args.route, attempt));
+        continue;
+      }
+      throw error;
+    }
     let body: any = null;
     try { body = await response.json(); } catch { /* HTTP status remains authoritative */ }
     if (response.ok) return body;
@@ -214,6 +237,22 @@ export async function requestGraphSchedulerJson(args: {
     }
     throw new GraphSchedulerHttpError(response.status, `graph_scheduler_http_${response.status}:${body?.error ?? "unknown"}`, retryAfterMs);
   }
+}
+
+function isGraphSchedulerConnectionRefused(error: unknown): boolean {
+  const value = error as { cause?: { code?: unknown }; code?: unknown; message?: unknown };
+  return value?.code === "ECONNREFUSED" || value?.cause?.code === "ECONNREFUSED" || String(value?.message ?? "").includes("ECONNREFUSED");
+}
+
+function isGraphSchedulerTransientConnectivityError(error: unknown): boolean {
+  const value = error as { cause?: { code?: unknown }; code?: unknown; message?: unknown };
+  const code = String(value?.cause?.code ?? value?.code ?? "");
+  return ["ECONNRESET", "ETIMEDOUT", "EPIPE", "UND_ERR_SOCKET"].includes(code)
+    || /ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR_SOCKET|socket disconnected|fetch failed/i.test(String(value?.message ?? ""));
+}
+
+function resolveGraphSchedulerConnectivityRetryDelayMs(route: string, attempt: number): number {
+  return GRAPH_SCHEDULER_CONNECTIVITY_RETRY_BASE_MS + deterministicReadJitterMs(`${route}:connectivity:${attempt}`);
 }
 
 async function defaultRequest(route: string, init?: RequestInit): Promise<any> {
@@ -294,6 +333,28 @@ function preparedPayloadApprovalId(detail: any): string | null {
 function receiptIds(detail: any, key: "childRunReceipts" | "verifierReceipts"): string[] {
   const receipts = Array.isArray(detail?.[key]) ? detail[key] : [];
   return receipts.map((item: any) => String(item.receiptId ?? item.verifierReceiptId ?? item.childRunId ?? "unknown"));
+}
+
+function verifiedEffectsFrom(detail: any): any[] {
+  return (detail?.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+}
+
+function consumedCapabilitySettledSafeFrom(detail: any): boolean {
+  const consumedCapability = detail?.liveCapability?.status === "consumed";
+  const dispatches = Array.isArray(detail?.liveCapabilityDispatches) ? detail.liveCapabilityDispatches : [];
+  return consumedCapability
+    && dispatches.length > 0
+    && dispatches.every((item: any) => ["succeeded", "confirmed_absent"].includes(String(item.state)))
+    && dispatches.some((item: any) => item.stepId === "instagram_publish" && item.state === "confirmed_absent");
+}
+
+function unsafeRecoveryEffectsFrom(detail: any): any[] {
+  return (detail?.externalEffects ?? []).filter((item: any) => !["not_requested", "request_prepared", "confirmed_absent"].includes(String(item.state)));
+}
+
+function hasUnsafeRecoveryState(detail: any): boolean {
+  return unsafeRecoveryEffectsFrom(detail).length > 0
+    || (detail?.liveCapability?.status === "consumed" && !consumedCapabilitySettledSafeFrom(detail));
 }
 
 function isLegitimateZeroWriteReason(reason: string): boolean {
@@ -430,8 +491,8 @@ function sleep(ms: number): Promise<void> {
   return ms <= 0 ? Promise.resolve() : new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function schedulerCompletionContract(args: { detail: any; slotId: string; triggerId: string; runId?: string; maximumExternalWrites: number }): SchedulerCompletionContract {
-  const effects = (args.detail?.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+export function schedulerCompletionContract(args: { detail: any; slotId: string; triggerId: string; runId?: string; maximumExternalWrites: number }): SchedulerCompletionContract {
+  const effects = verifiedEffectsFrom(args.detail);
   const predicates: SchedulerCompletionPredicate[] = [
     { name: "detail.run.status === \"completed\"", expected: "completed", actual: String(args.detail?.run?.status ?? "missing"), passed: args.detail?.run?.status === "completed" },
     { name: "detail.eventChainValid === true", expected: true, actual: args.detail?.eventChainValid ?? null, passed: args.detail?.eventChainValid === true },
@@ -446,12 +507,10 @@ function schedulerCompletionContract(args: { detail: any; slotId: string; trigge
     || args.detail?.eventChainValid === false
     || args.detail?.childRunReceiptChainValid === false;
   const allPassed = predicates.every((item) => item.passed);
-  const activeEffects = (args.detail?.externalEffects ?? []).some((item: any) => ["request_sent", "provider_accepted", "ambiguous"].includes(item.state));
-  const consumedCapability = args.detail?.liveCapability?.status === "consumed";
   return {
     status: allPassed ? "passed" : terminal ? "terminal" : "transient",
     transient: !allPassed && !terminal,
-    recoverySafe: !activeEffects && !consumedCapability && effects.length === 0,
+    recoverySafe: !hasUnsafeRecoveryState(args.detail) && effects.length === 0,
     originalSlot: args.slotId,
     triggerId: args.triggerId,
     runId: args.runId ?? optionalString(args.detail?.run?.runId),
@@ -531,7 +590,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
     if (!migration || migration.status !== "graph_owned" || migration.graphDefinitionHash !== portfolio.declaration.graphDefinitionHash) throw new Error("graph_scheduler_migration_not_active_or_exact");
     const recoveryTrigger = args.recoveryTriggerId ? store.trigger(args.recoveryTriggerId) : null;
     if (args.recoveryTriggerId && (!recoveryTrigger || recoveryTrigger.migrationId !== args.migrationId)) throw new Error("graph_scheduler_recovery_trigger_not_found_or_mismatched");
-    if (recoveryTrigger && !["failed_safe", "completed"].includes(recoveryTrigger.status)) throw new Error(`graph_scheduler_recovery_trigger_not_terminal_or_failed_safe:${recoveryTrigger.status}`);
+    if (recoveryTrigger && !["failed_safe", "completed", "ambiguous"].includes(recoveryTrigger.status)) throw new Error(`graph_scheduler_recovery_trigger_not_terminal_or_failed_safe:${recoveryTrigger.status}`);
     let slot: NaturalSlotResolution | { slotId: string; scheduledFor: string };
     if (recoveryTrigger) {
       slot = { slotId: recoveryTrigger.slotId, scheduledFor: recoveryTrigger.scheduledFor };
@@ -573,6 +632,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
       ? { trigger: recoveryTrigger, created: false }
       : store.reserveTrigger(args.migrationId, slot.slotId, slot.scheduledFor, `graph-scheduler:${args.migrationId}`);
     triggerId = reservation.trigger.triggerId;
+    const recoveryEligibleAmbiguousTrigger = Boolean(args.recoveryTriggerId && reservation.trigger.status === "ambiguous");
     if (!reservation.created) {
       if (reservation.trigger.status === "completed") {
         runId = reservation.trigger.graphRunId;
@@ -586,7 +646,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
           attempts: args.completionPollAttempts ?? 3,
           intervalMs: args.completionPollIntervalMs ?? 250,
         });
-        const effects = (sealed.detail.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+        const effects = verifiedEffectsFrom(sealed.detail);
         const effect = effects[0];
         const terminalReceipt = [...(sealed.detail.childRunReceipts ?? [])].reverse().find((item: any) => item.status === "succeeded");
         const terminalOutcome = typeof terminalReceipt?.outcome === "string" ? terminalReceipt.outcome : "completed";
@@ -621,7 +681,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
           childReceiptChainValid: sealed.detail.childRunReceiptChainValid === true,
         };
       }
-      if (["reserved", "preparing", "executing", "ambiguous"].includes(reservation.trigger.status)) {
+      if (["reserved", "preparing", "executing"].includes(reservation.trigger.status) || (reservation.trigger.status === "ambiguous" && !recoveryEligibleAmbiguousTrigger)) {
         runId = reservation.trigger.graphRunId;
         if (!runId) return { outcome: "concurrent_or_ambiguous_trigger_suppressed", trigger: reservation.trigger, providerWrites: 0 };
         executionAcceptance = {
@@ -642,7 +702,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
           attempts: args.completionPollAttempts ?? GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS,
           intervalMs: args.completionPollIntervalMs ?? GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS,
         });
-        const effects = (sealed.detail?.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+        const effects = verifiedEffectsFrom(sealed.detail);
         if (sealed.contract.status === "transient") {
           return {
             outcome: "accepted_pending",
@@ -748,15 +808,14 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
       store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail.approvals?.[0]?.approvalId });
     } else detail = await request(`/api/graphs/runs/${runId}`);
 
-    if (reservation.trigger.status === "failed_safe") {
-      const unsafeEffects = (detail?.externalEffects ?? []).filter((item: any) => item.state !== "not_requested" && item.state !== "confirmed_absent");
-      if (unsafeEffects.length > 0 || detail?.liveCapability?.status === "consumed") {
+    if (reservation.trigger.status === "failed_safe" || recoveryEligibleAmbiguousTrigger) {
+      if (hasUnsafeRecoveryState(detail)) {
         throw new Error("graph_scheduler_failed_safe_recovery_requires_zero_effects");
       }
       if (!detail?.run || detail.run.status === "failed" || detail.run.status === "cancelled") {
         const recovered = await request("/api/graphs/runs/accepted", { method: "POST", body: JSON.stringify({
           graphId: migration.graphId, version: migration.graphVersion, objective: `Graph-owned scheduled workflow recovery ${slot.slotId}`,
-          correlationId: `${triggerId}:attempt:${reservation.trigger.attemptCount + 1}`, input: resolveInputTemplate(portfolio.input, slot), authority: portfolio.authority,
+          correlationId: `${triggerId}:attempt:${reservation.trigger.attemptCount + 1}`, input: resolveRecoveryInputTemplate(portfolio.input, slot), authority: portfolio.authority,
         }) });
         runId = String(recovered.run.runId);
         executionAcceptance = {
@@ -766,7 +825,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
           acceptedAt: String(recovered.acceptance?.acceptedAt ?? new Date().toISOString()),
           durable: true,
         };
-        executionNeedsDispatch = false;
+        executionNeedsDispatch = true;
         detail = await request(`/api/graphs/runs/${runId}`);
         store.updateTrigger(triggerId, "preparing", `graph-scheduler:${args.migrationId}`, { graphRunId: runId });
       }
@@ -809,7 +868,9 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
       await request(`/api/graphs/runs/${runId}/resume`, { method: "POST" });
       resumed = true;
     }
-    if (resumed || executionNeedsDispatch) await request(`/api/graphs/runs/${runId}/execute-accepted`, { method: "POST" });
+    if (!["completed", "failed", "cancelled"].includes(String(detail.run?.status)) && (resumed || executionNeedsDispatch)) {
+      await request(`/api/graphs/runs/${runId}/execute-accepted`, { method: "POST" });
+    }
     const sealed = await waitForSchedulerCompletionContract({
       request,
       runId: runId!,
@@ -821,7 +882,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
     });
     detail = sealed.detail;
     const completionContract = sealed.contract;
-    const effects = (detail.externalEffects ?? []).filter((item: any) => item.state === "effect_verified");
+    const effects = verifiedEffectsFrom(detail);
     if (completionContract.status === "transient") {
       return {
         outcome: "accepted_pending",
@@ -925,9 +986,7 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
           } catch { /* an unobserved start remains fail-closed */ }
         }
         const detail = runId ? await request(`/api/graphs/runs/${runId}`) : null;
-        const ambiguous = Boolean(runId)
-          || detail?.liveCapability?.status === "consumed"
-          || detail?.externalEffects?.some((item: any) => ["request_sent", "provider_accepted", "ambiguous"].includes(item.state));
+        const ambiguous = detail ? hasUnsafeRecoveryState(detail) : Boolean(runId);
         store.updateTrigger(triggerId, ambiguous ? "ambiguous" : "failed_safe", `graph-scheduler:${args.migrationId}`, { graphRunId: runId, approvalId: detail?.approvals?.find((item: any) => item.status === "granted")?.approvalId, capabilityId: detail?.liveCapability?.capabilityId, failureReason: message });
       } catch { /* primary failure remains authoritative */ }
     }

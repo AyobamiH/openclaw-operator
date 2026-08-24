@@ -11,6 +11,7 @@ import {
   buildStartupDriftRepairPayload,
   stageDriftRepairPaths,
 } from "./doc-repair-coalescing.js";
+import { createDocChangeIngress } from "./doc-change-ingress.js";
 import {
   appendRelationshipObservationRecord,
   appendWorkflowEventRecord,
@@ -102,6 +103,7 @@ import {
   assertApprovalIfRequired,
   decideApproval,
   listPendingApprovals,
+  operatorApprovalDecisionDigest,
 } from "./approvalGate.js";
 import { buildOpenApiSpec } from "./openapi.js";
 import express from "express";
@@ -10896,10 +10898,9 @@ async function bootstrap() {
 
     for (const indexer of indexers) {
       indexer.watch((doc) => {
-        queue.enqueue("doc-change", {
+        docChangeIngress.push({
           path: doc.path,
           lastModified: doc.lastModified,
-          idempotencyKey: `doc-change:${doc.path}:${doc.lastModified}`,
         });
       });
     }
@@ -11210,6 +11211,11 @@ async function bootstrap() {
   };
 
   const queue = new TaskQueue();
+  const docChangeIngress = createDocChangeIngress({
+    enqueue: (payload) => {
+      queue.enqueue("doc-change", payload);
+    },
+  });
   queue.setAdmissionHandler((task) => {
     stageDriftRepairPaths(state, task);
     const admission = admitTaskExecution(state, task, {
@@ -13953,6 +13959,7 @@ async function bootstrap() {
 
         let replayTaskId: string | null = null;
         if (decision === "approved") {
+          const decisionDigest = operatorApprovalDecisionDigest(approval);
           const {
             idempotencyKey: _originalIdempotencyKey,
             ...approvedPayload
@@ -13961,6 +13968,8 @@ async function bootstrap() {
             ...approvedPayload,
             idempotencyKey: `approval-replay:${approval.taskId}`,
             approvedFromTaskId: approval.taskId,
+            approvalDecisionId: `approval-decision:${decisionDigest}`,
+            approvalDecisionDigest: decisionDigest,
             __actor: req.auth?.actor ?? actor,
             __role: req.auth?.role ?? "operator",
             __requestId: req.auth?.requestId ?? null,

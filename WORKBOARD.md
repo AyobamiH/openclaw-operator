@@ -13,7 +13,7 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-08-09`
+Last updated: `2026-08-20`
 
 ## Current Headline
 
@@ -33,6 +33,22 @@ The public repo direction is now explicit.
   direction
 
 ## Recently Finished
+
+0. The preserved 2026-08-16 incident-recovery preflight is activated.
+   - exact tested deltas from operator `82b034b` / watermark `08ed790` and workspace `a799cd7` are live without overwriting unrelated dirty work
+   - orchestrator and Gateway were the only restarted module owners; both are healthy with zero restart loops
+   - Graph blocked-terminal and live-health truth, Threads policy no-ops, Telegram delivery truth, ToolGate checkout-root confinement and the Instagram early ambiguity guard are active
+   - the four exact Meta bindings are active through `2026-08-28T23:59:00.000Z` with no broadened owner, prefix, account or action
+   - one authorized read-only Instagram reconciliation attempt could not obtain provider truth, caused zero provider writes and was not retried; the effect remains fail-closed as the only scoped external blocker
+   - final disposition is `MISSION_COMPLETE_WITH_SCOPED_INSTAGRAM_BLOCKER`; rollback archives and the machine-readable activation result are preserved under `state/incidents`
+
+0. The natural 2026-08-14 13:00 Instagram Image failure exposed and repaired a readiness resource-containment regression.
+   - the run failed closed before upload with zero provider writes and zero Browser Relay calls because its pre-upload status child timed out before reaching Gateway
+   - the shared readiness service had restored two redundant heavyweight account/capability clients, contradicting the already-proven three-client Instagram contract
+   - Instagram publication readiness again derives account/capability checks from the authenticated status snapshot and launches only status, owned-feed and activity-ledger clients
+   - focused host tests pass `71/71`, focused Graph/scheduler tests pass `80/80`, and orchestrator typecheck/build pass
+   - `orchestrator.service` loaded the repair as PID `12207`; service and persistence health are healthy
+   - no publication was forced; natural Image and Reel acceptance remain pending from the saved evidence boundaries
 
 0. Full pre-Graph business-loop status is now stage-separated and dependency-addressable.
    - source commit `8eefb17777eca9bb98a409668cf1e3c37a7da3dd` is pushed and loaded through immutable runtime `20260808-full-pregraph-v3`; PID `239207` has remained active since `2026-08-08 20:31:36 BST` without another restart

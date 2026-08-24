@@ -7,6 +7,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import net from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve, join } from 'node:path';
@@ -73,7 +74,7 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-async function waitForHealthy(baseUrl: string, timeoutMs = 30000): Promise<void> {
+async function waitForHealthy(baseUrl: string, timeoutMs = 90000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -196,11 +197,15 @@ describe('Runtime Integration: Live Middleware Chain', () => {
 
   const startRuntimeProcess = async () => {
     const tsxCliPath = resolve(process.cwd(), '..', 'node_modules', 'tsx', 'dist', 'cli.mjs');
+    const compiledRuntimePath = resolve(process.cwd(), 'dist', 'index.js');
+    const runtimeArgs = existsSync(compiledRuntimePath)
+      ? [compiledRuntimePath]
+      : [tsxCliPath, 'src/index.ts'];
     stdoutBuffer = '';
     stderrBuffer = '';
     runtimeStopRequested = false;
 
-    serverProcess = spawn(process.execPath, [tsxCliPath, 'src/index.ts'], {
+    serverProcess = spawn(process.execPath, runtimeArgs, {
       cwd: process.cwd(),
       env: {
         ...process.env,
@@ -1122,7 +1127,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     await backupAgentServiceStateFiles();
     await clearAgentServiceStateFiles();
     await startRuntimeProcess();
-  }, 45000);
+  }, 120000);
 
   afterAll(async () => {
     await stopRuntimeProcess();

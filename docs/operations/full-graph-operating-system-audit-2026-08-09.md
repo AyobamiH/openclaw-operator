@@ -9,6 +9,15 @@ Audit snapshot: `2026-08-09T12:09:47+01:00` (`Europe/London`)
 
 Classification: `ARCHITECTURE_RECONSTRUCTED_WITH_RUNTIME_BLOCKERS`
 
+Post-audit runtime addendum (`2026-08-09T17:08:50+01:00`): the Threads
+reporting repair is loaded, and the exact 8 August Instagram upload-only effect
+has been reconciled through the canonical API to `confirmed_absent` with zero
+provider writes. The account ambiguity guard cleared, and the unforced natural
+17:00 Reel slot completed and was independently verified by official Meta
+readback. The audit snapshot below remains unchanged as historical evidence;
+the addendum is proven in
+`docs/operations/instagram-ambiguous-effect-reconciliation-and-natural-slot-2026-08-09.md`.
+
 This is the authoritative answer to what autonomous work the inspected estate
 should perform, who owns it, how it proves completion, and what is currently
 blocked. It is not a claim that all configured work is operational.
@@ -442,37 +451,130 @@ authority.
 | Fact | Evidence | Status |
 |---|---|---|
 | Source baseline before repair | local/origin `78733d7` | equal before repair |
-| Repair source | local commit `a410276` | `SOURCE_IMPLEMENTED`, `COMMITTED` |
-| Remote | `origin/main=78733d7` at snapshot | `NOT_PUSHED` |
-| Running service | PID `239207`, active since `2026-08-08 20:31:36 BST`, `NRestarts=0` | healthy |
-| Runtime source | immutable runtime provenance based on earlier `8eefb17`; service predates `a410276` | repair `NOT_RUNTIME_LOADED` |
+| Repair source | commit `a410276`; scheduler and adapter worktree blobs exactly match target | `SOURCE_IMPLEMENTED`, `COMMITTED` |
+| Remote | exact push advanced `origin/main` from `78733d7` to `a410276` | `PUSHED` |
+| Running service | PID changed `239207` -> `391978`; new activation `2026-08-09 16:06:40 BST`, active/running | healthy |
+| Runtime source | canonical process cwd under `projects/openclaw-operator/orchestrator`; local audit-only successor `80ec317` contains byte-identical `a410276` runtime blobs | repair `RUNTIME_LOADED`, `RUNTIME_VERIFIED` |
 | Runtime health | `/health` HTTP success; persistence healthy file state + Redis coordination | healthy control plane |
-| Graph registry | ten production definitions loaded | loaded baseline |
-| Graph scheduler | eight enabled jobs; next-trigger fields populated | scheduler healthy, workflow results mixed |
+| Graph registry | post-restart journal loaded ten production definitions; recovery resumed `0`, blocked `0` | loaded after repair |
+| Graph scheduler | post-restart read shows eight enabled jobs with next-trigger fields populated | schedules loaded; historical workflow results remain mixed |
 | Official connector | connector `0.10.3`, Instagram/Threads authenticated, represented accounts verified, Browser Relay unavailable | read capability healthy |
-| External effects during audit | none | zero writes, zero Browser Relay calls |
-| Live state reconciliation | not performed | approval required |
+| Duplicate-report replay | exact regression `1/1`; formatted current write `0`, provider post `none`, historical effect separate | corrected zero-write semantics verified |
+| Configuration adjacency | resolved pre/post snapshot hash `47a3c17fb18efc8561d8c8bfd6fc20353996c4a98f44c862a5f18765de77f835` | unchanged |
+| External effects during audit/deployment | none | zero writes, zero Browser Relay calls |
+| Instagram live-state reconciliation | exact effect reconciled to `confirmed_absent`; natural 17:00 slot verified | zero writes during reconciliation; one pre-authorized natural publication |
 
 ## Required next safe sequence
 
-1. Review and approve service load of `a410276` plus deterministic repair of the
-   one historical Instagram effect as `confirmed_absent` using its canonical
-   worker evidence.
-2. After load, prove PID/commit/definition hashes, rerun focused tests, verify
-   the effect state, and observe the next natural Instagram slot. Do not force a
-   provider write.
-3. Decide campaign shadow-history semantics, implement a deterministic
+1. Observe the next natural Threads duplicate-suppressed slot for corrected
+   scheduler notification proof. Do not force a provider write.
+2. Decide campaign shadow-history semantics, implement a deterministic
    portfolio rotation replay, and require each active campaign to produce an
    eligible content spec before describing it as operational.
-4. Add in-flight coalescing to the GitHub monitor.
-5. Correct v3/v4 scheduler migration truth and v4 cron description.
-6. Decide whether host sync/push crons should migrate, remain explicitly
+3. Add in-flight coalescing to the GitHub monitor.
+4. Correct v3/v4 scheduler migration truth and v4 cron description.
+5. Decide whether host sync/push crons should migrate, remain explicitly
    exempt, or be disabled. Any change requires explicit scheduler/external
    authority.
-7. Add evidence-bearing CRM/website connectors before claiming campaign
+6. Add evidence-bearing CRM/website connectors before claiming campaign
    conversion or attribution outcomes.
 
-Until steps 1–2 complete, Instagram remains safely blocked and the loaded
-Threads reporter remains capable of the historical/current confusion. Until
-step 3 completes, “13 active campaigns” must always be qualified as “13
+The Threads historical/current reporting repair is pushed and runtime-verified.
+Instagram's historical ambiguity is reconciled and its next natural slot is
+provider-verified; no manual or forced publication was used.
+Until step 2 completes, “13 active campaigns” must always be qualified as “13
 registered; 1 shadow-operational.”
+
+Deployment evidence:
+`docs/operations/threads-duplicate-reporting-repair-deployment-2026-08-09.md`.
+
+Instagram reconciliation and recovery evidence:
+`docs/operations/instagram-ambiguous-effect-reconciliation-and-natural-slot-2026-08-09.md`.
+
+## Post-audit remediation update: Campaign Factory and runtime lifecycle
+
+Campaign Factory starvation was repaired and deployed in remote commit
+`9de0aff48551810d4487cd1f42c3f3e1c91ff469`. Its separate shadow-portfolio
+history rotates all thirteen eligible campaigns without converting shadow
+decisions into provider-publication evidence. A 60-day/300-slot deterministic
+replay reached all thirteen by day five with no cap, cooldown, eligibility or
+primary-floor violations and no provider writes. Runtime PID `426880` loads
+source matching the remote repair; a canonical read-only next-day projection
+selects five distinct campaigns.
+
+Two runtime lifecycle findings belong in this audit's remediation ledger:
+
+1. `PROCESS_LIFECYCLE_LEAK_SUSPECTED`: several orphaned `openclaw-hooks`
+   workers existed outside `orchestrator.service` for more than twenty minutes,
+   with sustained CPU/memory pressure. They later disappeared without the
+   approved gateway restart being dispatched; gateway PID/start were unchanged.
+   The symptom recurred within the incident, but exact ownership/root cause is
+   not yet proven. Add bounded hook-worker ownership, parent/lease tracking and
+   orphan cleanup verification before calling this resolved.
+2. `GRAPH_RECOVERY_CONCURRENCY_DEFECT_PROVED`: three stale
+   `governed-task-execution@1.0.0` runs consume three of four concurrency slots.
+   Startup treats `graph_definition_concurrency_exhausted` as an unhandled
+   exception, causing three automatic orchestrator restarts. Recovery continues
+   to report one failed and five unchanged runs, and the natural 19:15 Meta
+   monitor deferred for concurrency. Fix startup classification/coalescing and
+   reconcile only the stale governed-task runs under explicit state-mutation
+   authority.
+
+Campaign Factory is therefore runtime-verified, but the autonomous Graph estate
+remains degraded. Provider writes during verification were `0`; no gateway
+restart, second manual orchestrator restart, forced campaign run, task mutation,
+schedule mutation or provider-authority change occurred.
+
+## Post-audit remediation update: Graph recovery and definition concurrency
+
+The proven Graph recovery/concurrency defect is repaired in remote commits
+`8b73ab6669771b74158a0164eff359c9da60430f` and
+`d8566ed5488b9cf97180533542ffdde8761548d6`.
+
+The three stale `governed-task-execution@1.0.0` parents were independently
+proven dead and effect-free, then terminalized only through the new run-specific
+canonical recovery API. Their orphan child receipts are closed, their event
+chains validate, and pre-existing non-target Graph history is unchanged.
+
+Exactly one orchestrator restart loaded source byte-identical to final remote
+`d8566ed`. PID changed `426880` to `445998`; port `3312`, health, persistence,
+ten definitions and scheduler migrations recovered with no automatic restart.
+The natural 20:15 Meta monitor then completed through a new Graph run instead of
+deferring for concurrency. It truthfully reported `missed / zero_write`, with
+provider writes `0` and a passed verifier.
+
+`GRAPH_RECOVERY_CONCURRENCY_DEFECT_PROVED` is therefore resolved. The earlier
+`PROCESS_LIFECYCLE_LEAK_SUSPECTED` hook-worker symptom remains a separate audit
+item: it belongs in remediation, but there is no evidence that it shares the
+Graph database/attempt/receipt root cause. No hook worker or gateway lifecycle
+mutation occurred during this repair.
+
+Evidence:
+`docs/operations/graph-recovery-concurrency-exhaustion-repair-2026-08-09.md`.
+
+## Post-audit remediation update: GitHub monitor single-flight
+
+The GitHub monitor `DUPLICATE_EXECUTION_PATH` is repaired in remote commit
+`23382bf`. Canonical history proved the failure mechanism: bucket `5954316`
+remained genuinely active for 350.5 seconds, while buckets `5954317` through
+`5954320` were admitted as distinct equivalent runs and accumulated into the
+stale concurrency incident.
+
+Monitor ingress now coalesces only onto an equivalent Graph run with a running,
+unexpired current-node attempt. Exact ingress idempotency remains authoritative;
+failed, terminal, timed-out, lease-expired, process-death-stale, and
+other-governed-lane runs cannot suppress the next tick. This reuses the Graph
+attempt/lease recovery model rather than adding another lifecycle mechanism.
+
+Exactly one restart loaded source byte-identical to `23382bf`; PID changed
+`445998` to `473485`, with no automatic restart. Startup plus three natural
+five-minute ticks completed in 1.4–1.6 seconds. Observed overlapping pairs,
+non-terminal monitor backlog, deferrals, Graph external effects, provider
+writes, and Browser Relay calls were all `0`.
+
+The overlap is proven to have contributed to Graph/queue pressure. It is not
+proven to have caused the separate orphaned `openclaw-hooks` processes, whose
+classification remains `PROCESS_LIFECYCLE_LEAK_SUSPECTED`.
+
+Evidence:
+`docs/operations/github-workflow-monitor-single-flight-repair-2026-08-09.md`.

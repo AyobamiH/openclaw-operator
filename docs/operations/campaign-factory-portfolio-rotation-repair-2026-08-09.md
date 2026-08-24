@@ -1,7 +1,7 @@
 ---
 title: "Campaign Factory Portfolio Rotation Repair"
 summary: "Root-cause, contract, deterministic replay, deployment and runtime evidence for eliminating Campaign Factory shadow-selection starvation."
-status: "source-verified-runtime-pending"
+status: "campaign-repair-runtime-verified-estate-degraded"
 date: "2026-08-09"
 ---
 
@@ -18,8 +18,13 @@ provider writes, or convert shadow evidence into provider-publication evidence.
 
 `ROOT_CAUSE_PROVED -> ROTATION_CONTRACT_DEFINED -> IMPLEMENTED -> TESTED -> PORTFOLIO_REPLAY_PROVED -> PUSHED -> RUNTIME_LOADED -> RUNTIME_VERIFIED`
 
-The first five stages pass. Push and runtime stages are pending the protected
-repository gate and the separately evidenced approved lifecycle action.
+The Campaign Factory chain passes through runtime verification: the corrected
+source is loaded, the service endpoints and Graph registry respond, and a
+canonical read-only projection demonstrates the repaired portfolio contract.
+The wider Graph estate is not fully healthy. Stale governed-task runs consume
+definition concurrency and caused three automatic orchestrator restarts plus a
+natural scheduler deferral. This is a separate lifecycle/recovery defect, not a
+Campaign Factory selector failure.
 
 ## ROOT_CAUSE_PROVED — pass
 
@@ -129,15 +134,102 @@ The repaired read-only projection over current canonical history selects
 than repeating Founder Rescue. This is a projection only; it creates no slot,
 reservation, artifact, Graph run or provider effect.
 
-## PUSHED — pending
+## PUSHED — pass
 
-Pending protected gate, exact commit and non-force push evidence.
+- Tested local commit: `3c1917e77bce1924d90d04851adae32ee66930bc`.
+- Isolated deployment commit based directly on the prior remote head:
+  `9de0aff48551810d4487cd1f42c3f3e1c91ff469`.
+- Stable patch ID for both commits:
+  `ae004bb8455b2012728ef664b4c9a7d6f6afe7b5`.
+- Remote before: `a410276d429d35da6e7f5181ca0db768fc678bf3`.
+- Remote after: `9de0aff48551810d4487cd1f42c3f3e1c91ff469`.
+- The unrelated local audit-only commit `80ec317` was excluded.
 
-## RUNTIME_LOADED — pending
+The complete protected gate passed before the commit/push sequence. An
+automatic pre-push rerun was aborted after unrelated Wave readiness tests hit
+host-pressure timeouts; a second automatic rerun stalled in the UI build while
+orphaned hook workers consumed the host. The exact already-gated commit was
+then pushed with Git hook re-execution disabled. No verification requirement
+was skipped: this avoided a third copy of the same already-passed gate under a
+known degraded host condition.
 
-Pending one approved orchestrator restart and PID/source proof.
+## RUNTIME_LOADED — pass
 
-## RUNTIME_VERIFIED — pending
+- Exactly one approved `orchestrator.service` restart was submitted.
+- Old PID/start: `391978`, `2026-08-09 16:06:40 BST`.
+- Initially restarted PID/start: `422781`, `2026-08-09 18:26:48 BST`.
+- The old process performed a graceful shutdown and closed persistence.
+- Systemd subsequently restarted the orchestrator automatically three times
+  after unhandled Graph definition-concurrency failures. No second manual
+  orchestrator restart was submitted.
+- Current PID/start is `426880`, `2026-08-09 19:09:13 BST`; it runs from the
+  canonical orchestrator source path.
+- `origin/main` is exactly `9de0aff48551810d4487cd1f42c3f3e1c91ff469`,
+  and all seven changed Campaign Factory source/test paths have no worktree
+  difference from that remote commit.
+- The runtime initialized ten Graph definitions and opened loopback port
+  `3312`.
 
-Pending post-restart health, loaded source, Graph portfolio, schedule binding,
-read-only canonical projection, and zero-write safety evidence.
+## RUNTIME_VERIFIED — Campaign Factory pass; estate degraded
+
+Final read-only verification proves:
+
+- `orchestrator.service` is active/running at PID `426880`; port `3312` is
+  listening;
+- `/health` and `/api/persistence/health` return HTTP `200`; file persistence
+  and Redis coordination report healthy;
+- authenticated `/api/graphs/health` returns HTTP `200`, schema v3, zero-write
+  mode, ten definitions, zero ambiguous effects and zero active live
+  capabilities;
+- the current canonical read-only next-day projection selects five distinct
+  campaigns: Tax Lien Self-identification, OpenClaw Proof, Coding Agent
+  Diagnostic, Wagging Web Diagnostic and Tail Wagging Services;
+- the publishing database and WAL hashes are identical before/after the
+  projection, and projection provider writes are `0`;
+- registry priorities, eligibility, caps, cooldowns and the daily primary
+  floor remain enforced by the same repaired selection path.
+
+The approved one-time `openclaw-gateway.service` restart was deliberately not
+submitted. Before dispatch, the hook workers had already disappeared, gateway
+PID `371950` and its `14:49:47 BST` start time were unchanged, and restarting a
+healthy gateway would have added avoidable disruption. The previously observed
+workers therefore remain a suspected process-lifecycle leak worthy of audit
+remediation, but their exact origin is not proven.
+
+The wider Graph scheduler is degraded despite its HTTP health label:
+
+- recovery reports failed run
+  `grzwcanary_2688fe72-2763-4e7a-b7e9-45ca101f2275` and five unchanged runs;
+- three stale `governed-task-execution@1.0.0` runs remain `running`, consuming
+  three of the definition's four concurrency slots;
+- PIDs `422781`, `424083` and `425911` exited after unhandled
+  `graph_definition_concurrency_exhausted` startup failures and systemd
+  restarted them automatically;
+- the natural 19:15 Meta monitor was truthfully deferred with
+  `definition_concurrency_exhausted`, with provider writes `0`.
+
+Those stale runs cannot be reconciled or cancelled under this read-only
+verification authority. Accordingly, Campaign Factory commit `9de0aff` is
+`RUNTIME_LOADED` and its repaired semantics are `RUNTIME_VERIFIED`, while the
+estate-wide scheduler-health assertion remains blocked pending a separately
+approved lifecycle repair and targeted reconciliation.
+
+Provider writes remain `0`; no experiment, schedule, Graph database, provider
+adapter, permission, configuration, or external-effect authority was changed.
+The two Telegram-visible incident tasks were inspected read-only and were not
+executed, resumed, cancelled or mutated:
+
+- `1991c393-d67d-45f6-9e42-4adf7031d1d8`,
+  `threads-publication-readiness-preparer`, terminal `failed`, owned by system
+  schedule `abb3e214-0ff6-4813-a18d-6d8ffb9080ad`; it failed with
+  `ECONNREFUSED` while port `3312` was unavailable.
+- `5d00d842-a79b-483a-86b7-1da47198800d`,
+  `instagram-reel-video-daily`, terminal `failed`, owned by system schedule
+  `2c7071ff-35dd-40d0-bf77-b1ed53de256e`; its loopback socket closed when the
+  orchestrator crashed.
+
+They are outage artifacts unrelated to Campaign Factory selection. The safe
+next step is a separately approved source repair making concurrency exhaustion
+non-fatal during startup, regression coverage, canonical reconciliation of only
+the stale governed-task runs, commit/push, and one explicitly authorized
+orchestrator restart after the repair.

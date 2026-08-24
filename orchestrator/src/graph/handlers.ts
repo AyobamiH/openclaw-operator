@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { resolve, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
 import type { NodeExecutionContext, NodeExecutionResult, NodeExecutor } from "./types.js";
 import { failure } from "./failures.js";
 import { sha256 } from "./reducer.js";
 import { NodeExecutorRegistry } from "./engine.js";
+import { ExecutionReceiptStore, executeControlledCommand } from "../executionReceipts.js";
+import { loadBaselines } from "../worktreeIntegrity.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -142,8 +144,19 @@ export function createCommandEvidenceLegacyHandler(args: {
   if (cwd !== allowedRoot && !cwd.startsWith(`${allowedRoot}${sep}`)) throw new Error("legacy_command_cwd_outside_allowed_root");
   return async (context): Promise<NodeExecutionResult> => {
     try {
-      const result = await execFileAsync(args.executable, args.argv, { cwd, timeout: args.timeoutMs ?? context.node.timeoutMs, maxBuffer: 1024 * 1024, signal: context.signal });
-      const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.slice(0, 100_000);
+      const stateDir = join(process.env.OPENCLAW_OPERATOR_STATE_DIR ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator", "worktree-integrity");
+      const result = await executeControlledCommand({
+        executable: args.executable,
+        argv: args.argv,
+        cwd,
+        timeoutMs: args.timeoutMs ?? context.node.timeoutMs,
+        receiptStore: new ExecutionReceiptStore(stateDir),
+        context: { agent: "graph.legacy.command", sessionId: context.run.correlationId, taskId: context.node.id, runId: context.run.runId, worktreePath: cwd },
+        destructive: true,
+        guard: { protectedPaths: loadBaselines(stateDir).map((baseline) => ({ repoRoot: baseline.repoRoot, worktreePath: baseline.worktreePath, registered: true })) },
+      });
+      const output = `${result.stdout}${result.stderr}`.slice(0, 100_000);
+      if (result.exitStatus !== 0) throw new Error(`controlled_command_exit_${result.exitStatus}:${output.slice(-4_000)}`);
       return { outcome: "succeeded", output: { exitCode: 0, outputHash: sha256(output) }, evidence: [{ kind: args.evidenceKind, uri: `graph://${context.run.runId}/${context.node.id}/command`, sha256: sha256(output), summary: "Allowlisted legacy command completed successfully", checker: "legacy.command" }], progressFingerprint: sha256(output) };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

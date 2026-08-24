@@ -81,7 +81,7 @@ function expectedSocialCapabilityBindings(args: { run: GraphRunState; approval: 
     graphVersion: args.run.graphVersion,
     graphDefinitionHash: definitionHash,
     graphRunId: args.run.runId,
-    claimId: `social:${social.outboxId}`,
+    claimId: `social:${social.outboxId}:${args.run.runId}`,
     approvalId: args.approval.approvalId,
     provider,
     accountId: accountKey,
