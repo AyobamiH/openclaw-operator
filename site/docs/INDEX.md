@@ -63,6 +63,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/public-release.md](./operations/public-release.md) | sanitized public mirror workflow |
 | [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md) | Orchestrator-first Sprint To Completion subordinate execution tracker for the root anchor |
 | [operations/deployment.md](./operations/deployment.md) | production operations checklist |
+| [operations/live-runtime-branch-first-development.md](./operations/live-runtime-branch-first-development.md) | mandatory isolated worktree, validation, exact activation, and rollback workflow for production-loaded source |
 | [operations/backup-recovery.md](./operations/backup-recovery.md) | recovery guidance |
 | [operations/operator-sqlite-cutover-2026-07-16.md](./operations/operator-sqlite-cutover-2026-07-16.md) | normalized SQLite host cutover evidence and rollback window |
 | [operations/startup-reconciliation-audit-2026-07-16.md](./operations/startup-reconciliation-audit-2026-07-16.md) | read-only integrity audit and no-replay decision for the 732 startup-reconciled executions |
@@ -91,6 +92,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/campaign-feedback-loop-2026-08-11.md](./operations/campaign-feedback-loop-2026-08-11.md) | Graph publication, provider measurement, exact conversation attribution, reconciliation and truthful reporting contract |
 | [operations/document-drift-repair-single-flight-2026-08-11.md](./operations/document-drift-repair-single-flight-2026-08-11.md) | Single-flight document-repair admission, coalesced path recovery, immutable terminal truth and retention cleanup evidence |
 | [operations/graph-native-migration-registry.md](./operations/graph-native-migration-registry.md) | active workflow classification, graph targets, risks and next migration steps |
+| [operations/worktree-integrity-and-execution-attribution.md](./operations/worktree-integrity-and-execution-attribution.md) | deterministic worktree damage detection, controlled execution receipts, destructive guards, and bounded attribution |
 
 ## Guides
 
