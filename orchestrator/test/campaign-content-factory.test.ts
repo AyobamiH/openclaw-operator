@@ -34,7 +34,7 @@ describe("campaigns content factory", () => {
     const first = await auditCampaignContentFactory(input);
     const second = await auditCampaignContentFactory(input);
     expect(first.verdict).toBe("partial");
-    expect(first.configuredMode).toBe("shadow");
+    expect(first.configuredMode).toBe("live");
     expect(first.activation.providerWrites).toBe(0);
     expect(first.activation.liveActivationReady).toBe(false);
     expect(first.totals).toEqual({ opportunities: 5, shadowReady: 2, mediaBlocked: 3, deliveryBlocked: 0 });

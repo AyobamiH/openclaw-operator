@@ -11,6 +11,7 @@ import { failure } from "./failures.js";
 import { sha256 } from "./reducer.js";
 import type { JsonValue, NodeExecutionContext, NodeExecutionResult } from "./types.js";
 import type { GraphStore } from "./store.js";
+import { assertSharedImageLayoutProof } from "../publishing/creative-layout-proof.js";
 import { prepareProductionPublishingShadowDecision, ShadowDecisionEnvelopeSchema } from "../publishing/shadow-equivalence.js";
 import {
   assertEnvelopeUnchanged,
@@ -284,10 +285,11 @@ async function socialPreparation(entry: Record<string, any>, input: { shadowMode
     creativeFingerprint = typeof entry?.selection?.creativeFingerprint === "string" ? entry.selection.creativeFingerprint : null;
     layoutReceipt = entry?.rendererReceipt && typeof entry.rendererReceipt === "object" ? structuredClone(entry.rendererReceipt) : null;
     if (!mediaPath || !mediaHash || !topicTag || !creativeFingerprint || !layoutReceipt) throw new Error("threads_graph_image_proof_binding_incomplete");
-    if (layoutReceipt.checks && typeof layoutReceipt.checks === "object") {
-      const checks = layoutReceipt.checks as Record<string, unknown>;
-      if (checks.fullDecode !== true || checks.textFitAndSafeMargins !== true || checks.contrast !== true) throw new Error("threads_graph_image_layout_receipt_invalid");
-    } else throw new Error("threads_graph_image_layout_receipt_missing_checks");
+    assertSharedImageLayoutProof({
+      receipt: layoutReceipt,
+      expectedMediaSha256: mediaHash,
+      label: "threads_graph_image",
+    });
     mediaBytesHash = await fileSha256(mediaPath);
     if (mediaBytesHash !== mediaHash) throw new Error("threads_graph_image_bytes_changed_before_approval");
     layoutReceiptHash = sha256(layoutReceipt);

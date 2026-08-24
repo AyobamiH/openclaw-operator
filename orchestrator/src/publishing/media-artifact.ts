@@ -5,6 +5,11 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from "node:pat
 import { pathToFileURL } from "node:url";
 
 import { sha256, stableId } from "./canonical.js";
+import {
+  assertNoDuplicateVisibleCopy,
+  assertSharedImageLayoutProof,
+  normalizeVisibleCopy,
+} from "./creative-layout-proof.js";
 import type { ContentSpec, PublishingRegistryBundle } from "./types.js";
 
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -148,7 +153,15 @@ function requiredNumber(value: unknown, label: string): number {
 
 function requiredChecks(format: CampaignMediaFormat): string[] {
   return format === "image"
-    ? ["hyperframes", "snapshot", "layoutVerification", "fullDecode", "temporaryWorkspaceCleaned"]
+    ? [
+        "hyperframes",
+        "snapshot",
+        "layoutVerification",
+        "fullDecode",
+        "textFitAndSafeMargins",
+        "contrast",
+        "temporaryWorkspaceCleaned",
+      ]
     : [
         "hyperframes",
         "highQualityRender",
@@ -203,6 +216,13 @@ export async function artifactFromLocalRendererReceipt(input: {
   const receiptMediaSha256 = requiredString(media.sha256, "local_renderer_media_sha256");
   if (!SHA256.test(receiptMediaSha256) || observedSha256 !== receiptMediaSha256) {
     throw new Error("local_media_sha256_mismatch");
+  }
+  if (format === "image") {
+    assertSharedImageLayoutProof({
+      receipt,
+      expectedMediaSha256: observedSha256,
+      label: "campaign_image",
+    });
   }
   const receiptBytesCount = requiredNumber(media.bytes, "local_renderer_media_bytes");
   if (receiptBytesCount !== mediaBytes.length) throw new Error("local_media_bytes_mismatch");
@@ -332,6 +352,22 @@ function registryRecord<T extends { id: string }>(records: T[], id: string, labe
   return record;
 }
 
+function distinctDisplayText(
+  value: string | null | undefined,
+  maxLength: number,
+  fallback: string,
+  prior: string[],
+): string {
+  const candidate = displayText(value, maxLength, fallback);
+  const priorSet = new Set(prior.map(normalizeVisibleCopy).filter(Boolean));
+  if (!priorSet.has(normalizeVisibleCopy(candidate))) return candidate;
+  const fallbackCandidate = displayText(fallback, maxLength, fallback);
+  if (priorSet.has(normalizeVisibleCopy(fallbackCandidate))) {
+    throw new Error("campaign_media_distinct_fallback_copy_invalid");
+  }
+  return fallbackCandidate;
+}
+
 export function buildLocalRendererSpec(
   registry: PublishingRegistryBundle,
   contentSpec: ContentSpec,
@@ -343,22 +379,43 @@ export function buildLocalRendererSpec(
   const problem = registryRecord(registry.problemsOutcomes, contentSpec.problemOutcomeIds[0]!, "problem_outcome");
   const slug = `campaign-${contentSpec.id}`.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 72);
   if (contentSpec.format === "image") {
-    return {
+    const kicker = displayText(product.name, 48, "Campaign self-identification");
+    const eyebrow = distinctDisplayText(campaign.name, 64, "A practical self-identification check", [kicker]);
+    const headline = distinctDisplayText(contentSpec.renderedIntent.hook, 96, "Does this situation feel familiar?", [kicker, eyebrow]);
+    const body = distinctDisplayText(contentSpec.renderedIntent.body, 180, "A recurring problem is easier to act on when the signal, friction and next step are made explicit.", [kicker, eyebrow, headline]);
+    const signalDetail = distinctDisplayText(signal.signal, 96, "A recurring situation worth checking.", [kicker, eyebrow, headline, body]);
+    const problemDetail = distinctDisplayText(problem.problem, 96, "The current path creates avoidable friction.", [kicker, eyebrow, headline, body, signalDetail]);
+    const outcomeDetail = distinctDisplayText(problem.outcome, 96, "A clearer next step becomes easier to see.", [kicker, eyebrow, headline, body, signalDetail, problemDetail]);
+    const cta = distinctDisplayText(contentSpec.renderedIntent.cta, 64, "Review the next useful step.", [kicker, eyebrow, headline, body, signalDetail, problemDetail, outcomeDetail]);
+    const footer = distinctDisplayText("Tail Wagging Web Designs", 64, "Campaign content factory", [kicker, eyebrow, headline, body, signalDetail, problemDetail, outcomeDetail, cta]);
+    const spec = {
       schema: "tailwagging-local-image-spec.v1",
       kind: "image",
       slug,
-      kicker: displayText(product.name, 48, "Campaign self-identification"),
-      eyebrow: displayText(campaign.name, 64, "A practical self-identification check"),
-      headline: displayText(contentSpec.renderedIntent.hook, 96, "Does this situation feel familiar?"),
-      body: displayText(contentSpec.renderedIntent.body, 180, "A recurring problem is easier to act on when the signal, friction and next step are made explicit."),
+      kicker,
+      eyebrow,
+      headline,
+      body,
       items: [
-        { label: "Signal", detail: displayText(signal.signal, 96, "A recurring situation worth checking.") },
-        { label: "Problem", detail: displayText(problem.problem, 96, "The current path creates avoidable friction.") },
-        { label: "Outcome", detail: displayText(problem.outcome, 96, "A clearer next step becomes easier to see.") },
+        { label: "Signal", detail: signalDetail },
+        { label: "Problem", detail: problemDetail },
+        { label: "Outcome", detail: outcomeDetail },
       ],
-      cta: displayText(contentSpec.renderedIntent.cta, 64, "Review the next useful step."),
-      footer: displayText(contentSpec.renderedIntent.cta, 64, "Review the next useful step."),
+      cta,
+      footer,
     };
+    assertNoDuplicateVisibleCopy({
+      kicker: spec.kicker,
+      eyebrow: spec.eyebrow,
+      headline: spec.headline,
+      body: spec.body,
+      signal: spec.items[0]?.detail,
+      problem: spec.items[1]?.detail,
+      outcome: spec.items[2]?.detail,
+      cta: spec.cta,
+      footer: spec.footer,
+    }, "campaign_image_spec");
+    return spec;
   }
   return {
     schema: "tailwagging-local-reel-spec.v1",

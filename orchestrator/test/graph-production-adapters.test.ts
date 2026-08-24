@@ -655,6 +655,20 @@ describe("production adapter registry", () => {
       rendererReceipt: {
         renderer: { version: "fixture" },
         checks: { fullDecode: true, textFitAndSafeMargins: true, contrast: true },
+        layoutVerification: {
+          status: "passed",
+          semanticCompleteness: true,
+          boundingBoxesValid: true,
+          finalMediaSha256: mediaHash,
+        },
+        layoutAudit: {
+          valid: true,
+          semanticCompleteness: true,
+          noUnexpectedOverlap: true,
+          compositionBalance: true,
+          textFitAndSafeMargins: true,
+          contrast: true,
+        },
       },
       externalWriteCount: 0,
     };
@@ -703,6 +717,20 @@ describe("production adapter registry", () => {
       rendererReceipt: {
         renderer: { version: "fixture" },
         checks: { fullDecode: true, textFitAndSafeMargins: true, contrast: true },
+        layoutVerification: {
+          status: "passed",
+          semanticCompleteness: true,
+          boundingBoxesValid: true,
+          finalMediaSha256: mediaHash,
+        },
+        layoutAudit: {
+          valid: true,
+          semanticCompleteness: true,
+          noUnexpectedOverlap: true,
+          compositionBalance: true,
+          textFitAndSafeMargins: true,
+          contrast: true,
+        },
       },
       externalWriteCount: 0,
     };

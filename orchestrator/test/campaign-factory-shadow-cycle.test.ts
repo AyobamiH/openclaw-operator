@@ -40,7 +40,7 @@ await writeFile(mediaPath, bytes, { flag: "wx" });
 const sha256 = createHash("sha256").update(bytes).digest("hex");
 const checks = kind === "reel"
   ? { hyperframes: true, highQualityRender: true, audioFinishing: true, fullDecode: true, encodedFrameVisibility: true, textFitAndSafeMargins: true, contrast: true, readingTime: true, temporaryWorkspaceCleaned: true }
-  : { hyperframes: true, snapshot: true, layoutVerification: true, fullDecode: true, temporaryWorkspaceCleaned: true };
+  : { hyperframes: true, snapshot: true, layoutVerification: true, fullDecode: true, textFitAndSafeMargins: true, contrast: true, temporaryWorkspaceCleaned: true };
 await writeFile(join(outputDir, spec.slug + "-local-render-receipt.json"), JSON.stringify({
   schema: "tailwagging-local-media-render-receipt.v1",
   outcome: "success",
@@ -52,8 +52,8 @@ await writeFile(join(outputDir, spec.slug + "-local-render-receipt.json"), JSON.
     : { width: 1080, height: 1350, bytes: bytes.length, sha256 },
   renderer: { name: "HyperFrames", version: "test", outboundHttpBlocked: true },
   checks,
-  layoutVerification: { status: "passed" },
-  layoutAudit: { status: "passed" },
+  layoutVerification: { status: "passed", semanticCompleteness: true, boundingBoxesValid: true, finalMediaSha256: sha256 },
+  layoutAudit: { valid: true, semanticCompleteness: true, noUnexpectedOverlap: true, compositionBalance: true, textFitAndSafeMargins: true, contrast: true },
   encodedFrameAudit: { status: "passed" },
   externalMediaGenerationCalls: 0,
   generatedMediaUploadCalls: 0,

@@ -87,10 +87,24 @@ describe("campaign media artifacts", () => {
         snapshot: true,
         layoutVerification: true,
         fullDecode: true,
+        textFitAndSafeMargins: true,
+        contrast: true,
         temporaryWorkspaceCleaned: true,
       },
-      layoutVerification: { status: "passed", finalMediaSha256: mediaSha256 },
-      layoutAudit: { measured: true },
+      layoutVerification: {
+        status: "passed",
+        semanticCompleteness: true,
+        boundingBoxesValid: true,
+        finalMediaSha256: mediaSha256,
+      },
+      layoutAudit: {
+        valid: true,
+        semanticCompleteness: true,
+        noUnexpectedOverlap: true,
+        compositionBalance: true,
+        textFitAndSafeMargins: true,
+        contrast: true,
+      },
       externalMediaGenerationCalls: 0,
       generatedMediaUploadCalls: 0,
       instagramPublishCalls: 0,
@@ -135,5 +149,16 @@ describe("campaign media artifacts", () => {
       uploadReceipt: {},
       uploadedSha256: mediaSha256,
     })).toThrow("campaign_media_delivery_url_not_public_https");
+  });
+
+  it("keeps CTA and footer as distinct visible image components", async () => {
+    const { registry, contentSpec } = await plannedImage();
+    const spec = buildLocalRendererSpec(registry, contentSpec);
+    expect(spec).toMatchObject({
+      kind: "image",
+      cta: expect.any(String),
+      footer: expect.any(String),
+    });
+    expect(spec?.cta).not.toBe(spec?.footer);
   });
 });
