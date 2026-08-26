@@ -19,6 +19,41 @@ describe("continuous marketing digest", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  it("keeps Threads visible when Instagram has enough links to fill the old flat list", async () => {
+    const workspace = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
+    const root = await mkdtemp(join(workspace, ".tmp-graph-digest-"));
+    const sourceRoot = join(root, "source"), outputRoot = join(root, "output"), missionPath = join(root, "mission.md");
+    await mkdir(sourceRoot, { recursive: true });
+    await writeFile(missionPath, "# Mission\n", "utf8");
+    for (let index = 0; index < 13; index += 1) {
+      await writeFile(join(sourceRoot, `instagram-outbox-${index}.json`), JSON.stringify({
+        runner: "deterministic_instagram_media_outbox_v1",
+        status: "verified",
+        committedSlotOutcome: "published_verified",
+        permalink: `https://www.instagram.com/p/example-${index}/`,
+      }, null, 2), "utf8");
+    }
+    await writeFile(join(sourceRoot, "threads-outbox.json"), JSON.stringify({
+      runner: "deterministic_threads_outbox_v1",
+      status: "published_verified",
+      permalink: "https://www.threads.com/@tailwaggingwebdesigns/post/example",
+    }, null, 2), "utf8");
+    await writeFile(join(sourceRoot, "meta-reply-monitor.json"), JSON.stringify({
+      runner: "deterministic_meta_reply_monitor_outbox_v2",
+      status: "skipped",
+      reason: "no eligible current inbound reply candidate",
+    }, null, 2), "utf8");
+    const result = await buildContinuousMarketingDigest({ observedAt: new Date().toISOString(), sourceRoot, missionPath, outputRoot });
+    expect(result.verifiedLinksByPlatform.instagram).toHaveLength(13);
+    expect(result.verifiedLinksByPlatform.threads).toEqual(["https://www.threads.com/@tailwaggingwebdesigns/post/example"]);
+    expect(result.evidenceCoverage.instagramPublicationReceipts).toBe(13);
+    expect(result.evidenceCoverage.threadsPublicationReceipts).toBe(1);
+    expect(result.evidenceCoverage.metaReplyMonitorReceipts).toBe(1);
+    expect(result.summary).toContain("- Threads: 1");
+    expect(result.summary).toContain("Runtime/service evidence in digest source: none evidenced");
+    await rm(root, { recursive: true, force: true });
+  });
+
   it("does not surface historical render failures after the same slot has a successful local receipt", async () => {
     const workspace = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
     const root = await mkdtemp(join(workspace, ".tmp-graph-digest-"));
