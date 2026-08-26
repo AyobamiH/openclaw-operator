@@ -501,6 +501,8 @@ export class GraphExecutor {
     }));
     const fingerprint = result.progressFingerprint ?? sha256({ node: node.id, outcome: result.outcome, output: result.output });
     const repeated = fingerprint === run.lastProgressFingerprint ? run.repeatedFingerprintCount + 1 : 0;
+    const persistedExternalEffects = this.store.externalEffects(run.runId);
+    const baseExternalEffects = persistedExternalEffects.length > 0 ? persistedExternalEffects : run.externalEffects;
     run = {
       ...run,
       status: "running",
@@ -513,8 +515,8 @@ export class GraphExecutor {
       evidence: [...run.evidence, ...newEvidence],
       assertions: [...run.assertions.filter((existing) => !assertions.some((candidate) => candidate.assertionId === existing.assertionId)), ...assertions],
       externalEffects: result.externalEffect ? (() => {
-        const existing = run.externalEffects.find((effect) => effect.idempotencyKey === result.externalEffect!.idempotencyKey);
-        return [...run.externalEffects.filter((effect) => effect.idempotencyKey !== result.externalEffect!.idempotencyKey), {
+        const existing = baseExternalEffects.find((effect) => effect.idempotencyKey === result.externalEffect!.idempotencyKey);
+        return [...baseExternalEffects.filter((effect) => effect.idempotencyKey !== result.externalEffect!.idempotencyKey), {
           ...existing,
           ...result.externalEffect,
           effectId: existing?.effectId ?? `gex_${randomUUID()}`,
@@ -522,7 +524,7 @@ export class GraphExecutor {
           nodeId: existing?.nodeId ?? node.id,
           evidenceRefs: result.externalEffect.evidenceRefs ?? existing?.evidenceRefs ?? [],
         }];
-      })() : run.externalEffects,
+      })() : baseExternalEffects,
       lastError: result.failure ?? null,
       lastProgressFingerprint: fingerprint,
       repeatedFingerprintCount: repeated,

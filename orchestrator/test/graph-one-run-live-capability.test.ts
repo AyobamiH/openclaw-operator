@@ -261,6 +261,52 @@ describe("payload-bound one-run live capability", () => {
     expect(value.store.verifyEventChain(fixture.run.runId)).toBe(true);
   });
 
+  it("preserves an ambiguous dispatch as the canonical external-effect state after node failure", async () => {
+    const value = await runtime();
+    const fixture = prepareFixture(value);
+    const executors = new NodeExecutorRegistry();
+    executors.register(LIVE_CAPABILITY_AWARE_HANDLER, async (context) => {
+      const capability = value.store.oneRunLiveCapabilityForRun(context.run.runId)!;
+      const publicationLive = context.run.data.publicationLive as unknown as { envelope: FrozenPublicationEnvelope; envelopeHash: string };
+      const expected = expectedCapabilityBindings({
+        runId: context.run.runId,
+        approvalId: context.approval!.approvalId,
+        approvalPayloadHash: context.approval!.payloadHash,
+        envelope: publicationLive.envelope,
+        envelopeHash: publicationLive.envelopeHash,
+      });
+      const effect = value.store.externalEffects(context.run.runId)[0]!;
+      value.store.reserveLiveCapabilityDispatch({
+        capabilityId: capability.capabilityId,
+        stepId: "delivery_upload",
+        expectedOperation: "generated_media_delivery_upload",
+        effectId: effect.effectId,
+        expected,
+        globalZeroWrite: true,
+        actor: "fixture-adapter",
+      });
+      value.store.completeLiveCapabilityDispatch({
+        capabilityId: capability.capabilityId,
+        stepId: "delivery_upload",
+        state: "ambiguous",
+        failureReason: "fixture_upload_ack_missing",
+        actor: "fixture-adapter",
+      });
+      throw new Error("fixture_upload_ack_missing");
+    });
+    const engine = new GraphExecutor(value.registry, value.store, executors, undefined, undefined, { zeroWriteOnly: true });
+    const failed = await engine.step(fixture.run.runId);
+
+    expect(failed.status).toBe("failed");
+    expect(value.store.liveCapabilityDispatches(fixture.capability!.capabilityId)[0]).toMatchObject({
+      stepId: "delivery_upload",
+      dispatchCount: 1,
+      state: "ambiguous",
+    });
+    expect(value.store.externalEffects(fixture.run.runId)[0]).toMatchObject({ state: "ambiguous" });
+    expect(value.store.getRun(fixture.run.runId)?.externalEffects[0]).toMatchObject({ state: "ambiguous" });
+  });
+
   it.each([
     ["run", (expected: ReturnType<typeof expectedCapabilityBindings>) => ({ ...expected, graphRunId: "gr_wrong" })],
     ["graph-version", (expected: ReturnType<typeof expectedCapabilityBindings>) => ({ ...expected, graphVersion: "1.1.0" })],

@@ -836,6 +836,20 @@ export class GraphStore {
       const result = this.database.prepare("UPDATE graph_live_capability_dispatches SET state=?, completed_at=?, provider_operation_id=?, failure_reason=? WHERE capability_id=? AND step_id=? AND state='reserved'")
         .run(args.state, completedAt, args.providerOperationId ?? null, args.failureReason ?? null, args.capabilityId, args.stepId);
       if (Number(result.changes) !== 1) throw new Error("one_run_live_capability_dispatch_not_reserved");
+      const externalEffectState = args.state === "ambiguous"
+        ? "ambiguous"
+        : args.state === "confirmed_absent"
+          ? "confirmed_absent"
+          : null;
+      if (externalEffectState) {
+        this.database.prepare(`
+          UPDATE graph_external_effects
+          SET state=?, provider_operation_id=COALESCE(?, provider_operation_id), last_observed_at=?
+          WHERE run_id=?
+            AND node_id=?
+            AND state IN ('request_prepared','request_sent')
+        `).run(externalEffectState, args.providerOperationId ?? null, completedAt, capability.graphRunId, this.liveCapabilityNodeId(capability.operationType));
+      }
       if (args.state === "ambiguous") {
         this.database.prepare("UPDATE graph_one_run_live_capabilities SET status='consumed', consumed_at=COALESCE(consumed_at, ?), failure_reason=? WHERE capability_id=? AND status IN ('prepared','active')")
           .run(completedAt, args.failureReason ?? "ambiguous_provider_result", args.capabilityId);
