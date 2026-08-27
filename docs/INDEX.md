@@ -60,6 +60,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [OPERATOR_GUIDE.md](./OPERATOR_GUIDE.md) | operator-facing runtime behavior |
 | [GOVERNANCE_REPO_HYGIENE.md](./GOVERNANCE_REPO_HYGIENE.md) | cleanup and protection policy |
 | [operations/KNOWLEDGE_MIRROR_POLICY.md](./operations/KNOWLEDGE_MIRROR_POLICY.md) | policy for mirrored upstream knowledge sources |
+| [operations/knowledge-routing-foundation.md](./operations/knowledge-routing-foundation.md) | graph-backed route metadata, source discovery adapters, resolver API, authority rules and refresh workflow |
 | [operations/public-release.md](./operations/public-release.md) | sanitized public mirror workflow |
 | [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md) | Orchestrator-first Sprint To Completion subordinate execution tracker for the root anchor |
 | [operations/deployment.md](./operations/deployment.md) | production operations checklist |

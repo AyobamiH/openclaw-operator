@@ -70,6 +70,7 @@ import {
 import { mkdir, readFile, stat } from "node:fs/promises";
 import { createHash, randomUUID } from "node:crypto";
 import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import cron from "node-cron";
 import { startMetricsServer } from "./metrics/index.js";
@@ -170,6 +171,8 @@ import { registerGraphRoutes } from "./graph/routes.js";
 import { runWithGraphConcurrencyDeferral } from "./graph/engine.js";
 import { findEquivalentLiveGraphRun } from "./graph/single-flight.js";
 import { verifyGraphChildTaskAuthority } from "./graph/task-authority.js";
+import { KnowledgeRoutingRuntime } from "./knowledge-routing/index.js";
+import { registerKnowledgeRoutingRoutes } from "./knowledge-routing/routes.js";
 import { NON_GRAPH_RECURRING_WORK_REGISTRY } from "./nonGraphRecurringWork.js";
 
 /**
@@ -10591,6 +10594,33 @@ async function bootstrap() {
     console.log("[orchestrator] no document roots configured for indexing");
   }
 
+  const operatorSourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+  const operatorWorkspaceRoot = operatorSourceRoot.includes("/projects/.worktrees/")
+    ? resolve(operatorSourceRoot, "../../..")
+    : resolve(operatorSourceRoot, "../..");
+  const openclawRoot = resolve(operatorWorkspaceRoot, "..");
+  const knowledgeRouting = new KnowledgeRoutingRuntime({
+    operatorRoot: operatorSourceRoot,
+    workspaceRoot: operatorWorkspaceRoot,
+    openclawRoot,
+    openclawConfigPath: join(openclawRoot, "openclaw.json"),
+    config,
+    docsIndexSize: indexedDocCount,
+    graphPath: join(config.logsDir, "knowledge-routing", "routing-graph.generated.json"),
+    autoRefreshMs: fastStartMode ? undefined : 15 * 60 * 1000,
+    runSystemctl: process.env.KNOWLEDGE_ROUTING_SYSTEMD !== "false",
+  });
+  try {
+    const graph = await knowledgeRouting.start();
+    console.log(
+      `[orchestrator] knowledge routing graph ready: ${graph.stats.nodes} nodes, ${graph.stats.edges} edges, stale=${graph.stats.staleRoutes}`,
+    );
+  } catch (error) {
+    console.warn(
+      `[orchestrator] knowledge routing graph unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
   const state = await loadState(config.stateFile, {
     taskHistoryLimit: config.taskHistoryLimit,
   });
@@ -13011,6 +13041,7 @@ async function bootstrap() {
       timestamp: new Date().toISOString(),
       metrics: buildPublicMetricsUrl(req),
       knowledge: `${publicBaseUrl}/api/knowledge/summary`,
+      knowledgeRouting: `${publicBaseUrl}/api/knowledge-routing/summary`,
       persistence: `${publicBaseUrl}/api/persistence/health`,
     });
   });
@@ -13313,6 +13344,23 @@ async function bootstrap() {
 
   registerPublishingRoutes(app, publishingEngine);
   if (graphRuntime) registerGraphRoutes(app, graphRuntime);
+  registerKnowledgeRoutingRoutes(app, knowledgeRouting, {
+    publicRead: [apiLimiter],
+    protectedRead: [
+      authLimiter,
+      requireBearerToken,
+      viewerReadLimiter,
+      requireRole("viewer"),
+      auditProtectedAction("knowledge-routing.read"),
+    ],
+    protectedWrite: [
+      authLimiter,
+      requireBearerToken,
+      operatorWriteLimiter,
+      requireRole("operator"),
+      auditProtectedAction("knowledge-routing.refresh"),
+    ],
+  });
 
   app.get(
     "/api/auth/me",

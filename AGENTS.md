@@ -57,6 +57,12 @@ orchestrator lane that OpenClaw does not already cover.
 - Treat runtime code and live configuration as execution truth, then canonical
   architecture/reference documents, then supporting runbooks, then dated
   history and snapshots.
+- For non-trivial information needs, consult the knowledge-routing entry point
+  before broad document loading. Resolve the smallest route, retrieve only the
+  authoritative source needed for the task, follow verification edges before
+  making current-state claims, and stop retrieval once sufficient evidence
+  exists. The routing graph is navigation metadata; if it disagrees with the
+  source it points to, the source wins.
 - Treat this repository as portable source truth. Do not mistake an installed
   runtime mirror, generated artifact, service working tree, or archive for the
   canonical source. For deployment claims, prove both the source revision and

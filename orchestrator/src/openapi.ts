@@ -413,12 +413,13 @@ const components = {
     },
     HealthResponse: {
       type: "object",
-      required: ["status", "timestamp", "metrics", "knowledge", "persistence"],
+      required: ["status", "timestamp", "metrics", "knowledge", "knowledgeRouting", "persistence"],
       properties: {
         status: { type: "string" },
         timestamp: { type: "string", format: "date-time" },
         metrics: { type: "string", format: "uri" },
         knowledge: { type: "string", format: "uri" },
+        knowledgeRouting: { type: "string", format: "uri" },
         persistence: { type: "string", format: "uri" },
       },
     },
@@ -439,6 +440,45 @@ const components = {
         stats: schemaRef("GenericObject"),
         networkStats: schemaRef("GenericObject"),
         runtime: schemaRef("GenericObject"),
+      },
+      additionalProperties: true,
+    },
+    KnowledgeRoutingSummaryResponse: {
+      type: "object",
+      required: ["schemaVersion", "generatedAt", "stats", "status"],
+      properties: {
+        schemaVersion: { type: "integer", enum: [1] },
+        generatedAt: { type: "string", format: "date-time" },
+        stats: schemaRef("GenericObject"),
+        status: { type: "string", enum: ["ok", "stale-routes-present"] },
+      },
+      additionalProperties: true,
+    },
+    KnowledgeRoutingRouteResponse: {
+      type: "object",
+      required: ["query", "recommendedNodes", "authoritativeSources", "relationshipPath"],
+      properties: {
+        query: { type: "string" },
+        generatedAt: { type: "string", format: "date-time" },
+        recommendedNodes: { type: "array", items: schemaRef("GenericObject") },
+        authoritativeSources: { type: "array", items: schemaRef("GenericObject") },
+        relationshipPath: { type: "array", items: schemaRef("GenericObject") },
+        freshnessRequirement: { type: "string" },
+        retrievalMethods: { type: "array", items: schemaRef("GenericObject") },
+        verificationSources: { type: "array", items: schemaRef("GenericObject") },
+        warnings: { type: "array", items: { type: "string" } },
+      },
+      additionalProperties: true,
+    },
+    KnowledgeRoutingGraphResponse: {
+      type: "object",
+      required: ["schemaVersion", "generatedAt", "nodes", "edges", "stats"],
+      properties: {
+        schemaVersion: { type: "integer", enum: [1] },
+        generatedAt: { type: "string", format: "date-time" },
+        nodes: { type: "array", items: schemaRef("GenericObject") },
+        edges: { type: "array", items: schemaRef("GenericObject") },
+        stats: schemaRef("GenericObject"),
       },
       additionalProperties: true,
     },
@@ -1401,6 +1441,140 @@ export function buildOpenApiSpec(port: string | number = 3000) {
             "KnowledgeSummaryResponse",
             publicReadHeaders,
           ),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/knowledge-routing/summary": {
+      get: {
+        tags: ["Public", "Knowledge"],
+        summary: "Knowledge-routing graph summary",
+        description:
+          "Returns routing-graph counts and stale-route status. This is metadata only; authoritative source contents remain in their owning systems.",
+        operationId: "getKnowledgeRoutingSummary",
+        "x-openclaw-access": {
+          visibility: "public",
+          rateLimit: "30 requests / 60s / IP",
+          responseCache: "none",
+        },
+        responses: {
+          "200": jsonResponse(
+            "Knowledge-routing summary payload.",
+            "KnowledgeRoutingSummaryResponse",
+            publicReadHeaders,
+          ),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/knowledge-routing/route": {
+      get: {
+        tags: ["Protected", "Knowledge"],
+        summary: "Resolve a knowledge route",
+        description:
+          "Returns the smallest route metadata needed to locate authoritative sources, retrieval methods, and verification sources for an information need.",
+        operationId: "resolveKnowledgeRoute",
+        parameters: [
+          {
+            name: "query",
+            in: "query",
+            required: true,
+            schema: { type: "string", minLength: 1 },
+          },
+          {
+            name: "limit",
+            in: "query",
+            required: false,
+            schema: { type: "integer", minimum: 1, maximum: 20 },
+          },
+        ],
+        "x-openclaw-access": protectedAccess(
+          "viewer",
+          "viewer-read",
+          "knowledge-routing.read",
+        ),
+        responses: {
+          "200": jsonResponse(
+            "Knowledge-route result.",
+            "KnowledgeRoutingRouteResponse",
+            protectedReadHeaders,
+          ),
+          "400": responseRef("ValidationError"),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/knowledge-routing/graph": {
+      get: {
+        tags: ["Protected", "Knowledge"],
+        summary: "Read the knowledge-routing graph",
+        description:
+          "Returns route nodes and edges. Nodes contain locators and authority metadata, not complete documents, logs, transcripts, or source bodies.",
+        operationId: "getKnowledgeRoutingGraph",
+        "x-openclaw-access": protectedAccess(
+          "viewer",
+          "viewer-read",
+          "knowledge-routing.read",
+        ),
+        responses: {
+          "200": jsonResponse(
+            "Knowledge-routing graph.",
+            "KnowledgeRoutingGraphResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/knowledge-routing/maps": {
+      get: {
+        tags: ["Protected", "Knowledge"],
+        summary: "Read generated knowledge-routing maps",
+        description:
+          "Returns human-readable map projections generated from the canonical routing graph.",
+        operationId: "getKnowledgeRoutingMaps",
+        "x-openclaw-access": protectedAccess(
+          "viewer",
+          "viewer-read",
+          "knowledge-routing.read",
+        ),
+        responses: {
+          "200": jsonResponse("Knowledge-routing maps.", "GenericObject", protectedReadHeaders),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/knowledge-routing/refresh": {
+      post: {
+        tags: ["Protected", "Knowledge"],
+        summary: "Refresh the knowledge-routing graph",
+        description:
+          "Runs deterministic source discovery and rewrites only the generated routing graph artifact.",
+        operationId: "refreshKnowledgeRoutingGraph",
+        "x-openclaw-access": protectedAccess(
+          "operator",
+          "operator-write",
+          "knowledge-routing.refresh",
+        ),
+        responses: {
+          "200": jsonResponse(
+            "Refresh result.",
+            "KnowledgeRoutingSummaryResponse",
+            writeHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
           "429": responseRef("TooManyRequests"),
           "500": responseRef("ServerError"),
         },
