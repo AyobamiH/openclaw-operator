@@ -164,6 +164,25 @@ describe("knowledge routing foundation", () => {
     expect(comparison.informationNeedPreview).not.toContain("12345678901234567890");
     expect(comparison.graphRoute.selectedNode).toBeTruthy();
   });
+
+  it("bounds and redacts shadow comparison identifiers", () => {
+    const graph = discoverFixtureGraph();
+    const comparison = createKnowledgeRoutingShadowComparison(
+      graph,
+      "Use token=secret-value and Bearer abcdefghijklmnopqrstuvwxyz0123456789",
+      "token=source-secret-value docs/operations/deployment.md",
+      {
+        requestId: "request-" + "x".repeat(200),
+        sessionId: "telegram:6735735734",
+      },
+    );
+
+    expect(comparison.informationNeedPreview).not.toContain("secret-value");
+    expect(comparison.informationNeedPreview).not.toContain("abcdefghijklmnopqrstuvwxyz");
+    expect(comparison.existingSourceUsed).not.toContain("source-secret-value");
+    expect(comparison.requestId?.length).toBeLessThanOrEqual(96);
+    expect(comparison.sessionHash).toHaveLength(64);
+  });
 });
 
 function discoverFixtureGraph() {

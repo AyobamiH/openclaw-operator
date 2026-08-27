@@ -68,8 +68,10 @@ export function registerKnowledgeRoutingRoutes(
     }
     const existingSourceUsed =
       typeof req.body?.existingSourceUsed === "string" ? req.body.existingSourceUsed.trim() : undefined;
+    const requestId = typeof req.body?.requestId === "string" ? req.body.requestId.trim() : undefined;
+    const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId.trim() : undefined;
     try {
-      res.json(await runtime.shadowCompare(informationNeed, existingSourceUsed));
+      res.json(await runtime.shadowCompare(informationNeed, existingSourceUsed, { requestId, sessionId }));
     } catch (error) {
       res.status(500).json({
         ok: false,

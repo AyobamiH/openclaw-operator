@@ -127,6 +127,13 @@ shadow validation only. Preferred Telegram routing still requires verified
 runtime load, bounded shadow logs from real traffic, fallback behavior, and the
 explicit activation approval recorded for that deployment.
 
+For shadow validation, `/api/knowledge-routing/shadow` must remain
+observational. Its JSONL log records hashes, bounded redacted previews, route
+metadata and recording status, not full Telegram transcripts or source bodies.
+Log records are size-bounded with rollover, and a shadow log write failure is
+reported as shadow-recording status rather than permission to change the normal
+Telegram retrieval/answer path.
+
 ## Post-Deployment Verification
 
 - [ ] API health:

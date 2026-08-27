@@ -254,6 +254,8 @@ export interface KnowledgeRoutingShadowComparison {
   generatedAt: string;
   informationNeedHash: string;
   informationNeedPreview: string;
+  requestId?: string;
+  sessionHash?: string;
   graphRoute: {
     selectedNode: string | null;
     relationshipPath: string[];
@@ -263,4 +265,9 @@ export interface KnowledgeRoutingShadowComparison {
   };
   existingSourceUsed?: string;
   agreement: "agree" | "disagree" | "unknown";
+  recording?: {
+    attempted: boolean;
+    ok: boolean;
+    error?: string;
+  };
 }

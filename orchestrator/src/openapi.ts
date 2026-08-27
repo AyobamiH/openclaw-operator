@@ -498,6 +498,8 @@ const components = {
       properties: {
         informationNeed: { type: "string", minLength: 1, maxLength: 1000 },
         existingSourceUsed: { type: "string", maxLength: 500 },
+        requestId: { type: "string", maxLength: 120 },
+        sessionId: { type: "string", maxLength: 240 },
       },
       additionalProperties: false,
     },
@@ -511,6 +513,9 @@ const components = {
         graphRoute: schemaRef("GenericObject"),
         existingSourceUsed: { type: "string" },
         agreement: { type: "string", enum: ["agree", "disagree", "unknown"] },
+        requestId: { type: "string" },
+        sessionHash: { type: "string" },
+        recording: schemaRef("GenericObject"),
       },
       additionalProperties: true,
     },

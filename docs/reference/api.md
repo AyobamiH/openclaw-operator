@@ -210,7 +210,10 @@ Specialist operator-console contract truth:
 - `POST /api/knowledge-routing/shadow`: operator-only shadow comparison for a
   proposed information need. It compares the graph route with an existing
   retrieval source, stores a hash and redacted preview, and must not change the
-  Telegram answer/tool path.
+  Telegram answer/tool path. Optional request IDs are bounded before storage;
+  optional session IDs are stored only as hashes. The JSONL shadow log has
+  bounded records, size-based rollover, and a per-response recording status so
+  log-write failure remains visible without making the graph authoritative.
 - `GET /api/command-center/overview`: public proof overview surface sourced
   directly from orchestrator runtime state.
 - `GET /api/command-center/control`: public proof control-cluster surface for

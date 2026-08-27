@@ -5,6 +5,7 @@ import { discoverKnowledgeRoutingGraph, type KnowledgeRoutingDiscoveryOptions } 
 import { evaluateKnowledgeRoutingGraph } from "./evaluation.js";
 import { resolveKnowledgeRoute } from "./resolver.js";
 import { createKnowledgeRoutingShadowComparison, KnowledgeRoutingShadowRecorder } from "./shadow.js";
+import type { KnowledgeRoutingShadowOptions } from "./shadow.js";
 import { buildKnowledgeRoutingMapViews } from "./views.js";
 import type {
   KnowledgeRouteEvaluationReport,
@@ -69,12 +70,29 @@ export class KnowledgeRoutingRuntime {
     return evaluateKnowledgeRoutingGraph(this.getGraph());
   }
 
-  async shadowCompare(query: string, existingSourceUsed?: string): Promise<KnowledgeRoutingShadowComparison> {
-    const comparison = createKnowledgeRoutingShadowComparison(this.getGraph(), query, existingSourceUsed);
+  async shadowCompare(
+    query: string,
+    existingSourceUsed?: string,
+    options: KnowledgeRoutingShadowOptions = {},
+  ): Promise<KnowledgeRoutingShadowComparison> {
+    const comparison = createKnowledgeRoutingShadowComparison(this.getGraph(), query, existingSourceUsed, options);
     if (this.options.shadowLogPath) {
-      await new KnowledgeRoutingShadowRecorder(this.options.shadowLogPath).record(comparison);
+      try {
+        await new KnowledgeRoutingShadowRecorder(this.options.shadowLogPath).record(comparison);
+        return { ...comparison, recording: { attempted: true, ok: true } };
+      } catch (error) {
+        console.warn("[knowledge-routing] shadow record failed", { error: error instanceof Error ? error.message : String(error) });
+        return {
+          ...comparison,
+          recording: {
+            attempted: true,
+            ok: false,
+            error: "shadow_record_failed",
+          },
+        };
+      }
     }
-    return comparison;
+    return { ...comparison, recording: { attempted: false, ok: true } };
   }
 
   getMaps() {
