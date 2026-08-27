@@ -61,6 +61,7 @@ export function discoverKnowledgeRoutingGraph(
   discoverOpenApi(ctx, { operatorRoot, generatedAt });
   discoverMemory(ctx, { workspaceRoot, openclawRoot, generatedAt });
   discoverCron(ctx, { openclawRoot, generatedAt });
+  discoverRolloutCheckpoint(ctx, { config: options.config, generatedAt });
 
   addSemanticConcepts(ctx);
   addDerivedRelationships(ctx);
@@ -644,6 +645,8 @@ function discoverOpenApi(ctx: MutableDiscovery, params: { operatorRoot: string; 
   const unique = Array.from(new Set(paths)).slice(0, 250);
   for (const route of unique) {
     const routeAnswers = [`Which API route serves ${route}?`, "What runtime API can verify or retrieve this source?"];
+    const routeAliases: string[] = [];
+    const routeIntents: string[] = [];
     if (route.includes("approvals")) {
       routeAnswers.push("What still requires approval?", "Where is current approval state?");
     }
@@ -653,6 +656,18 @@ function discoverOpenApi(ctx: MutableDiscovery, params: { operatorRoot: string; 
     if (route.includes("knowledge-routing")) {
       routeAnswers.push("Where should an agent route an information need?", "How does the agent find authoritative sources?");
     }
+    if (route === "/api/knowledge-routing/summary") {
+      routeAnswers.push("Which live API proves the knowledge-routing graph is loaded?");
+      routeAnswers.push("Where is the current production graph summary?");
+      routeAliases.push("knowledge routing summary", "graph load summary", "production graph loaded");
+      routeIntents.push("graph-load proof", "production graph loaded", "current graph summary");
+    }
+    if (route === "/api/knowledge-routing/shadow") {
+      routeAnswers.push("Which protected API records shadow routing comparisons?");
+      routeAnswers.push("Which endpoint proves shadow writes require authorization?");
+      routeAliases.push("protected shadow endpoint", "knowledge routing shadow API", "shadow endpoint");
+      routeIntents.push("endpoint-protection proof", "shadow comparison recording", "protected shadow route");
+    }
     ctx.nodes.push(
       baseNode({
         id: nodeId("api", route),
@@ -660,6 +675,8 @@ function discoverOpenApi(ctx: MutableDiscovery, params: { operatorRoot: string; 
         domain: route.includes("knowledge") ? "knowledge-routing" : "operator-api",
         description: `Operator API route ${route}.`,
         answers: routeAnswers,
+        aliases: routeAliases.length > 0 ? routeAliases : undefined,
+        taskIntents: routeIntents.length > 0 ? routeIntents : undefined,
         source: { type: "openapi", locator: `${openapiPath}#${route}`, resolver: "openapi" },
         authority: { class: "derived", priority: 65, reason: "OpenAPI/source route metadata locates APIs; live HTTP verifies availability." },
         freshness: { mode: "on-demand", checkedAt: params.generatedAt },
@@ -712,6 +729,41 @@ function discoverCron(ctx: MutableDiscovery, params: { openclawRoot: string; gen
   );
 }
 
+function discoverRolloutCheckpoint(
+  ctx: MutableDiscovery,
+  params: { config?: OrchestratorConfig; generatedAt: string },
+) {
+  const checkpointPath = params.config?.logsDir
+    ? join(params.config.logsDir, "knowledge-routing", "rollout-checkpoint.json")
+    : undefined;
+  if (!checkpointPath || !existsSync(checkpointPath)) return;
+  ctx.nodes.push(
+    baseNode({
+      id: nodeId("state-store", "knowledge-routing-rollout"),
+      kind: "state-store",
+      domain: "knowledge-routing",
+      description: "Persistent knowledge-routing rollout work state and activation-gate checkpoint.",
+      answers: [
+        "Where is the knowledge-routing rollout checkpoint?",
+        "How can an agent continue the knowledge-routing rollout?",
+        "Which work state records pending knowledge-routing gates?",
+      ],
+      aliases: ["knowledge-routing rollout", "rollout checkpoint", "knowledge routing work state"],
+      taskIntents: ["continue knowledge-routing rollout", "rollout state", "activation gate status"],
+      source: { type: "file", locator: checkpointPath, resolver: "file" },
+      authority: {
+        class: "authoritative",
+        priority: 86,
+        reason: "The checkpoint records current rollout work state; follow evidence locators for proof.",
+      },
+      freshness: { mode: "on-demand", checkedAt: params.generatedAt },
+      verification: { method: "exists", target: checkpointPath },
+      discoveredBy: "knowledge-routing-rollout-checkpoint-adapter",
+      generatedAt: params.generatedAt,
+    }),
+  );
+}
+
 function addDerivedRelationships(ctx: MutableDiscovery) {
   const has = (id: string) => ctx.nodes.some((node) => node.id === id);
   const edge = (from: string, to: string, rel: Parameters<typeof makeEdge>[2], evidence: string[]) => {
@@ -725,6 +777,8 @@ function addDerivedRelationships(ctx: MutableDiscovery) {
   edge(nodeId("cron", "openclaw-jobs"), nodeId("database", "openclaw"), "stores_state_in", ["cron sqlite store"]);
   edge(nodeId("database", "graph-runs"), nodeId("api", "/api/graphs/runs"), "retrieved_by", ["graph API routes"]);
   edge(nodeId("document-index", "configured-docs"), nodeId("api", "/api/knowledge/summary"), "observed_by", ["knowledge summary API"]);
+  edge(nodeId("state-store", "knowledge-routing-rollout"), nodeId("api", "/api/knowledge-routing/summary"), "observed_by", ["rollout graph summary"]);
+  edge(nodeId("state-store", "knowledge-routing-rollout"), nodeId("repo", "openclaw-operator"), "implemented_by", ["rollout checkpoint source commit"]);
 }
 
 function addSemanticConcepts(ctx: MutableDiscovery) {
@@ -791,10 +845,37 @@ function addSemanticConcepts(ctx: MutableDiscovery) {
       "Where should an agent route an information need?",
       "How does the agent find authoritative sources?",
       "Which source describes knowledge-routing architecture?",
+      "Which live API proves the knowledge-routing graph is loaded?",
+      "Which protected API records shadow routing comparisons?",
     ],
-    aliases: ["knowledge routing", "semantic graph", "route resolver", "knowledge graph", "shadow graph routing"],
-    taskIntents: ["knowledge route", "graph route", "semantic graph evaluation", "shadow routing", "shadow graph routing recorded"],
+    aliases: [
+      "knowledge routing",
+      "semantic graph",
+      "route resolver",
+      "knowledge graph",
+      "shadow graph routing",
+    ],
+    taskIntents: [
+      "knowledge route",
+      "graph route",
+      "semantic graph evaluation",
+      "shadow routing",
+      "shadow graph routing recorded",
+    ],
     evidenceNodeIds: [nodeId("api", "/api/knowledge-routing/route"), nodeId("docs", "knowledge-routing-foundation")],
+  });
+  concept(ctx, {
+    id: "knowledge-routing.rollout",
+    domain: "knowledge-routing",
+    description: "Knowledge-routing rollout work state, pending gates, evidence references and next action.",
+    answers: [
+      "How can an agent continue the knowledge-routing rollout?",
+      "Where are current knowledge-routing rollout gates recorded?",
+      "What is the next knowledge-routing rollout action?",
+    ],
+    aliases: ["knowledge-routing rollout", "continue knowledge-routing rollout", "routing rollout"],
+    taskIntents: ["continue knowledge-routing rollout", "activation gate status", "rollout checkpoint"],
+    evidenceNodeIds: [nodeId("state-store", "knowledge-routing-rollout"), nodeId("api", "/api/knowledge-routing/summary")],
   });
   concept(ctx, {
     id: "model.routing",
@@ -909,8 +990,8 @@ function addSemanticConcepts(ctx: MutableDiscovery) {
     domain: "deployment",
     description: "Deployment, activation and runtime-loaded evidence routing.",
     answers: ["Which evidence proves a deployment succeeded?", "What still requires human approval before activation?"],
-    aliases: ["deployment", "activation", "production activation", "restart"],
-    taskIntents: ["deploy question", "activation gate", "runtime loaded proof"],
+    aliases: ["deployment", "activation", "production activation", "restart", "shadow deployment", "production shadow deployment"],
+    taskIntents: ["deploy question", "activation gate", "runtime loaded proof", "shadow deployment verification"],
     evidenceNodeIds: [nodeId("docs", "operator-deployment"), nodeId("service", "orchestrator.service"), nodeId("component", "approval.gates")],
   });
 }
@@ -979,8 +1060,13 @@ function addSemanticRelationships(ctx: MutableDiscovery) {
     proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/graph"), "exposes", ctx),
     proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/maps"), "exposes", ctx),
     proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/refresh"), "exposes", ctx),
+    proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/summary"), "observed_by", ctx),
+    proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/shadow"), "observed_by", ctx),
     proposal(c("knowledge.routing"), nodeId("docs", "knowledge-routing-foundation"), "documented_by", ctx),
     proposal(c("knowledge.routing"), nodeId("docs", "tool-invocation-ledger"), "documented_by", ctx),
+    proposal(c("knowledge-routing.rollout"), nodeId("state-store", "knowledge-routing-rollout"), "stores_state_in", ctx),
+    proposal(c("knowledge-routing.rollout"), c("knowledge.routing"), "depends_on", ctx),
+    proposal(c("knowledge-routing.rollout"), c("approval.gates"), "requires_approval", ctx),
     proposal(c("model.routing"), nodeId("config", "openclaw"), "configured_by", ctx),
     proposal(c("model.routing"), nodeId("agent", "main"), "handled_by", ctx),
     proposal(c("agent.runtime"), nodeId("agent", "main"), "handled_by", ctx),

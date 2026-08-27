@@ -265,9 +265,78 @@ export interface KnowledgeRoutingShadowComparison {
   };
   existingSourceUsed?: string;
   agreement: "agree" | "disagree" | "unknown";
+  agreementReason?: string;
+  resultClassification?:
+    | "EXACT"
+    | "USEFUL"
+    | "NEUTRAL"
+    | "PARTIAL"
+    | "WRONG_SOURCE"
+    | "STALE_SOURCE"
+    | "NO_ROUTE"
+    | "AMBIGUOUS";
+  matchedSourceIdentity?: string;
   recording?: {
     attempted: boolean;
     ok: boolean;
     error?: string;
+  };
+}
+
+export interface KnowledgeRoutingRolloutCheckpoint {
+  schemaVersion: 1;
+  program: "knowledge-routing-rollout";
+  generatedAt: string;
+  phase: {
+    status:
+      | "not_started"
+      | "shadow_deployed"
+      | "shadow_observing"
+      | "validated_awaiting_activation_approval"
+      | "active"
+      | "complete"
+      | "failed";
+    lastCompletedGate?: string;
+  };
+  currentCandidateCommit?: string;
+  productionCommit?: string;
+  rollbackCommit?: string;
+  graph: {
+    buildId: string;
+    nodes: number;
+    edges: number;
+    stale: number;
+    unresolved: number;
+  };
+  evaluation: {
+    fixedTotal: number;
+    fixedPassed: number;
+    routingAccuracy: number;
+    authorityAccuracy: number;
+  };
+  shadow: {
+    realComparisons: number;
+    exact: number;
+    useful: number;
+    neutral: number;
+    partial: number;
+    wrongSource: number;
+    staleSource: number;
+    noRoute: number;
+    ambiguous: number;
+  };
+  gates: Record<
+    "correctness" | "authority" | "safety" | "fallback" | "retrievalImprovement" | "performance" | "activation",
+    "PASS" | "FAIL" | "UNPROVEN"
+  >;
+  evidence: Array<{
+    kind: "graph" | "evaluation" | "shadow-log" | "git" | "runtime";
+    locator: string;
+    checkedAt: string;
+  }>;
+  nextAction: string;
+  approval: {
+    required: boolean;
+    reason?: string;
   };
 }

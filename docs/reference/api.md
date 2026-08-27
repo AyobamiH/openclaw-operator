@@ -117,7 +117,9 @@ Protected operator routes (bearer token):
 - `GET /api/knowledge-routing/route`
 - `GET /api/knowledge-routing/graph`
 - `GET /api/knowledge-routing/maps`
+- `GET /api/knowledge-routing/evaluation`
 - `POST /api/knowledge-routing/refresh`
+- `POST /api/knowledge-routing/shadow`
 - `GET /api/health/extended`
 - `POST /api/knowledge/query`
 - `GET /api/knowledge/export`
@@ -214,6 +216,15 @@ Specialist operator-console contract truth:
   optional session IDs are stored only as hashes. The JSONL shadow log has
   bounded records, size-based rollover, and a per-response recording status so
   log-write failure remains visible without making the graph authoritative.
+  Responses may include `agreementReason`, `resultClassification`, and
+  `matchedSourceIdentity`; those fields are derived from graph/source identity
+  matching across selected nodes, relationship paths and retrieval sources, not
+  from raw prompt or body storage.
+- Knowledge-routing refreshes may also write
+  `logs/knowledge-routing/rollout-checkpoint.json`. That checkpoint is a small
+  machine-readable rollout state record with graph/evaluation/shadow counters
+  and evidence locators. It is not an API response body and does not copy
+  documents, source files, logs or Telegram messages into routing metadata.
 - `GET /api/command-center/overview`: public proof overview surface sourced
   directly from orchestrator runtime state.
 - `GET /api/command-center/control`: public proof control-cluster surface for

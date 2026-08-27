@@ -34,6 +34,14 @@ hash, a short redacted preview, graph route metadata, the existing source used
 when provided, and agreement status. It must not change the Telegram answer or
 tool path while graph routing is being validated.
 
+Shadow comparison agreement is source-identity based. It compares the existing
+source against selected nodes, relationship-path nodes and retrieval sources,
+including endpoint identities such as `/api/knowledge-routing/summary` and
+`/api/knowledge-routing/shadow`. Records may classify the result as `EXACT`,
+`USEFUL`, `NEUTRAL`, `PARTIAL`, `WRONG_SOURCE`, `STALE_SOURCE`, `NO_ROUTE` or
+`AMBIGUOUS`. The classification is evidence for rollout evaluation only; it
+does not make graph routing authoritative.
+
 ## Canonical Model
 
 The schema lives in `orchestrator/src/knowledge-routing/types.ts`.
@@ -150,6 +158,25 @@ The preferred-routing activation gate is stricter than a green unit test:
 Until those gates pass on the running operator, the graph remains a routing
 index and shadow-validation aid, not the authoritative Telegram navigation
 layer.
+
+## Rollout Checkpoint
+
+The runtime may write a small machine-readable checkpoint at
+`logs/knowledge-routing/rollout-checkpoint.json`.
+
+That checkpoint records the knowledge-routing rollout programme, phase,
+candidate/production commit when Git can verify it, graph counts, fixed-suite
+evaluation counts, shadow comparison counters, activation-gate status, evidence
+locators and the next action. It stores durable execution state only. It must
+not copy prompts, transcripts, document bodies, source files, logs, provider
+payloads or secrets.
+
+When the checkpoint file exists, deterministic discovery adds it to the graph as
+`state-store:knowledge-routing-rollout` and exposes the semantic concept
+`component:knowledge-routing.rollout`. A future agent can therefore start from
+"continue the knowledge-routing rollout", resolve the route, open the checkpoint
+only if needed, then follow its evidence locators back to the graph, evaluation,
+shadow log, Git state and runtime checks.
 
 ## Growth Path
 

@@ -1,5 +1,5 @@
 import { createRequire } from "node:module";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildGraph, makeEdge, nodeId } from "../src/knowledge-routing/graph.js";
@@ -9,6 +9,7 @@ import {
   resolveKnowledgeRoute,
   createKnowledgeRoutingShadowComparison,
   validateSemanticRelationshipProposals,
+  writeKnowledgeRoutingRolloutCheckpoint,
   type KnowledgeRouteNode,
 } from "../src/knowledge-routing/index.js";
 
@@ -139,6 +140,22 @@ describe("knowledge routing foundation", () => {
     expect(route.authoritativeSources.some((source) => source.resolver === "openclaw-config")).toBe(true);
   });
 
+  it("routes live graph-load proof to the knowledge-routing summary endpoint", () => {
+    const graph = discoverFixtureGraph();
+    const route = resolveKnowledgeRoute(graph, "real: prove production graph is loaded", 6);
+
+    expect(route.recommendedNodes.map((node) => node.id)).toContain("api:/api/knowledge-routing/summary");
+    expect(route.authoritativeSources.some((source) => source.locator.includes("#/api/knowledge-routing/summary"))).toBe(true);
+  });
+
+  it("routes protected shadow endpoint checks to the shadow API node", () => {
+    const graph = discoverFixtureGraph();
+    const route = resolveKnowledgeRoute(graph, "real: verify protected shadow endpoint rejects unauthenticated writes", 6);
+
+    expect(route.recommendedNodes.map((node) => node.id)).toContain("api:/api/knowledge-routing/shadow");
+    expect(route.authoritativeSources.some((source) => source.locator.includes("#/api/knowledge-routing/shadow"))).toBe(true);
+  });
+
   it("evaluates a fixed OpenClaw routing suite", () => {
     const graph = discoverFixtureGraph();
     const report = evaluateKnowledgeRoutingGraph(graph);
@@ -165,6 +182,19 @@ describe("knowledge routing foundation", () => {
     expect(comparison.graphRoute.selectedNode).toBeTruthy();
   });
 
+  it("compares shadow agreement by graph/source identity instead of raw locator substrings", () => {
+    const graph = discoverFixtureGraph();
+    const comparison = createKnowledgeRoutingShadowComparison(
+      graph,
+      "real: verify protected shadow endpoint rejects unauthenticated writes",
+      "/api/knowledge-routing/shadow",
+    );
+
+    expect(comparison.agreement).toBe("agree");
+    expect(comparison.resultClassification).toMatch(/EXACT|USEFUL/);
+    expect(comparison.agreementReason).toMatch(/identity/);
+  });
+
   it("bounds and redacts shadow comparison identifiers", () => {
     const graph = discoverFixtureGraph();
     const comparison = createKnowledgeRoutingShadowComparison(
@@ -183,6 +213,33 @@ describe("knowledge routing foundation", () => {
     expect(comparison.requestId?.length).toBeLessThanOrEqual(96);
     expect(comparison.sessionHash).toHaveLength(64);
   });
+
+  it("writes a bounded rollout checkpoint from graph, evaluation and shadow evidence", async () => {
+    const graph = discoverFixtureGraph();
+    const checkpointPath = join(root, "openclaw/state/openclaw-operator/logs/knowledge-routing/rollout-checkpoint.json");
+    const shadowLogPath = join(root, "openclaw/state/openclaw-operator/logs/knowledge-routing/shadow-routing.jsonl");
+    writeFileSync(
+      shadowLogPath,
+      JSON.stringify(
+        createKnowledgeRoutingShadowComparison(graph, "real: prove production graph is loaded", "/api/knowledge-routing/summary"),
+      ) + "\n",
+    );
+
+    const checkpoint = await writeKnowledgeRoutingRolloutCheckpoint({
+      path: checkpointPath,
+      graph,
+      operatorRoot: join(root, "workspace/projects/openclaw-operator"),
+      graphPath: join(root, "openclaw/state/openclaw-operator/logs/knowledge-routing/routing-graph.generated.json"),
+      shadowLogPath,
+    });
+
+    expect(checkpoint.program).toBe("knowledge-routing-rollout");
+    expect(checkpoint.graph.nodes).toBe(graph.stats.nodes);
+    expect(checkpoint.evaluation.fixedTotal).toBeGreaterThanOrEqual(25);
+    expect(checkpoint.shadow.realComparisons).toBe(1);
+    expect(JSON.stringify(checkpoint)).not.toContain("prove production graph is loaded");
+    expect(readFileSync(checkpointPath, "utf-8")).toContain("knowledge-routing-rollout");
+  });
 });
 
 function discoverFixtureGraph() {
@@ -196,6 +253,7 @@ function discoverFixtureGraph() {
     openclawConfigPath: join(openclawRoot, "openclaw.json"),
     config: {
       docsPath: join(operatorRoot, "docs"),
+      logsDir: join(openclawRoot, "state/openclaw-operator/logs"),
       cookbookPath: undefined,
       publishingDatabasePath: join(openclawRoot, "state/openclaw-operator/database/deterministic-publishing.sqlite"),
     } as any,
@@ -231,6 +289,7 @@ function buildFixture(base: string) {
   mkdirSync(join(operatorRoot, "docs/operations"), { recursive: true });
   mkdirSync(join(operatorRoot, "orchestrator/src"), { recursive: true });
   mkdirSync(join(openclawRoot, "state/openclaw-operator/database"), { recursive: true });
+  mkdirSync(join(openclawRoot, "state/openclaw-operator/logs/knowledge-routing"), { recursive: true });
   mkdirSync(join(openclawRoot, "cron"), { recursive: true });
 
   writeFileSync(
@@ -258,6 +317,14 @@ function buildFixture(base: string) {
   writeFileSync(join(operatorRoot, "docs/OPENCLAW_KB/operations/FAILURE_MODES.md"), "# Failure modes\n");
   writeFileSync(join(operatorRoot, "docs/OPENCLAW_KB/governance/APPROVAL_GATES.md"), "# Approvals\n");
   writeFileSync(
+    join(openclawRoot, "state/openclaw-operator/logs/knowledge-routing/rollout-checkpoint.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      program: "knowledge-routing-rollout",
+      phase: { status: "shadow_observing" },
+    }),
+  );
+  writeFileSync(
     join(operatorRoot, "orchestrator/src/openapi.ts"),
     [
       'export const paths = {',
@@ -272,6 +339,7 @@ function buildFixture(base: string) {
       '"/api/knowledge-routing/maps": {},',
       '"/api/knowledge-routing/refresh": {},',
       '"/api/knowledge-routing/route": {},',
+      '"/api/knowledge-routing/shadow": {},',
       '"/api/knowledge-routing/summary": {},',
       '"/api/knowledge/summary": {},',
       '"/api/memory/recall": {},',

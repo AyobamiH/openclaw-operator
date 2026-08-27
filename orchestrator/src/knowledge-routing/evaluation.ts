@@ -25,6 +25,8 @@ export const DEFAULT_KNOWLEDGE_ROUTING_EVALUATION: KnowledgeRouteEvaluationCase[
   q("repo-proof", "Which source proves repository state?", ["component:repository.state", "repo:openclaw-operator"], ["authoritative"], ["git"]),
   q("knowledge-route", "Where should an agent route an information need?", ["component:knowledge.routing", "api:/api/knowledge-routing/route"], ["derived"], ["openapi"]),
   q("api-route", "Which API route serves knowledge routing?", ["component:knowledge.routing", "api:/api/knowledge-routing/route"], ["derived"], ["openapi"]),
+  q("graph-load-proof", "Where should graph-load proof route for the live knowledge-routing graph?", ["api:/api/knowledge-routing/summary", "component:knowledge.routing"], ["derived"], ["openapi"]),
+  q("shadow-endpoint-proof", "Which protected endpoint records knowledge-routing shadow comparisons?", ["api:/api/knowledge-routing/shadow", "component:knowledge.routing"], ["derived"], ["openapi"]),
   q("memory-decisions", "Where are durable decisions recorded?", ["component:memory.system", "memory:current-index"], ["advisory"], ["file"]),
   q("agent-config", "Which agents are configured?", ["component:agent.runtime", "agent:main"], ["authoritative"], ["openclaw-config"]),
   q("agent-architecture", "Which source describes intended agent architecture?", ["component:agent.runtime", "docs:agent-capability-model"], ["advisory"], ["file"]),

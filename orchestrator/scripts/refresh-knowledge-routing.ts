@@ -16,6 +16,8 @@ const runtime = new KnowledgeRoutingRuntime({
   openclawConfigPath: join(openclawRoot, "openclaw.json"),
   config,
   graphPath: join(config.logsDir, "knowledge-routing", "routing-graph.generated.json"),
+  shadowLogPath: join(config.logsDir, "knowledge-routing", "shadow-routing.jsonl"),
+  rolloutCheckpointPath: join(config.logsDir, "knowledge-routing", "rollout-checkpoint.json"),
   runSystemctl: process.env.KNOWLEDGE_ROUTING_SYSTEMD !== "false",
 });
 

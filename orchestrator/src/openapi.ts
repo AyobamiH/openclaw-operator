@@ -513,6 +513,12 @@ const components = {
         graphRoute: schemaRef("GenericObject"),
         existingSourceUsed: { type: "string" },
         agreement: { type: "string", enum: ["agree", "disagree", "unknown"] },
+        agreementReason: { type: "string" },
+        resultClassification: {
+          type: "string",
+          enum: ["EXACT", "USEFUL", "NEUTRAL", "PARTIAL", "WRONG_SOURCE", "STALE_SOURCE", "NO_ROUTE", "AMBIGUOUS"],
+        },
+        matchedSourceIdentity: { type: "string" },
         requestId: { type: "string" },
         sessionHash: { type: "string" },
         recording: schemaRef("GenericObject"),

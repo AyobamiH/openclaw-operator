@@ -82,6 +82,8 @@ function normalize(value: string): string[] {
 
 function scoreNode(node: KnowledgeRouteNode, tokens: string[]): number {
   const query = tokens.join(" ");
+  const routePath = node.kind === "api" ? node.id.replace(/^api:/, "") : "";
+  const routeTokens = routePath ? normalize(routePath) : [];
   const aliases = [...(node.aliases ?? []), ...(node.taskIntents ?? [])].map((value) => value.toLowerCase());
   const haystack = [
     node.id,
@@ -96,6 +98,20 @@ function scoreNode(node: KnowledgeRouteNode, tokens: string[]): number {
     .toLowerCase();
   let score = 0;
   if (aliases.some((alias) => query.includes(alias) || alias.includes(query))) score += 50;
+  for (const alias of aliases) {
+    const aliasTokens = normalize(alias);
+    if (aliasTokens.length > 1 && aliasTokens.every((token) => tokens.includes(token))) {
+      score += Math.min(44, aliasTokens.length * 12);
+    }
+  }
+  if (routePath && query.includes(routePath.toLowerCase())) score += 80;
+  if (
+    node.kind === "api" &&
+    tokens.some((token) => ["api", "route", "endpoint", "http", "protected"].includes(token)) &&
+    routeTokens.some((token) => tokens.includes(token))
+  ) {
+    score += 24;
+  }
   if (query && node.id.replace(/^[^:]+:/, "").replace(/[._:-]+/g, " ").includes(query)) score += 24;
   for (const token of tokens) {
     if (haystack.includes(token)) score += token.length >= 6 ? 3 : 1;
@@ -121,6 +137,13 @@ function scoreNode(node: KnowledgeRouteNode, tokens: string[]): number {
     node.id === "component:operator.state" &&
     tokens.includes("operator") &&
     tokens.some((token) => ["state", "persisted", "persistence", "database"].includes(token))
+  ) {
+    score += 30;
+  }
+  if (
+    node.id === "component:gateway.runtime" &&
+    tokens.includes("gateway") &&
+    tokens.some((token) => ["health", "verified", "verifies", "source"].includes(token))
   ) {
     score += 30;
   }
@@ -184,17 +207,25 @@ function collectAuthoritativeSources(
   const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
   const sources: KnowledgeRouteNode[] = [];
   for (const node of nodes) {
-    if (node.source.resolver !== "generated" && (node.authority.class === "authoritative" || node.authority.class === "runtime")) {
+    if (
+      node.source.resolver !== "generated" &&
+      (node.authority.class === "authoritative" || node.authority.class === "runtime" || node.source.resolver === "openapi")
+    ) {
       sources.push(node);
     }
   }
   for (const edge of edges) {
-    if (!["implemented_by", "configured_by", "runs_as", "stores_state_in", "verified_by", "observed_by", "documented_by", "retrieved_by"].includes(edge.relationship)) {
+    if (!["implemented_by", "configured_by", "runs_as", "stores_state_in", "verified_by", "observed_by", "documented_by", "retrieved_by", "exposes"].includes(edge.relationship)) {
       continue;
     }
     const target = nodeById.get(edge.to);
     if (!target || target.source.resolver === "generated") continue;
-    if (target.authority.class === "authoritative" || target.authority.class === "runtime" || target.authority.class === "historical") {
+    if (
+      target.authority.class === "authoritative" ||
+      target.authority.class === "runtime" ||
+      target.authority.class === "historical" ||
+      target.source.resolver === "openapi"
+    ) {
       sources.push(target);
     }
   }

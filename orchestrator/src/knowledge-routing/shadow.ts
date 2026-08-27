@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { appendFile, mkdir, rename, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 import { resolveKnowledgeRoute } from "./resolver.js";
-import type { KnowledgeRoutingGraph, KnowledgeRoutingShadowComparison } from "./types.js";
+import type { KnowledgeRouteNode, KnowledgeRouteSource, KnowledgeRoutingGraph, KnowledgeRoutingShadowComparison } from "./types.js";
 
 const DEFAULT_MAX_SHADOW_LOG_BYTES = 1_000_000;
 const DEFAULT_MAX_SHADOW_RECORD_BYTES = 16_384;
@@ -20,12 +20,7 @@ export function createKnowledgeRoutingShadowComparison(
 ): KnowledgeRoutingShadowComparison {
   const route = resolveKnowledgeRoute(graph, informationNeed, 5);
   const selectedNode = route.recommendedNodes[0]?.id ?? null;
-  const proposedLocators = new Set(route.authoritativeSources.map((source) => source.locator));
-  const agreement = existingSourceUsed
-    ? Array.from(proposedLocators).some((locator) => locator.includes(existingSourceUsed) || existingSourceUsed.includes(locator))
-      ? "agree"
-      : "disagree"
-    : "unknown";
+  const match = classifyAgreement(graph, route, existingSourceUsed);
   return {
     generatedAt: new Date().toISOString(),
     informationNeedHash: createHash("sha256").update(informationNeed).digest("hex"),
@@ -40,7 +35,10 @@ export function createKnowledgeRoutingShadowComparison(
       warnings: route.warnings,
     },
     existingSourceUsed: existingSourceUsed ? preview(existingSourceUsed, 240) : undefined,
-    agreement,
+    agreement: match.agreement,
+    agreementReason: match.agreementReason,
+    resultClassification: match.resultClassification,
+    matchedSourceIdentity: match.matchedSourceIdentity,
   };
 }
 
@@ -84,4 +82,110 @@ function preview(value: string, maxLength = 160): string {
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, maxLength);
+}
+
+function classifyAgreement(
+  graph: KnowledgeRoutingGraph,
+  route: ReturnType<typeof resolveKnowledgeRoute>,
+  existingSourceUsed?: string,
+): Pick<KnowledgeRoutingShadowComparison, "agreement" | "agreementReason" | "resultClassification" | "matchedSourceIdentity"> {
+  if (route.recommendedNodes.length === 0) {
+    return { agreement: "unknown", agreementReason: "no_graph_route", resultClassification: "NO_ROUTE" };
+  }
+  if (route.recommendedNodes.some((node) => node.management.stale)) {
+    return { agreement: "disagree", agreementReason: "graph_route_marked_stale", resultClassification: "STALE_SOURCE" };
+  }
+  if (!existingSourceUsed?.trim()) {
+    return { agreement: "unknown", agreementReason: "no_existing_source_supplied", resultClassification: "NEUTRAL" };
+  }
+
+  const nodeById = new Map(graph.nodes.map((node) => [node.id, node]));
+  const selectedNodes = route.recommendedNodes;
+  const pathNodes = route.relationshipPath
+    .flatMap((edge) => [edge.from, edge.to])
+    .map((id) => nodeById.get(id))
+    .filter((node): node is KnowledgeRouteNode => Boolean(node));
+  const retrievalNodes = route.retrievalMethods
+    .map((source) => graph.nodes.find((node) => sameSource(node.source, source)))
+    .filter((node): node is KnowledgeRouteNode => Boolean(node));
+
+  const existingIdentities = sourceIdentities(existingSourceUsed);
+  const selectedMatch = matchNodeIdentity(selectedNodes, existingIdentities);
+  if (selectedMatch) {
+    return {
+      agreement: "agree",
+      agreementReason: "existing_source_matches_selected_route_identity",
+      resultClassification: "EXACT",
+      matchedSourceIdentity: selectedMatch,
+    };
+  }
+
+  const pathMatch = matchNodeIdentity(pathNodes, existingIdentities);
+  if (pathMatch) {
+    return {
+      agreement: "agree",
+      agreementReason: "existing_source_matches_relationship_path_identity",
+      resultClassification: "USEFUL",
+      matchedSourceIdentity: pathMatch,
+    };
+  }
+
+  const retrievalMatch = matchNodeIdentity(retrievalNodes, existingIdentities);
+  if (retrievalMatch) {
+    return {
+      agreement: "agree",
+      agreementReason: "existing_source_matches_retrieval_source_identity",
+      resultClassification: "USEFUL",
+      matchedSourceIdentity: retrievalMatch,
+    };
+  }
+
+  const domainMatch = selectedNodes.some((node) =>
+    existingIdentities.some((identity) => identity.includes(node.domain) || node.domain.includes(identity)),
+  );
+  if (domainMatch) {
+    return { agreement: "agree", agreementReason: "existing_source_matches_route_domain_only", resultClassification: "PARTIAL" };
+  }
+
+  return { agreement: "disagree", agreementReason: "existing_source_identity_not_found_in_route", resultClassification: "WRONG_SOURCE" };
+}
+
+function sameSource(left: KnowledgeRouteSource, right: KnowledgeRouteSource): boolean {
+  return left.resolver === right.resolver && left.locator === right.locator;
+}
+
+function matchNodeIdentity(nodes: KnowledgeRouteNode[], identities: string[]): string | undefined {
+  for (const node of nodes) {
+    const nodeIdentities = [
+      node.id,
+      node.source.locator,
+      node.verification.target,
+      ...sourceIdentities(node.id),
+      ...sourceIdentities(node.source.locator),
+      ...sourceIdentities(node.verification.target),
+    ];
+    const match = identities.find((identity) => nodeIdentities.some((candidate) => candidate === identity));
+    if (match) return match;
+  }
+  return undefined;
+}
+
+function sourceIdentities(value: string): string[] {
+  const lower = value.toLowerCase();
+  const identities = new Set<string>();
+  identities.add(lower);
+  for (const endpoint of lower.match(/\/api\/[a-z0-9._~:/-]+|\/health\b/g) ?? []) identities.add(endpoint);
+  for (const service of lower.match(/\b[a-z0-9_.@-]+\.service\b/g) ?? []) identities.add(service);
+  for (const node of lower.match(/\b(?:api|component|repo|service|docs|database|config|memory|skill|plugin|cron):[a-z0-9._:/-]+\b/g) ?? []) {
+    identities.add(node);
+    if (node.startsWith("api:")) identities.add(node.slice(4));
+  }
+  const hashIndex = lower.indexOf("#");
+  if (hashIndex >= 0 && hashIndex < lower.length - 1) identities.add(lower.slice(hashIndex + 1));
+  const fileMatch = lower.match(/[a-z0-9._/-]+\.(?:md|json|sqlite|ts)$/);
+  if (fileMatch) {
+    identities.add(fileMatch[0]);
+    identities.add(fileMatch[0].split("/").filter(Boolean).slice(-3).join("/"));
+  }
+  return Array.from(identities).filter(Boolean);
 }

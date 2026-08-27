@@ -4,6 +4,7 @@ import type { OrchestratorConfig } from "../types.js";
 import { discoverKnowledgeRoutingGraph, type KnowledgeRoutingDiscoveryOptions } from "./discovery.js";
 import { evaluateKnowledgeRoutingGraph } from "./evaluation.js";
 import { resolveKnowledgeRoute } from "./resolver.js";
+import { writeKnowledgeRoutingRolloutCheckpoint } from "./rollout.js";
 import { createKnowledgeRoutingShadowComparison, KnowledgeRoutingShadowRecorder } from "./shadow.js";
 import type { KnowledgeRoutingShadowOptions } from "./shadow.js";
 import { buildKnowledgeRoutingMapViews } from "./views.js";
@@ -18,6 +19,7 @@ export interface KnowledgeRoutingRuntimeOptions extends Omit<KnowledgeRoutingDis
   config?: OrchestratorConfig;
   graphPath?: string;
   shadowLogPath?: string;
+  rolloutCheckpointPath?: string;
   autoRefreshMs?: number;
 }
 
@@ -52,6 +54,7 @@ export class KnowledgeRoutingRuntime {
       await mkdir(dirname(this.options.graphPath), { recursive: true });
       await writeFile(this.options.graphPath, JSON.stringify(graph, null, 2) + "\n", "utf-8");
     }
+    await this.writeRolloutCheckpoint(graph);
     return graph;
   }
 
@@ -79,6 +82,7 @@ export class KnowledgeRoutingRuntime {
     if (this.options.shadowLogPath) {
       try {
         await new KnowledgeRoutingShadowRecorder(this.options.shadowLogPath).record(comparison);
+        await this.writeRolloutCheckpoint(this.getGraph());
         return { ...comparison, recording: { attempted: true, ok: true } };
       } catch (error) {
         console.warn("[knowledge-routing] shadow record failed", { error: error instanceof Error ? error.message : String(error) });
@@ -98,6 +102,23 @@ export class KnowledgeRoutingRuntime {
   getMaps() {
     return buildKnowledgeRoutingMapViews(this.getGraph());
   }
+
+  private async writeRolloutCheckpoint(graph: KnowledgeRoutingGraph): Promise<void> {
+    if (!this.options.rolloutCheckpointPath) return;
+    try {
+      await writeKnowledgeRoutingRolloutCheckpoint({
+        path: this.options.rolloutCheckpointPath,
+        graph,
+        operatorRoot: this.options.operatorRoot,
+        graphPath: this.options.graphPath,
+        shadowLogPath: this.options.shadowLogPath,
+      });
+    } catch (error) {
+      console.warn("[knowledge-routing] rollout checkpoint failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 }
 
 export async function loadKnowledgeRoutingGraph(path: string): Promise<KnowledgeRoutingGraph> {
@@ -108,6 +129,7 @@ export * from "./types.js";
 export { discoverKnowledgeRoutingGraph } from "./discovery.js";
 export { evaluateKnowledgeRoutingGraph, DEFAULT_KNOWLEDGE_ROUTING_EVALUATION } from "./evaluation.js";
 export { resolveKnowledgeRoute } from "./resolver.js";
+export { writeKnowledgeRoutingRolloutCheckpoint } from "./rollout.js";
 export { createKnowledgeRoutingShadowComparison, KnowledgeRoutingShadowRecorder } from "./shadow.js";
 export { buildKnowledgeRoutingMapViews } from "./views.js";
 export { validateSemanticRelationshipProposals } from "./semantic.js";
