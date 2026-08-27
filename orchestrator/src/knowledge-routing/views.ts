@@ -3,6 +3,7 @@ import type { KnowledgeRouteNode, KnowledgeRoutingGraph, KnowledgeRoutingMapView
 export function buildKnowledgeRoutingMapViews(graph: KnowledgeRoutingGraph): KnowledgeRoutingMapViews {
   return {
     systemMap: mermaid(graph, ["service", "agent", "config", "database", "api"]),
+    telegramExecutionMap: mermaid(graph, ["component", "service", "agent", "config", "repository", "worktree", "skill"], ["telegram", "runtime", "models", "skills"]),
     runtimeMap: mermaid(graph, ["service", "cron-job", "database", "verification-source"]),
     knowledgeSourceMap: mermaid(graph, ["documentation", "document-index", "memory", "repository", "database"]),
     repositoryMap: mermaid(graph, ["repository", "worktree", "component", "documentation"]),
@@ -11,12 +12,14 @@ export function buildKnowledgeRoutingMapViews(graph: KnowledgeRoutingGraph): Kno
     pluginMap: mermaid(graph, ["plugin", "tool"]),
     stateStoreMap: mermaid(graph, ["database", "state-store", "cron-job"]),
     verificationMap: mermaid(graph, ["service", "database", "api", "verification-source", "repository"]),
+    incidentDecisionMap: mermaid(graph, ["component", "documentation", "memory", "api"], ["incidents", "memory", "verification", "approvals"]),
   };
 }
 
-function mermaid(graph: KnowledgeRoutingGraph, kinds: KnowledgeRouteNode["kind"][]): string {
+function mermaid(graph: KnowledgeRoutingGraph, kinds: KnowledgeRouteNode["kind"][], domains?: string[]): string {
   const allowed = new Set(kinds);
-  const nodes = graph.nodes.filter((node) => allowed.has(node.kind));
+  const allowedDomains = domains ? new Set(domains) : null;
+  const nodes = graph.nodes.filter((node) => allowed.has(node.kind) && (!allowedDomains || allowedDomains.has(node.domain)));
   const nodeIds = new Set(nodes.map((node) => node.id));
   const edges = graph.edges.filter((edge) => nodeIds.has(edge.from) && nodeIds.has(edge.to));
   const lines = ["```mermaid", "graph LR"];

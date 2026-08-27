@@ -106,6 +106,9 @@ compatible with the stored data or reset those volumes intentionally.
 
 - [ ] `npm --prefix orchestrator run build`
 - [ ] `npm --prefix orchestrator run test:integration`
+- [ ] `npm --prefix orchestrator run knowledge-routing:evaluate` when a
+  deployment changes knowledge-routing graph, resolver, shadow, API or
+  evaluation behavior
 - [ ] `bash scripts/check-doc-drift.sh`
 - [ ] `jq . orchestrator_config.json >/dev/null`
 - [ ] Required env vars prepared for the selected mode:
@@ -117,6 +120,12 @@ compatible with the stored data or reset those volumes intentionally.
   - Mode B: `MONGO_PASSWORD`
   - Mode B: `REDIS_PASSWORD`
   - `OPENCLAW_MODEL_PRICING_JSON` if you want to override the built-in model pricing catalog for runtime cost accounting
+
+Knowledge-routing deployments are not production-active merely because the
+evaluation suite passes. Treat a green evaluation as permission to enter
+shadow validation only. Preferred Telegram routing still requires verified
+runtime load, bounded shadow logs from real traffic, fallback behavior, and the
+explicit activation approval recorded for that deployment.
 
 ## Post-Deployment Verification
 

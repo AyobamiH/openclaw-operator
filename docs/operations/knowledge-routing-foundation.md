@@ -20,11 +20,19 @@ its owning evidence system.
 - Protected graph metadata: `GET /api/knowledge-routing/graph`
 - Protected generated maps: `GET /api/knowledge-routing/maps`
 - Operator refresh: `POST /api/knowledge-routing/refresh`
+- Fixed evaluation: `GET /api/knowledge-routing/evaluation`
+- Shadow comparison: `POST /api/knowledge-routing/shadow`
 - CLI refresh: `npm run knowledge-routing:refresh --prefix orchestrator`
+- CLI evaluation: `npm run knowledge-routing:evaluate --prefix orchestrator`
 
 The resolver returns recommended route nodes, authoritative source locators,
 relationship edges, freshness requirements, retrieval methods and verification
 sources. It does not return full documents, source bodies, logs or transcripts.
+
+The shadow comparison endpoint is intentionally non-authoritative. It records a
+hash, a short redacted preview, graph route metadata, the existing source used
+when provided, and agreement status. It must not change the Telegram answer or
+tool path while graph routing is being validated.
 
 ## Canonical Model
 
@@ -116,8 +124,32 @@ the canonical graph:
 - plugin map
 - state-store map
 - verification map
+- Telegram execution map
+- incident/decision map
 
 These are views, not independently maintained maps.
+
+## Evaluation And Activation
+
+`orchestrator/src/knowledge-routing/evaluation.ts` owns the fixed evaluation
+set. The suite covers runtime, Telegram, config, agents, models, skills,
+plugins, repositories, cron, operator APIs, databases, memory, incidents,
+deployments, verification and approvals.
+
+The preferred-routing activation gate is stricter than a green unit test:
+
+- no critical `WRONG SOURCE` results
+- no stale source trusted as current
+- no `NO ROUTE` result for core OpenClaw information needs
+- routing and authority accuracy at or above the threshold recorded in the
+  release evidence
+- bounded graph lookup with existing retrieval fallback intact
+- Telegram regression still passes after deployment
+- shadow comparison logs show acceptable agreement on real traffic
+
+Until those gates pass on the running operator, the graph remains a routing
+index and shadow-validation aid, not the authoritative Telegram navigation
+layer.
 
 ## Growth Path
 

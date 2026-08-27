@@ -5,6 +5,7 @@ import type {
   KnowledgeRouteEdge,
   KnowledgeRouteNode,
   KnowledgeRoutingGraph,
+  KnowledgeRoutingSemanticAudit,
   KnowledgeRoutingStats,
 } from "./types.js";
 
@@ -47,6 +48,7 @@ export function buildGraph(
   nodes: KnowledgeRouteNode[],
   edges: KnowledgeRouteEdge[],
   generatedAt = new Date().toISOString(),
+  semanticAudit?: KnowledgeRoutingSemanticAudit,
 ): KnowledgeRoutingGraph {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const uniqueNodes = Array.from(nodeById.values()).sort((left, right) =>
@@ -61,6 +63,7 @@ export function buildGraph(
     nodes: uniqueNodes.map(markStaleNode),
     edges: uniqueEdges,
     stats: emptyStats(),
+    semanticAudit,
   };
   graph.stats = summarizeGraph(graph);
   return graph;
@@ -129,6 +132,8 @@ function emptyStats(): KnowledgeRoutingStats {
     domains: {},
     generatedNodes: 0,
     aiClassifiedNodes: 0,
+    acceptedAiRelationships: 0,
+    rejectedSemanticProposals: 0,
     verifiedRelationships: 0,
     unresolvedRelationships: 0,
     staleRoutes: 0,
@@ -143,13 +148,19 @@ export function summarizeGraph(graph: KnowledgeRoutingGraph): KnowledgeRoutingSt
     stats.sourceTypes[node.source.type] = (stats.sourceTypes[node.source.type] ?? 0) + 1;
     stats.domains[node.domain] = (stats.domains[node.domain] ?? 0) + 1;
     if (node.management.generated) stats.generatedNodes += 1;
-    if (node.management.semanticStage === "ai-proposed") stats.aiClassifiedNodes += 1;
+    if (node.management.semanticStage && node.management.semanticStage !== "deterministic") {
+      stats.aiClassifiedNodes += 1;
+    }
     if (node.management.stale) stats.staleRoutes += 1;
   }
   for (const edge of graph.edges) {
+    if (edge.confidence === "ai-proposed" || edge.confidence === "reviewed") {
+      stats.acceptedAiRelationships += 1;
+    }
     if (edge.verified && !edge.stale) stats.verifiedRelationships += 1;
     else stats.unresolvedRelationships += 1;
     if (edge.stale) stats.staleRoutes += 1;
   }
+  stats.rejectedSemanticProposals = graph.semanticAudit?.rejectedRelationships.length ?? 0;
   return stats;
 }

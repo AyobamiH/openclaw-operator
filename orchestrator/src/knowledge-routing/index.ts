@@ -2,13 +2,21 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import type { OrchestratorConfig } from "../types.js";
 import { discoverKnowledgeRoutingGraph, type KnowledgeRoutingDiscoveryOptions } from "./discovery.js";
+import { evaluateKnowledgeRoutingGraph } from "./evaluation.js";
 import { resolveKnowledgeRoute } from "./resolver.js";
+import { createKnowledgeRoutingShadowComparison, KnowledgeRoutingShadowRecorder } from "./shadow.js";
 import { buildKnowledgeRoutingMapViews } from "./views.js";
-import type { KnowledgeRouteResult, KnowledgeRoutingGraph } from "./types.js";
+import type {
+  KnowledgeRouteEvaluationReport,
+  KnowledgeRouteResult,
+  KnowledgeRoutingGraph,
+  KnowledgeRoutingShadowComparison,
+} from "./types.js";
 
 export interface KnowledgeRoutingRuntimeOptions extends Omit<KnowledgeRoutingDiscoveryOptions, "config"> {
   config?: OrchestratorConfig;
   graphPath?: string;
+  shadowLogPath?: string;
   autoRefreshMs?: number;
 }
 
@@ -57,6 +65,18 @@ export class KnowledgeRoutingRuntime {
     return resolveKnowledgeRoute(this.getGraph(), query, limit);
   }
 
+  evaluate(): KnowledgeRouteEvaluationReport {
+    return evaluateKnowledgeRoutingGraph(this.getGraph());
+  }
+
+  async shadowCompare(query: string, existingSourceUsed?: string): Promise<KnowledgeRoutingShadowComparison> {
+    const comparison = createKnowledgeRoutingShadowComparison(this.getGraph(), query, existingSourceUsed);
+    if (this.options.shadowLogPath) {
+      await new KnowledgeRoutingShadowRecorder(this.options.shadowLogPath).record(comparison);
+    }
+    return comparison;
+  }
+
   getMaps() {
     return buildKnowledgeRoutingMapViews(this.getGraph());
   }
@@ -68,6 +88,8 @@ export async function loadKnowledgeRoutingGraph(path: string): Promise<Knowledge
 
 export * from "./types.js";
 export { discoverKnowledgeRoutingGraph } from "./discovery.js";
+export { evaluateKnowledgeRoutingGraph, DEFAULT_KNOWLEDGE_ROUTING_EVALUATION } from "./evaluation.js";
 export { resolveKnowledgeRoute } from "./resolver.js";
+export { createKnowledgeRoutingShadowComparison, KnowledgeRoutingShadowRecorder } from "./shadow.js";
 export { buildKnowledgeRoutingMapViews } from "./views.js";
 export { validateSemanticRelationshipProposals } from "./semantic.js";

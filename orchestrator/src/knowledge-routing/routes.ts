@@ -34,6 +34,10 @@ export function registerKnowledgeRoutingRoutes(
     res.json(runtime.getMaps());
   });
 
+  app.get("/api/knowledge-routing/evaluation", ...protectedRead, (_req: Request, res: Response) => {
+    res.json(runtime.evaluate());
+  });
+
   app.get("/api/knowledge-routing/route", ...protectedRead, (req: Request, res: Response) => {
     const query = typeof req.query.query === "string" ? req.query.query.trim() : "";
     if (!query) {
@@ -48,6 +52,24 @@ export function registerKnowledgeRoutingRoutes(
     try {
       const graph = await runtime.refresh();
       res.json({ ok: true, generatedAt: graph.generatedAt, stats: graph.stats });
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  });
+
+  app.post("/api/knowledge-routing/shadow", ...protectedWrite, async (req: Request, res: Response) => {
+    const informationNeed = typeof req.body?.informationNeed === "string" ? req.body.informationNeed.trim() : "";
+    if (!informationNeed) {
+      res.status(400).json({ error: "informationNeed is required" });
+      return;
+    }
+    const existingSourceUsed =
+      typeof req.body?.existingSourceUsed === "string" ? req.body.existingSourceUsed.trim() : undefined;
+    try {
+      res.json(await runtime.shadowCompare(informationNeed, existingSourceUsed));
     } catch (error) {
       res.status(500).json({
         ok: false,

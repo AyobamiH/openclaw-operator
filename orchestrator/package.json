@@ -38,6 +38,7 @@
     "graph:scheduler-trigger": "tsx scripts/trigger-governed-graph-schedule.ts",
     "graph:audit:full": "tsx src/graph/full-runtime-audit-cli.ts",
     "knowledge-routing:refresh": "tsx scripts/refresh-knowledge-routing.ts",
+    "knowledge-routing:evaluate": "tsx scripts/evaluate-knowledge-routing.ts",
     "source:provenance": "tsx scripts/source-provenance-gate.ts",
     "worktree:integrity": "tsx scripts/worktree-integrity-witness.ts check",
     "execute:controlled": "tsx scripts/execute-controlled-command.ts"

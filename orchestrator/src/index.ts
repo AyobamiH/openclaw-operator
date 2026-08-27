@@ -10607,6 +10607,7 @@ async function bootstrap() {
     config,
     docsIndexSize: indexedDocCount,
     graphPath: join(config.logsDir, "knowledge-routing", "routing-graph.generated.json"),
+    shadowLogPath: join(config.logsDir, "knowledge-routing", "shadow-routing.jsonl"),
     autoRefreshMs: fastStartMode ? undefined : 15 * 60 * 1000,
     runSystemctl: process.env.KNOWLEDGE_ROUTING_SYSTEMD !== "false",
   });

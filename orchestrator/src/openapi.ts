@@ -479,6 +479,38 @@ const components = {
         nodes: { type: "array", items: schemaRef("GenericObject") },
         edges: { type: "array", items: schemaRef("GenericObject") },
         stats: schemaRef("GenericObject"),
+        semanticAudit: schemaRef("GenericObject"),
+      },
+      additionalProperties: true,
+    },
+    KnowledgeRoutingEvaluationResponse: {
+      type: "object",
+      required: ["summary", "results"],
+      properties: {
+        summary: schemaRef("GenericObject"),
+        results: { type: "array", items: schemaRef("GenericObject") },
+      },
+      additionalProperties: true,
+    },
+    KnowledgeRoutingShadowRequest: {
+      type: "object",
+      required: ["informationNeed"],
+      properties: {
+        informationNeed: { type: "string", minLength: 1, maxLength: 1000 },
+        existingSourceUsed: { type: "string", maxLength: 500 },
+      },
+      additionalProperties: false,
+    },
+    KnowledgeRoutingShadowResponse: {
+      type: "object",
+      required: ["generatedAt", "informationNeedHash", "informationNeedPreview", "graphRoute", "agreement"],
+      properties: {
+        generatedAt: { type: "string", format: "date-time" },
+        informationNeedHash: { type: "string" },
+        informationNeedPreview: { type: "string" },
+        graphRoute: schemaRef("GenericObject"),
+        existingSourceUsed: { type: "string" },
+        agreement: { type: "string", enum: ["agree", "disagree", "unknown"] },
       },
       additionalProperties: true,
     },
@@ -1555,6 +1587,31 @@ export function buildOpenApiSpec(port: string | number = 3000) {
         },
       },
     },
+    "/api/knowledge-routing/evaluation": {
+      get: {
+        tags: ["Protected", "Knowledge"],
+        summary: "Evaluate knowledge-routing quality",
+        description:
+          "Runs the fixed OpenClaw information-need evaluation set against the current routing graph and returns route/authority classifications.",
+        operationId: "evaluateKnowledgeRoutingGraph",
+        "x-openclaw-access": protectedAccess(
+          "viewer",
+          "viewer-read",
+          "knowledge-routing.read",
+        ),
+        responses: {
+          "200": jsonResponse(
+            "Knowledge-routing evaluation report.",
+            "KnowledgeRoutingEvaluationResponse",
+            protectedReadHeaders,
+          ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
     "/api/knowledge-routing/refresh": {
       post: {
         tags: ["Protected", "Knowledge"],
@@ -1573,6 +1630,36 @@ export function buildOpenApiSpec(port: string | number = 3000) {
             "KnowledgeRoutingSummaryResponse",
             writeHeaders,
           ),
+          "401": responseRef("Unauthorized"),
+          "403": responseRef("Forbidden"),
+          "429": responseRef("TooManyRequests"),
+          "500": responseRef("ServerError"),
+        },
+      },
+    },
+    "/api/knowledge-routing/shadow": {
+      post: {
+        tags: ["Protected", "Knowledge"],
+        summary: "Record a shadow knowledge-route comparison",
+        description:
+          "Compares graph routing with an existing retrieval source without changing the answer path. The record stores a hash and redacted preview, not full message bodies.",
+        operationId: "recordKnowledgeRoutingShadowComparison",
+        requestBody: {
+          required: true,
+          content: { "application/json": { schema: schemaRef("KnowledgeRoutingShadowRequest") } },
+        },
+        "x-openclaw-access": protectedAccess(
+          "operator",
+          "operator-write",
+          "knowledge-routing.refresh",
+        ),
+        responses: {
+          "200": jsonResponse(
+            "Knowledge-routing shadow comparison.",
+            "KnowledgeRoutingShadowResponse",
+            writeHeaders,
+          ),
+          "400": responseRef("ValidationError"),
           "401": responseRef("Unauthorized"),
           "403": responseRef("Forbidden"),
           "429": responseRef("TooManyRequests"),

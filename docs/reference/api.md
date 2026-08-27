@@ -200,10 +200,17 @@ Specialist operator-console contract truth:
 - `GET /api/knowledge-routing/graph` and `GET /api/knowledge-routing/maps`:
   protected graph metadata and generated human/agent-readable projections from
   the same canonical route data.
+- `GET /api/knowledge-routing/evaluation`: protected fixed-suite evaluation
+  for route quality. It records route classifications, authority accuracy and
+  routing accuracy over representative OpenClaw information needs.
 - `POST /api/knowledge-routing/refresh`: operator-only deterministic refresh.
   It reruns source discovery and rewrites the generated routing artifact; it
   does not mutate Telegram, gateway runtime, schedules, state rows, provider
   integrations or source content.
+- `POST /api/knowledge-routing/shadow`: operator-only shadow comparison for a
+  proposed information need. It compares the graph route with an existing
+  retrieval source, stores a hash and redacted preview, and must not change the
+  Telegram answer/tool path.
 - `GET /api/command-center/overview`: public proof overview surface sourced
   directly from orchestrator runtime state.
 - `GET /api/command-center/control`: public proof control-cluster surface for

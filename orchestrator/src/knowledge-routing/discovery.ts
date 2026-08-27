@@ -4,8 +4,13 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import type { OrchestratorConfig } from "../types.js";
 import { buildGraph, makeEdge, nodeId, stableHash } from "./graph.js";
-import { classifyRouteSemantics } from "./semantic.js";
-import type { KnowledgeRouteEdge, KnowledgeRouteNode, KnowledgeRoutingGraph } from "./types.js";
+import { classifyRouteSemantics, validateSemanticRelationshipProposals } from "./semantic.js";
+import type {
+  KnowledgeRouteEdge,
+  KnowledgeRouteNode,
+  KnowledgeRoutingGraph,
+  KnowledgeRoutingSemanticAudit,
+} from "./types.js";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
@@ -25,6 +30,7 @@ export interface KnowledgeRoutingDiscoveryOptions {
 type MutableDiscovery = {
   nodes: KnowledgeRouteNode[];
   edges: KnowledgeRouteEdge[];
+  semanticAudit?: KnowledgeRoutingSemanticAudit;
   generatedAt: string;
 };
 
@@ -56,8 +62,10 @@ export function discoverKnowledgeRoutingGraph(
   discoverMemory(ctx, { workspaceRoot, openclawRoot, generatedAt });
   discoverCron(ctx, { openclawRoot, generatedAt });
 
+  addSemanticConcepts(ctx);
   addDerivedRelationships(ctx);
-  return buildGraph(ctx.nodes.map(classifyRouteSemantics), ctx.edges, generatedAt);
+  addSemanticRelationships(ctx);
+  return buildGraph(ctx.nodes.map(classifyRouteSemantics), ctx.edges, generatedAt, ctx.semanticAudit);
 }
 
 function inferWorkspaceRoot(operatorRoot: string): string {
@@ -84,6 +92,9 @@ function baseNode(params: {
   discoveredBy: string;
   generatedAt: string;
   humanReviewRequired?: boolean;
+  aliases?: string[];
+  taskIntents?: string[];
+  semanticStage?: KnowledgeRouteNode["management"]["semanticStage"];
 }): KnowledgeRouteNode {
   return {
     id: params.id,
@@ -91,6 +102,8 @@ function baseNode(params: {
     domain: params.domain,
     description: params.description,
     answers: params.answers,
+    aliases: params.aliases,
+    taskIntents: params.taskIntents,
     source: params.source,
     authority: params.authority,
     freshness: params.freshness,
@@ -113,7 +126,7 @@ function baseNode(params: {
     management: {
       generated: true,
       humanReviewRequired: params.humanReviewRequired ?? false,
-      semanticStage: "deterministic",
+      semanticStage: params.semanticStage ?? "deterministic",
     },
   };
 }
@@ -359,6 +372,162 @@ function discoverDocuments(
       }),
     );
   }
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "knowledge-routing-foundation",
+    path: "docs/operations/knowledge-routing-foundation.md",
+    domain: "knowledge-routing",
+    authority: "authoritative",
+    description: "Knowledge-routing foundation design and operating contract.",
+    answers: [
+      "Which source describes knowledge-routing architecture?",
+      "How should agents navigate current source truth?",
+    ],
+    aliases: ["knowledge routing docs", "knowledge routing foundation"],
+    intents: ["routing architecture", "knowledge navigation contract"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "operator-deployment",
+    path: "docs/operations/deployment.md",
+    domain: "deployment",
+    authority: "advisory",
+    description: "Operator deployment runbook and deployment boundaries.",
+    answers: ["Which source describes deployment procedure?", "What evidence is needed before deployment claims?"],
+    aliases: ["deployment runbook", "operator deployment"],
+    intents: ["deployment question", "activation question"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "live-runtime-branch-first-development",
+    path: "docs/operations/live-runtime-branch-first-development.md",
+    domain: "deployment",
+    authority: "advisory",
+    description: "Live-runtime branch-first development policy.",
+    answers: ["How should runtime branch changes be introduced?", "What is the safe activation boundary?"],
+    aliases: ["branch first development", "live runtime branch"],
+    intents: ["merge policy", "runtime activation policy"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "tool-invocation-ledger",
+    path: "docs/operations/tool-invocation-ledger.md",
+    domain: "verification",
+    authority: "historical",
+    description: "Tool invocation ledger for operation evidence.",
+    answers: ["Which evidence proves an operation or deployment?", "Where are tool invocation decisions recorded?"],
+    aliases: ["tool ledger", "operation evidence"],
+    intents: ["verification evidence", "completion proof"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "worktree-integrity",
+    path: "docs/operations/worktree-integrity-and-execution-attribution.md",
+    domain: "repositories",
+    authority: "authoritative",
+    description: "Worktree integrity and execution attribution rules.",
+    answers: ["Which source proves repository state?", "How is source execution attributed?"],
+    aliases: ["worktree integrity", "repository proof"],
+    intents: ["repository evidence", "git authority"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "agent-capability-model",
+    path: "docs/architecture/AGENT_CAPABILITY_MODEL.md",
+    domain: "agents",
+    authority: "advisory",
+    description: "Intended agent capability architecture.",
+    answers: ["Which source describes intended agent architecture?", "How are agent capabilities modeled?"],
+    aliases: ["agent capability model", "agent architecture"],
+    intents: ["agent architecture", "agent capability"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "system-truth",
+    path: "docs/OPENCLAW_KB/00_SYSTEM_TRUTH.md",
+    domain: "documentation",
+    authority: "authoritative",
+    description: "System-truth knowledge-base entry and source precedence guidance.",
+    answers: ["Which source describes intended operator architecture?", "How should claims vs current truth be handled?"],
+    aliases: ["system truth", "operator architecture truth", "intended operator architecture"],
+    intents: ["architecture documentation", "truth hierarchy", "intended operator architecture"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "runtime-behavior",
+    path: "docs/OPENCLAW_KB/operations/RUNTIME_BEHAVIOR.md",
+    domain: "runtime",
+    authority: "advisory",
+    description: "Runtime behavior documentation for OpenClaw operations.",
+    answers: ["Which source describes intended runtime behavior?", "Where should runtime behavior documentation be checked?"],
+    aliases: ["runtime behavior", "runtime docs"],
+    intents: ["runtime documentation", "runtime behavior"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "approval-gates",
+    path: "docs/OPENCLAW_KB/governance/APPROVAL_GATES.md",
+    domain: "approvals",
+    authority: "authoritative",
+    description: "Approval boundary and gate documentation.",
+    answers: ["What still requires human approval?", "Which source describes approval gates?"],
+    aliases: ["approval gates", "human approval"],
+    intents: ["approval question", "authority boundary"],
+    generatedAt: params.generatedAt,
+  });
+  discoverDocumentFile(ctx, params.operatorRoot, {
+    id: "failure-modes",
+    path: "docs/OPENCLAW_KB/operations/FAILURE_MODES.md",
+    domain: "incidents",
+    authority: "historical",
+    description: "Runtime failure mode documentation for incident investigation.",
+    answers: ["Where should I look for an old runtime incident?", "Which source describes incident classes?"],
+    aliases: ["failure modes", "runtime incident"],
+    intents: ["incident question", "old runtime incident"],
+    generatedAt: params.generatedAt,
+  });
+}
+
+function discoverDocumentFile(
+  ctx: MutableDiscovery,
+  operatorRoot: string,
+  params: {
+    id: string;
+    path: string;
+    domain: string;
+    authority: "authoritative" | "advisory" | "historical";
+    description: string;
+    answers: string[];
+    aliases: string[];
+    intents: string[];
+    generatedAt: string;
+  },
+) {
+  const path = join(operatorRoot, params.path);
+  if (!existsSync(path)) return;
+  ctx.nodes.push(
+    baseNode({
+      id: nodeId("docs", params.id),
+      kind: "documentation",
+      domain: params.domain,
+      description: params.description,
+      answers: params.answers,
+      aliases: params.aliases,
+      taskIntents: params.intents,
+      source: { type: "file", locator: path, resolver: "file" },
+      authority: {
+        class: params.authority,
+        priority: params.authority === "authoritative" ? 72 : params.authority === "advisory" ? 58 : 45,
+        reason:
+          params.authority === "historical"
+            ? "Historical/runbook evidence informs why and how; live sources still win for current state."
+            : "Documented source owns intended behavior within its scoped domain.",
+      },
+      freshness: { mode: params.authority === "historical" ? "historical" : "watch", checkedAt: params.generatedAt },
+      verification: { method: "exists", target: path },
+      discoveredBy: "curated-doc-route-adapter",
+      generatedAt: params.generatedAt,
+    }),
+  );
 }
 
 function discoverDatabases(
@@ -556,6 +725,339 @@ function addDerivedRelationships(ctx: MutableDiscovery) {
   edge(nodeId("cron", "openclaw-jobs"), nodeId("database", "openclaw"), "stores_state_in", ["cron sqlite store"]);
   edge(nodeId("database", "graph-runs"), nodeId("api", "/api/graphs/runs"), "retrieved_by", ["graph API routes"]);
   edge(nodeId("document-index", "configured-docs"), nodeId("api", "/api/knowledge/summary"), "observed_by", ["knowledge summary API"]);
+}
+
+function addSemanticConcepts(ctx: MutableDiscovery) {
+  concept(ctx, {
+    id: "telegram.runtime",
+    domain: "telegram",
+    description: "Telegram execution path spanning the live gateway service, Telegram runtime worktree, OpenClaw config and main agent routing.",
+    answers: [
+      "Which repository currently owns Telegram execution?",
+      "What controls the current Telegram model?",
+      "Which source is authoritative for current Telegram runtime health?",
+      "How should Telegram runtime repair be routed?",
+    ],
+    aliases: ["Telegram", "Telegram runtime", "main Telegram agent", "Telegram execution"],
+    taskIntents: ["telegram runtime repair", "telegram model question", "telegram delivery regression"],
+    evidenceNodeIds: [nodeId("service", "openclaw-gateway.service"), nodeId("repo", "telegram-live-execution"), nodeId("config", "openclaw")],
+  });
+  concept(ctx, {
+    id: "gateway.runtime",
+    domain: "runtime",
+    description: "OpenClaw gateway runtime that owns external channel ingress and Telegram delivery.",
+    answers: ["Which service owns the gateway?", "Where is gateway runtime health verified?"],
+    aliases: ["gateway", "OpenClaw gateway", "gateway runtime"],
+    taskIntents: ["gateway runtime", "external channel ingress", "telegram delivery"],
+    evidenceNodeIds: [nodeId("service", "openclaw-gateway.service"), nodeId("config", "openclaw")],
+  });
+  concept(ctx, {
+    id: "operator.runtime",
+    domain: "operator",
+    description: "Operator service runtime, source tree, configuration and state ownership.",
+    answers: [
+      "What version of OpenClaw is actually running?",
+      "Which service hosts the operator?",
+      "Where is operator state persisted?",
+      "Which source is authoritative for current runtime health?",
+    ],
+    aliases: ["operator", "operator runtime", "orchestrator", "OpenClaw operator"],
+    taskIntents: ["operator health", "operator source", "current runtime question"],
+    evidenceNodeIds: [nodeId("service", "orchestrator.service"), nodeId("repo", "openclaw-operator"), nodeId("config", "operator-orchestrator")],
+  });
+  concept(ctx, {
+    id: "operator.api",
+    domain: "operator",
+    description: "Operator HTTP API surface, with endpoint-level OpenAPI nodes retained as detailed retrieval targets.",
+    answers: ["Which API route serves an operator question?", "Where are operator API routes documented?"],
+    aliases: ["operator API", "OpenAPI", "api routes"],
+    taskIntents: ["api route lookup", "operator endpoint"],
+    evidenceNodeIds: [nodeId("api", "/api/openapi.json"), nodeId("repo", "openclaw-operator")],
+  });
+  concept(ctx, {
+    id: "runtime.health",
+    domain: "runtime",
+    description: "Live runtime health evidence across service manager and operator health endpoints.",
+    answers: ["Which source is authoritative for current runtime health?", "Where is runtime health verified?"],
+    aliases: ["runtime health", "operator health", "current health", "gateway health"],
+    taskIntents: ["current runtime health", "health verification", "service health"],
+    evidenceNodeIds: [nodeId("service", "orchestrator.service"), nodeId("api", "/api/health/extended"), nodeId("api", "/api/persistence/health")],
+  });
+  concept(ctx, {
+    id: "knowledge.routing",
+    domain: "knowledge-routing",
+    description: "Knowledge-routing resolver, generated graph, map views, refresh path and evaluation gates.",
+    answers: [
+      "Where should an agent route an information need?",
+      "How does the agent find authoritative sources?",
+      "Which source describes knowledge-routing architecture?",
+    ],
+    aliases: ["knowledge routing", "semantic graph", "route resolver", "knowledge graph", "shadow graph routing"],
+    taskIntents: ["knowledge route", "graph route", "semantic graph evaluation", "shadow routing", "shadow graph routing recorded"],
+    evidenceNodeIds: [nodeId("api", "/api/knowledge-routing/route"), nodeId("docs", "knowledge-routing-foundation")],
+  });
+  concept(ctx, {
+    id: "model.routing",
+    domain: "models",
+    description: "Current model and agent routing configuration authority.",
+    answers: ["What controls the current Telegram model?", "Where is the current model configuration?"],
+    aliases: ["current model", "model routing", "Telegram model"],
+    taskIntents: ["model question", "agent model config"],
+    evidenceNodeIds: [nodeId("config", "openclaw"), nodeId("agent", "main")],
+  });
+  concept(ctx, {
+    id: "agent.runtime",
+    domain: "agents",
+    description: "Configured OpenClaw agents and the operator views used to inspect them.",
+    answers: ["Which agents are configured?", "Which source describes intended agent architecture?"],
+    aliases: ["agents", "agent runtime", "main agent"],
+    taskIntents: ["agent config", "agent capability"],
+    evidenceNodeIds: [nodeId("agent", "main"), nodeId("api", "/api/agents/overview")],
+  });
+  concept(ctx, {
+    id: "skill.registry",
+    domain: "skills",
+    description: "Skill instruction registry and skill policy/telemetry surfaces.",
+    answers: ["Which skill should be used for Telegram runtime repair?", "Where are skill instructions stored?"],
+    aliases: ["skills", "skill registry", "runtime repair skill"],
+    taskIntents: ["skill selection", "runtime repair"],
+    evidenceNodeIds: [nodeId("skill", "openclaw-runtime-repair-closeout"), nodeId("api", "/api/skills/registry")],
+  });
+  concept(ctx, {
+    id: "plugin.registry",
+    domain: "plugins",
+    description: "Configured plugin registry and plugin activation authority.",
+    answers: ["Which plugins are enabled?", "Where is plugin state configured?"],
+    aliases: ["plugins", "plugin registry", "enabled plugins"],
+    taskIntents: ["plugin question", "connector question"],
+    evidenceNodeIds: [nodeId("config", "openclaw"), nodeId("plugin", "entries")],
+  });
+  concept(ctx, {
+    id: "cron.runtime",
+    domain: "cron",
+    description: "OpenClaw scheduled job registry and scheduler state.",
+    answers: ["Where is cron state authoritative?", "Which scheduled jobs exist?"],
+    aliases: ["cron", "scheduler", "scheduled jobs"],
+    taskIntents: ["cron state", "schedule question"],
+    evidenceNodeIds: [nodeId("database", "openclaw")],
+  });
+  concept(ctx, {
+    id: "business.systems",
+    domain: "business systems",
+    description: "Business-value and publishing operator surfaces exposed by the operator API.",
+    answers: ["Where should business system routes start?", "Which API routes expose business systems?"],
+    aliases: ["business systems", "business system routes", "business value", "publishing"],
+    taskIntents: ["business system route", "business operations", "publishing state"],
+    evidenceNodeIds: [nodeId("api", "/api/business/overview"), nodeId("api", "/api/publishing/overview")],
+  });
+  concept(ctx, {
+    id: "operator.state",
+    domain: "state",
+    description: "Operator durable state stores and persistence health.",
+    answers: ["Where is operator state persisted?", "Which database owns graph run state?"],
+    aliases: ["operator state", "operator state persisted", "state stores", "databases", "persistence"],
+    taskIntents: ["database question", "state ownership", "operator state persisted", "persistence health"],
+    evidenceNodeIds: [nodeId("database", "operator"), nodeId("api", "/api/persistence/health")],
+  });
+  concept(ctx, {
+    id: "memory.system",
+    domain: "memory",
+    description: "Durable memory and historical decision routing.",
+    answers: ["Where are durable decisions recorded?", "Where should historical memory be interpreted?"],
+    aliases: ["memory", "durable memory", "historical memory", "durable decisions recorded"],
+    taskIntents: ["memory recall", "historical decision", "durable decisions recorded"],
+    evidenceNodeIds: [nodeId("memory", "current-index"), nodeId("api", "/api/memory/recall")],
+  });
+  concept(ctx, {
+    id: "repository.state",
+    domain: "repositories",
+    description: "Repository/worktree source authority and execution attribution.",
+    answers: ["Which source proves repository state?", "Where is source code for a component?"],
+    aliases: ["repos", "repositories", "worktrees", "repository state"],
+    taskIntents: ["repo proof", "source authority", "git state"],
+    evidenceNodeIds: [nodeId("repo", "openclaw-operator"), nodeId("repo", "openclaw-ops")],
+  });
+  concept(ctx, {
+    id: "approval.gates",
+    domain: "approvals",
+    description: "Human approval boundaries and pending approval retrieval.",
+    answers: ["What still requires human approval?", "Which source describes approval gates?"],
+    aliases: ["approval", "approvals", "human approval", "approval gates"],
+    taskIntents: ["approval boundary", "pending approval"],
+    evidenceNodeIds: [nodeId("api", "/api/approvals/pending"), nodeId("docs", "approval-gates")],
+  });
+  concept(ctx, {
+    id: "verification.evidence",
+    domain: "verification",
+    description: "Verification evidence routing for health, deployment, run and operation claims.",
+    answers: ["Which evidence proves a deployment succeeded?", "Which source proves repository state?", "Where are verification records?"],
+    aliases: ["verification", "evidence", "proof", "deployment proof"],
+    taskIntents: ["completion claim", "verification evidence", "proof chain"],
+    evidenceNodeIds: [nodeId("docs", "tool-invocation-ledger"), nodeId("api", "/api/graphs/runs")],
+  });
+  concept(ctx, {
+    id: "incident.decision.history",
+    domain: "incidents",
+    description: "Incident and decision history routing across incident APIs, failure docs and memory.",
+    answers: ["Where should I look for an old runtime incident?", "Why was Telegram live execution changed?"],
+    aliases: ["incidents", "decisions", "old runtime incident", "why changed", "why was telegram live execution changed"],
+    taskIntents: ["incident investigation", "historical why", "runtime incident", "telegram history", "telegram live execution changed"],
+    evidenceNodeIds: [nodeId("api", "/api/incidents"), nodeId("docs", "failure-modes"), nodeId("memory", "current-index")],
+  });
+  concept(ctx, {
+    id: "deployment.runtime",
+    domain: "deployment",
+    description: "Deployment, activation and runtime-loaded evidence routing.",
+    answers: ["Which evidence proves a deployment succeeded?", "What still requires human approval before activation?"],
+    aliases: ["deployment", "activation", "production activation", "restart"],
+    taskIntents: ["deploy question", "activation gate", "runtime loaded proof"],
+    evidenceNodeIds: [nodeId("docs", "operator-deployment"), nodeId("service", "orchestrator.service"), nodeId("component", "approval.gates")],
+  });
+}
+
+function concept(
+  ctx: MutableDiscovery,
+  params: {
+    id: string;
+    domain: string;
+    description: string;
+    answers: string[];
+    aliases: string[];
+    taskIntents: string[];
+    evidenceNodeIds: string[];
+  },
+) {
+  const nodeIds = new Set(ctx.nodes.map((node) => node.id));
+  if (!params.evidenceNodeIds.every((id) => nodeIds.has(id))) return;
+  ctx.nodes.push(
+    baseNode({
+      id: nodeId("component", params.id),
+      kind: "component",
+      domain: params.domain,
+      description: params.description,
+      answers: params.answers,
+      aliases: params.aliases,
+      taskIntents: params.taskIntents,
+      source: { type: "generated", locator: `knowledge-routing://concept/${params.id}`, resolver: "generated" },
+      authority: {
+        class: "derived",
+        priority: 78,
+        reason: "Semantic routing concept derived from deterministic existing nodes; follow edges to current source truth.",
+      },
+      freshness: { mode: "on-demand", checkedAt: ctx.generatedAt },
+      verification: { method: "manual-review", target: params.evidenceNodeIds.join(",") },
+      discoveredBy: "ai-assisted-semantic-layer",
+      generatedAt: ctx.generatedAt,
+      semanticStage: "reviewed",
+    }),
+  );
+}
+
+function addSemanticRelationships(ctx: MutableDiscovery) {
+  const c = (id: string) => nodeId("component", id);
+  const proposals = [
+    proposal(c("telegram.runtime"), c("gateway.runtime"), "handled_by", ctx),
+    proposal(c("telegram.runtime"), nodeId("repo", "telegram-live-execution"), "implemented_by", ctx),
+    proposal(c("telegram.runtime"), nodeId("service", "openclaw-gateway.service"), "runs_as", ctx),
+    proposal(c("telegram.runtime"), nodeId("config", "openclaw"), "configured_by", ctx),
+    proposal(c("telegram.runtime"), c("model.routing"), "uses", ctx),
+    proposal(c("telegram.runtime"), c("skill.registry"), "uses", ctx),
+    proposal(c("telegram.runtime"), nodeId("service", "openclaw-gateway.service"), "verified_by", ctx),
+    proposal(c("gateway.runtime"), nodeId("service", "openclaw-gateway.service"), "runs_as", ctx),
+    proposal(c("gateway.runtime"), nodeId("config", "openclaw"), "configured_by", ctx),
+    proposal(c("gateway.runtime"), nodeId("repo", "telegram-live-execution"), "implemented_by", ctx),
+    proposal(c("operator.runtime"), nodeId("service", "orchestrator.service"), "runs_as", ctx),
+    proposal(c("operator.runtime"), nodeId("repo", "openclaw-operator"), "implemented_by", ctx),
+    proposal(c("operator.runtime"), nodeId("config", "operator-orchestrator"), "configured_by", ctx),
+    proposal(c("operator.runtime"), c("operator.api"), "exposes", ctx),
+    proposal(c("operator.runtime"), nodeId("database", "operator"), "stores_state_in", ctx),
+    proposal(c("operator.runtime"), nodeId("database", "graph-runs"), "stores_state_in", ctx),
+    proposal(c("operator.runtime"), c("runtime.health"), "observed_by", ctx),
+    proposal(c("operator.api"), nodeId("api", "/api/openapi.json"), "exposes", ctx),
+    proposal(c("operator.api"), nodeId("api", "/api/health/extended"), "verified_by", ctx),
+    proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/route"), "exposes", ctx),
+    proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/graph"), "exposes", ctx),
+    proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/maps"), "exposes", ctx),
+    proposal(c("knowledge.routing"), nodeId("api", "/api/knowledge-routing/refresh"), "exposes", ctx),
+    proposal(c("knowledge.routing"), nodeId("docs", "knowledge-routing-foundation"), "documented_by", ctx),
+    proposal(c("knowledge.routing"), nodeId("docs", "tool-invocation-ledger"), "documented_by", ctx),
+    proposal(c("model.routing"), nodeId("config", "openclaw"), "configured_by", ctx),
+    proposal(c("model.routing"), nodeId("agent", "main"), "handled_by", ctx),
+    proposal(c("agent.runtime"), nodeId("agent", "main"), "handled_by", ctx),
+    proposal(c("agent.runtime"), nodeId("api", "/api/agents/overview"), "observed_by", ctx),
+    proposal(c("agent.runtime"), nodeId("docs", "agent-capability-model"), "documented_by", ctx),
+    proposal(c("skill.registry"), nodeId("skill", "openclaw-runtime-repair-closeout"), "uses", ctx),
+    proposal(c("skill.registry"), nodeId("api", "/api/skills/registry"), "observed_by", ctx),
+    proposal(c("plugin.registry"), nodeId("config", "openclaw"), "configured_by", ctx),
+    proposal(c("plugin.registry"), nodeId("plugin", "entries"), "uses", ctx),
+    proposal(c("cron.runtime"), nodeId("cron", "openclaw-jobs"), "retrieved_by", ctx),
+    proposal(c("cron.runtime"), nodeId("database", "openclaw"), "stores_state_in", ctx),
+    proposal(c("business.systems"), nodeId("api", "/api/business/overview"), "exposes", ctx),
+    proposal(c("business.systems"), nodeId("api", "/api/publishing/overview"), "exposes", ctx),
+    proposal(c("business.systems"), c("operator.api"), "handled_by", ctx),
+    proposal(c("operator.state"), nodeId("database", "operator"), "stores_state_in", ctx),
+    proposal(c("operator.state"), nodeId("database", "graph-runs"), "stores_state_in", ctx),
+    proposal(c("operator.state"), nodeId("api", "/api/persistence/health"), "observed_by", ctx),
+    proposal(c("memory.system"), nodeId("memory", "current-index"), "uses", ctx),
+    proposal(c("memory.system"), nodeId("api", "/api/memory/recall"), "observed_by", ctx),
+    proposal(c("repository.state"), nodeId("repo", "openclaw-operator"), "uses", ctx),
+    proposal(c("repository.state"), nodeId("repo", "telegram-live-execution"), "uses", ctx),
+    proposal(c("repository.state"), nodeId("docs", "worktree-integrity"), "documented_by", ctx),
+    proposal(c("approval.gates"), nodeId("api", "/api/approvals/pending"), "observed_by", ctx),
+    proposal(c("approval.gates"), nodeId("docs", "approval-gates"), "documented_by", ctx),
+    proposal(c("verification.evidence"), nodeId("docs", "tool-invocation-ledger"), "documented_by", ctx),
+    proposal(c("verification.evidence"), nodeId("api", "/api/graphs/runs"), "observed_by", ctx),
+    proposal(c("incident.decision.history"), nodeId("api", "/api/incidents"), "observed_by", ctx),
+    proposal(c("incident.decision.history"), nodeId("docs", "failure-modes"), "documented_by", ctx),
+    proposal(c("incident.decision.history"), c("memory.system"), "uses", ctx),
+    proposal(c("deployment.runtime"), nodeId("docs", "operator-deployment"), "documented_by", ctx),
+    proposal(c("deployment.runtime"), nodeId("service", "orchestrator.service"), "verified_by", ctx),
+    proposal(c("deployment.runtime"), c("approval.gates"), "requires_approval", ctx),
+    {
+      from: c("telegram.runtime"),
+      to: nodeId("api", "/api/knowledge-routing/route"),
+      relationship: "implemented_by" as const,
+      evidence: [nodeId("api", "/api/knowledge-routing/route")],
+      confidence: "reviewed" as const,
+    },
+    {
+      from: c("operator.runtime"),
+      to: "component:missing-production-runtime",
+      relationship: "observed_by" as const,
+      evidence: [c("operator.runtime")],
+      confidence: "reviewed" as const,
+    },
+  ];
+  const result = validateSemanticRelationshipProposals(ctx.nodes, proposals);
+  ctx.edges.push(...result.accepted);
+  ctx.semanticAudit = {
+    generatedAt: ctx.generatedAt,
+    proposedRelationships: proposals.length,
+    acceptedRelationships: result.accepted.length,
+    rejectedRelationships: result.rejected.map((item) => ({
+      from: item.from,
+      to: item.to,
+      relationship: String(item.relationship),
+      reason: item.reason,
+      evidence: item.evidence,
+    })),
+  };
+}
+
+function proposal(
+  from: string,
+  to: string,
+  relationship: Parameters<typeof makeEdge>[2],
+  ctx: MutableDiscovery,
+) {
+  const node = ctx.nodes.find((item) => item.id === to);
+  return {
+    from,
+    to,
+    relationship,
+    evidence: [node?.source.locator ?? to],
+    confidence: "reviewed" as const,
+  };
 }
 
 export function relativeLocator(root: string, locator: string): string {

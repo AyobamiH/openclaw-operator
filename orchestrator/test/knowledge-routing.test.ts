@@ -5,7 +5,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildGraph, makeEdge, nodeId } from "../src/knowledge-routing/graph.js";
 import {
   discoverKnowledgeRoutingGraph,
+  evaluateKnowledgeRoutingGraph,
   resolveKnowledgeRoute,
+  createKnowledgeRoutingShadowComparison,
   validateSemanticRelationshipProposals,
   type KnowledgeRouteNode,
 } from "../src/knowledge-routing/index.js";
@@ -107,6 +109,61 @@ describe("knowledge routing foundation", () => {
     expect(result.accepted).toHaveLength(1);
     expect(result.rejected).toHaveLength(2);
   });
+
+  it("builds semantic component concepts over deterministic entities", () => {
+    const graph = discoverFixtureGraph();
+    const telegram = graph.nodes.find((node) => node.id === "component:telegram.runtime");
+    const operator = graph.nodes.find((node) => node.id === "component:operator.runtime");
+
+    expect(telegram?.kind).toBe("component");
+    expect(operator?.kind).toBe("component");
+    expect(graph.stats.aiClassifiedNodes).toBeGreaterThan(5);
+    expect(graph.stats.acceptedAiRelationships).toBeGreaterThan(20);
+    expect(graph.stats.rejectedSemanticProposals).toBeGreaterThanOrEqual(2);
+    expect(graph.edges).toContainEqual(
+      expect.objectContaining({
+        from: "component:telegram.runtime",
+        to: "repo:telegram-live-execution",
+        relationship: "implemented_by",
+        verified: true,
+      }),
+    );
+  });
+
+  it("routes aliases and task intents to concept nodes first", () => {
+    const graph = discoverFixtureGraph();
+    const route = resolveKnowledgeRoute(graph, "main Telegram agent current model", 4);
+
+    expect(route.recommendedNodes[0]?.id).toBe("component:telegram.runtime");
+    expect(route.recommendedNodes.map((node) => node.id)).toContain("component:model.routing");
+    expect(route.authoritativeSources.some((source) => source.resolver === "openclaw-config")).toBe(true);
+  });
+
+  it("evaluates a fixed OpenClaw routing suite", () => {
+    const graph = discoverFixtureGraph();
+    const report = evaluateKnowledgeRoutingGraph(graph);
+
+    expect(report.summary.totalQueries).toBeGreaterThanOrEqual(25);
+    expect(report.summary.noRoute).toBe(0);
+    expect(report.summary.staleSource).toBe(0);
+    expect(report.summary.wrongSource).toBe(0);
+    expect(report.summary.routingAccuracy).toBeGreaterThanOrEqual(0.8);
+    expect(report.summary.authorityAccuracy).toBeGreaterThanOrEqual(0.8);
+  });
+
+  it("creates bounded shadow comparisons without raw long message bodies", () => {
+    const graph = discoverFixtureGraph();
+    const comparison = createKnowledgeRoutingShadowComparison(
+      graph,
+      "Where is cron state authoritative? Contact root@example.com 12345678901234567890",
+      "openclaw.sqlite",
+    );
+
+    expect(comparison.informationNeedHash).toHaveLength(64);
+    expect(comparison.informationNeedPreview).not.toContain("root@example.com");
+    expect(comparison.informationNeedPreview).not.toContain("12345678901234567890");
+    expect(comparison.graphRoute.selectedNode).toBeTruthy();
+  });
 });
 
 function discoverFixtureGraph() {
@@ -152,6 +209,7 @@ function buildFixture(base: string) {
   });
   mkdirSync(join(workspaceRoot, "skills/openclaw-runtime-repair-closeout"), { recursive: true });
   mkdirSync(join(operatorRoot, "docs"), { recursive: true });
+  mkdirSync(join(operatorRoot, "docs/operations"), { recursive: true });
   mkdirSync(join(operatorRoot, "orchestrator/src"), { recursive: true });
   mkdirSync(join(openclawRoot, "state/openclaw-operator/database"), { recursive: true });
   mkdirSync(join(openclawRoot, "cron"), { recursive: true });
@@ -165,10 +223,45 @@ function buildFixture(base: string) {
   );
   writeFileSync(join(workspaceRoot, "MEMORY.md"), "# Memory\nCurrent durable decisions live here.\n");
   writeFileSync(join(workspaceRoot, "skills/openclaw-runtime-repair-closeout/SKILL.md"), "# Runtime repair\n");
+  writeFileSync(join(operatorRoot, "orchestrator_config.json"), JSON.stringify({ docsPath: join(operatorRoot, "docs") }));
   writeFileSync(join(operatorRoot, "docs/INDEX.md"), `# Docs\n${marker}\n`);
+  writeFileSync(join(operatorRoot, "docs/operations/knowledge-routing-foundation.md"), "# Knowledge routing\n");
+  writeFileSync(join(operatorRoot, "docs/operations/deployment.md"), "# Deployment\n");
+  writeFileSync(join(operatorRoot, "docs/operations/live-runtime-branch-first-development.md"), "# Branch first\n");
+  writeFileSync(join(operatorRoot, "docs/operations/tool-invocation-ledger.md"), "# Ledger\n");
+  writeFileSync(join(operatorRoot, "docs/operations/worktree-integrity-and-execution-attribution.md"), "# Worktree\n");
+  mkdirSync(join(operatorRoot, "docs/architecture"), { recursive: true });
+  writeFileSync(join(operatorRoot, "docs/architecture/AGENT_CAPABILITY_MODEL.md"), "# Agents\n");
+  mkdirSync(join(operatorRoot, "docs/OPENCLAW_KB/operations"), { recursive: true });
+  mkdirSync(join(operatorRoot, "docs/OPENCLAW_KB/governance"), { recursive: true });
+  writeFileSync(join(operatorRoot, "docs/OPENCLAW_KB/00_SYSTEM_TRUTH.md"), "# System truth\n");
+  writeFileSync(join(operatorRoot, "docs/OPENCLAW_KB/operations/RUNTIME_BEHAVIOR.md"), "# Runtime\n");
+  writeFileSync(join(operatorRoot, "docs/OPENCLAW_KB/operations/FAILURE_MODES.md"), "# Failure modes\n");
+  writeFileSync(join(operatorRoot, "docs/OPENCLAW_KB/governance/APPROVAL_GATES.md"), "# Approvals\n");
   writeFileSync(
     join(operatorRoot, "orchestrator/src/openapi.ts"),
-    'export const paths = { "/api/knowledge/summary": {}, "/api/graphs/runs": {} };\n',
+    [
+      'export const paths = {',
+      '"/health": {},',
+      '"/api/agents/overview": {},',
+      '"/api/approvals/pending": {},',
+      '"/api/business/overview": {},',
+      '"/api/graphs/runs": {},',
+      '"/api/health/extended": {},',
+      '"/api/incidents": {},',
+      '"/api/knowledge-routing/graph": {},',
+      '"/api/knowledge-routing/maps": {},',
+      '"/api/knowledge-routing/refresh": {},',
+      '"/api/knowledge-routing/route": {},',
+      '"/api/knowledge-routing/summary": {},',
+      '"/api/knowledge/summary": {},',
+      '"/api/memory/recall": {},',
+      '"/api/openapi.json": {},',
+      '"/api/persistence/health": {},',
+      '"/api/publishing/overview": {},',
+      '"/api/skills/registry": {},',
+      '};\n',
+    ].join("\n"),
   );
   writeFileSync(join(openclawRoot, "cron/jobs.json"), JSON.stringify([{ id: "hourly" }]));
   createSqlite(join(openclawRoot, "state/openclaw.sqlite"), "cron_jobs");
