@@ -109,6 +109,15 @@ type MetaReplyRunnerModule = {
 type ThreadsReadinessModule = {
   prepareNextThreadsOpportunity(now: Date): Record<string, unknown> | Promise<Record<string, unknown>>;
 };
+type InstagramReconciliationProjection = {
+  state: "effect_verified" | "confirmed_absent" | "ambiguous";
+  status: string | null;
+  providerResultId: string | null;
+  permalink: string | null;
+  generatedMediaUploadCalls: number;
+  instagramPublishCalls: number;
+  browserRelayCalls: 0;
+};
 async function loadWorkspaceModule<T>(configured: string | undefined, fallback: string, symbols: string[]): Promise<T> {
   const path = resolve(configured || fallback);
   if (!existsSync(path)) throw new Error(`canonical_social_runner_missing:${path}`);
@@ -202,17 +211,8 @@ export async function reconcilePriorInstagramGraphEffects(
     const outboxId = instagramPriorOutboxId(priorRun);
     if (!outboxId) continue;
     const result = await runner.reconcileInstagramOutboxEntry(outboxId) as { entry?: unknown };
-    const projection = PublicationProjectionSchema.parse(
-      await runner.instagramGraphPublicationProjection(result.entry),
-    );
-    const state = classifyInstagramPublicationEffect({
-      status: projection.status,
-      providerResultId: projection.providerResultId,
-      permalink: projection.permalink,
-      generatedMediaUploadCalls: projection.generatedMediaUploadCalls,
-      instagramPublishCalls: projection.instagramPublishCalls,
-      browserRelayCalls: projection.browserRelayCalls,
-    });
+    const projection = await instagramPublicationEffectProjectionFromReconciliation(runner, result);
+    const state = projection.state;
     if (state === "ambiguous") continue;
     const evidenceRefs = [
       projection.permalink,
@@ -241,6 +241,86 @@ export async function reconcilePriorInstagramGraphEffects(
     reconciled.push({ runId: priorRun.runId, effectId: effect.effectId, outboxId, state });
   }
   return reconciled;
+}
+
+async function instagramPublicationEffectProjectionFromReconciliation(
+  runner: Awaited<ReturnType<typeof loadInstagramRunner>>,
+  result: { entry?: unknown; classification?: unknown },
+): Promise<InstagramReconciliationProjection> {
+  try {
+    const projection = PublicationProjectionSchema.parse(
+      await runner.instagramGraphPublicationProjection(result.entry),
+    );
+    const state = classifyInstagramPublicationEffect({
+      status: projection.status,
+      providerResultId: projection.providerResultId,
+      permalink: projection.permalink,
+      generatedMediaUploadCalls: projection.generatedMediaUploadCalls,
+      instagramPublishCalls: projection.instagramPublishCalls,
+      browserRelayCalls: projection.browserRelayCalls,
+    });
+    return {
+      state,
+      status: projection.status,
+      providerResultId: projection.providerResultId,
+      permalink: projection.permalink,
+      generatedMediaUploadCalls: projection.generatedMediaUploadCalls,
+      instagramPublishCalls: projection.instagramPublishCalls,
+      browserRelayCalls: 0,
+    };
+  } catch (error) {
+    const entry = recordFrom(result.entry);
+    const classification = String(result.classification ?? entry.reconciliationClassification ?? "");
+    const providerResultId = entry.providerResultId ? String(entry.providerResultId) : null;
+    const permalink = entry.permalink ? String(entry.permalink) : null;
+    const generatedMediaUploadCalls = Number(entry.generatedMediaUploadCalls ?? 0);
+    const instagramPublishCalls = Number(entry.instagramPublishCalls ?? 0);
+    const browserRelayCalls = Number(entry.browserRelayCalls ?? 0);
+    if (
+      classification === "published_verified" &&
+      String(entry.status ?? "") === "verified" &&
+      providerResultId &&
+      permalink &&
+      instagramPublishCalls === 1 &&
+      browserRelayCalls === 0
+    ) {
+      return {
+        state: "effect_verified",
+        status: "verified",
+        providerResultId,
+        permalink,
+        generatedMediaUploadCalls,
+        instagramPublishCalls,
+        browserRelayCalls: 0,
+      };
+    }
+    if (
+      classification === "confirmed_absent" &&
+      String(entry.status ?? "") === "confirmed_failure" &&
+      instagramPublishCalls === 1 &&
+      browserRelayCalls === 0
+    ) {
+      return {
+        state: "confirmed_absent",
+        status: "confirmed_failure",
+        providerResultId: null,
+        permalink: null,
+        generatedMediaUploadCalls,
+        instagramPublishCalls,
+        browserRelayCalls: 0,
+      };
+    }
+    if (browserRelayCalls !== 0) throw error;
+    return {
+      state: "ambiguous",
+      status: entry.status ? String(entry.status) : null,
+      providerResultId,
+      permalink,
+      generatedMediaUploadCalls,
+      instagramPublishCalls,
+      browserRelayCalls: 0,
+    };
+  }
 }
 
 function socialDispatchGate(graphStore: GraphStore, context: NodeExecutionContext) {
