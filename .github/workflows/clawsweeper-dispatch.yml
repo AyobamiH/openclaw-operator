@@ -1,6 +1,7 @@
 name: ClawSweeper Dispatch
 
 on:
+  workflow_dispatch:
   issues:
     types: [opened, reopened, edited, labeled, unlabeled]
   issue_comment:
@@ -34,8 +35,12 @@ jobs:
         )
       }}
     env:
-      HAS_CLAWSWEEPER_APP_PRIVATE_KEY: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY != '' }}
-      CLAWSWEEPER_APP_CLIENT_ID: Iv23liOECG0slfuhz093
+      # Keep source repos self-owned: the target ClawSweeper app/repo comes from
+      # repo variables, and dispatch stays disabled until John sets both credentials.
+      HAS_CLAWSWEEPER_APP_CREDENTIALS: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY != '' && vars.CLAWSWEEPER_APP_CLIENT_ID != '' }}
+      CLAWSWEEPER_APP_CLIENT_ID: ${{ vars.CLAWSWEEPER_APP_CLIENT_ID || '' }}
+      CLAWSWEEPER_APP_OWNER: ${{ vars.CLAWSWEEPER_APP_OWNER || github.repository_owner }}
+      CLAWSWEEPER_APP_REPOSITORY: ${{ vars.CLAWSWEEPER_APP_REPOSITORY || 'clawsweeper' }}
       SUPERSEDES_IN_PROGRESS: ${{ (github.event.action == 'edited' || github.event.action == 'synchronize' || github.event.action == 'ready_for_review') && 'true' || 'false' }}
     steps:
       - name: Debounce bursty metadata events
@@ -72,13 +77,13 @@ jobs:
 
       - name: Create ClawSweeper dispatch token
         id: token
-        if: ${{ env.HAS_CLAWSWEEPER_APP_PRIVATE_KEY == 'true' }}
+        if: ${{ env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true' }}
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           client-id: ${{ env.CLAWSWEEPER_APP_CLIENT_ID }}
           private-key: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}
-          owner: openclaw
-          repositories: clawsweeper
+          owner: ${{ env.CLAWSWEEPER_APP_OWNER }}
+          repositories: ${{ env.CLAWSWEEPER_APP_REPOSITORY }}
           permission-contents: write
 
       - name: Pre-filter ClawSweeper comment
@@ -100,7 +105,7 @@ jobs:
           ${{
             github.event_name == 'issue_comment' &&
             steps.comment_filter.outputs.is_command == 'true' &&
-            env.HAS_CLAWSWEEPER_APP_PRIVATE_KEY == 'true'
+            env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true'
           }}
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
@@ -115,6 +120,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           TARGET_REPO: ${{ github.repository }}
+          CLAWSWEEPER_DISPATCH_REPOSITORY: ${{ env.CLAWSWEEPER_APP_OWNER }}/${{ env.CLAWSWEEPER_APP_REPOSITORY }}
           SOURCE_EVENT: ${{ github.event_name }}
           SOURCE_ACTION: ${{ github.event.action }}
           ACTOR: ${{ github.actor }}
@@ -191,12 +197,12 @@ jobs:
             ' "$GITHUB_EVENT_PATH")"
           payload="$(jq -nc --argjson activity "$activity" \
             '{event_type:"github_activity",client_payload:{activity:$activity}}')"
-          if gh_api_with_retry repos/openclaw/clawsweeper/dispatches \
+          if gh_api_with_retry "repos/$CLAWSWEEPER_DISPATCH_REPOSITORY/dispatches" \
             --method POST \
             --input - <<< "$payload"; then
             echo "Dispatched GitHub activity to ClawSweeper."
           else
-            echo "::warning::Skipping GitHub activity dispatch because the configured credential could not dispatch to openclaw/clawsweeper."
+            echo "::warning::Skipping GitHub activity dispatch because the configured credential could not dispatch to $CLAWSWEEPER_DISPATCH_REPOSITORY."
           fi
 
       - name: Dispatch exact ClawSweeper review
@@ -204,6 +210,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           TARGET_REPO: ${{ github.repository }}
+          CLAWSWEEPER_DISPATCH_REPOSITORY: ${{ env.CLAWSWEEPER_APP_OWNER }}/${{ env.CLAWSWEEPER_APP_REPOSITORY }}
           ITEM_NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
           ITEM_KIND: ${{ github.event_name == 'pull_request_target' && 'pull_request' || 'issue' }}
           SOURCE_EVENT: ${{ github.event_name }}
@@ -222,12 +229,12 @@ jobs:
             --arg source_action "$SOURCE_ACTION" \
             --argjson supersedes_in_progress "$SUPERSEDES_IN_PROGRESS" \
             '{event_type:"clawsweeper_item",client_payload:{target_repo:$target_repo,item_number:$item_number,item_kind:$item_kind,source_event:$source_event,source_action:$source_action,supersedes_in_progress:$supersedes_in_progress}}')"
-          if gh_api_with_retry repos/openclaw/clawsweeper/dispatches \
+          if gh_api_with_retry "repos/$CLAWSWEEPER_DISPATCH_REPOSITORY/dispatches" \
             --method POST \
             --input - <<< "$payload"; then
             echo "Dispatched ClawSweeper review."
           else
-            echo "::warning::Skipping ClawSweeper dispatch because the configured credential could not dispatch to openclaw/clawsweeper."
+            echo "::warning::Skipping ClawSweeper dispatch because the configured credential could not dispatch to $CLAWSWEEPER_DISPATCH_REPOSITORY."
           fi
 
       - name: Acknowledge and dispatch ClawSweeper comment
@@ -240,6 +247,7 @@ jobs:
           DISPATCH_TOKEN: ${{ steps.token.outputs.token }}
           TARGET_TOKEN: ${{ steps.target_token.outputs.token }}
           TARGET_REPO: ${{ github.repository }}
+          CLAWSWEEPER_DISPATCH_REPOSITORY: ${{ env.CLAWSWEEPER_APP_OWNER }}/${{ env.CLAWSWEEPER_APP_REPOSITORY }}
           ITEM_NUMBER: ${{ github.event.issue.number }}
           COMMENT_ID: ${{ github.event.comment.id }}
           COMMENT_BODY: ${{ github.event.comment.body }}
@@ -304,12 +312,12 @@ jobs:
             --arg source_event "issue_comment" \
             --arg source_action "$SOURCE_ACTION" \
             '{event_type:"clawsweeper_comment",client_payload:({target_repo:$target_repo,item_number:$item_number,comment_id:$comment_id,source_event:$source_event,source_action:$source_action,max_comments:"1"} + (if $status_comment_id != "" then {status_comment_id:($status_comment_id|tonumber)} else {} end))}')"
-          if GH_TOKEN="$DISPATCH_TOKEN" gh_api_with_retry repos/openclaw/clawsweeper/dispatches \
+          if GH_TOKEN="$DISPATCH_TOKEN" gh_api_with_retry "repos/$CLAWSWEEPER_DISPATCH_REPOSITORY/dispatches" \
             --method POST \
             --input - <<< "$payload"; then
             echo "Dispatched ClawSweeper comment router."
           else
-            echo "::warning::Skipping ClawSweeper comment dispatch because the configured credential could not dispatch to openclaw/clawsweeper."
+            echo "::warning::Skipping ClawSweeper comment dispatch because the configured credential could not dispatch to $CLAWSWEEPER_DISPATCH_REPOSITORY."
           fi
 
       - name: Dispatch ClawSweeper commit review
@@ -317,6 +325,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.token.outputs.token }}
           TARGET_REPO: ${{ github.repository }}
+          CLAWSWEEPER_DISPATCH_REPOSITORY: ${{ env.CLAWSWEEPER_APP_OWNER }}/${{ env.CLAWSWEEPER_APP_REPOSITORY }}
           BEFORE_SHA: ${{ github.event.before }}
           AFTER_SHA: ${{ github.sha }}
           SOURCE_REF: ${{ github.ref }}
@@ -338,10 +347,10 @@ jobs:
             --arg ref "$SOURCE_REF" \
             --argjson create_checks "$create_checks" \
             '{event_type:"clawsweeper_commit_review",client_payload:{target_repo:$target_repo,before_sha:$before_sha,after_sha:$after_sha,ref:$ref,enabled:true,create_checks:$create_checks}}')"
-          if gh_api_with_retry repos/openclaw/clawsweeper/dispatches \
+          if gh_api_with_retry "repos/$CLAWSWEEPER_DISPATCH_REPOSITORY/dispatches" \
             --method POST \
             --input - <<< "$payload"; then
             echo "Dispatched ClawSweeper commit review."
           else
-            echo "::warning::Skipping ClawSweeper commit dispatch because the configured credential could not dispatch to openclaw/clawsweeper."
+            echo "::warning::Skipping ClawSweeper commit dispatch because the configured credential could not dispatch to $CLAWSWEEPER_DISPATCH_REPOSITORY."
           fi
