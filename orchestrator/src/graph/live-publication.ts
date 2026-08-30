@@ -117,6 +117,7 @@ type InstagramRunnerModule = {
   releaseInstagramGraphPublicationClaim(args: Record<string, unknown>): Promise<unknown>;
   recordUnhandledInstagramCommittedMiss(jobId: string, kind: "reel" | "image", now: Date, error: unknown): Promise<unknown>;
   reconcileInstagramOutboxEntry(outboxId: string): Promise<unknown>;
+  diagnoseInstagramOutboxEntry?(outboxId: string): Promise<unknown>;
   readBackVerifiedInstagramGraphPublication(args: Record<string, unknown>): Promise<unknown>;
 };
 

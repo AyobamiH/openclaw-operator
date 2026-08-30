@@ -656,6 +656,79 @@ describe("production adapter registry", () => {
     expect(runtime.store.events(prior.runId).map((event) => event.type)).toContain("external_effect_reconciled");
   });
 
+  it("reconciles a prior Instagram effect from terminal outbox diagnostics after canonical sync already completed", async () => {
+    const runtime = await testRuntime();
+    const target = "instagram:17841453638630920";
+    const outboxId = "instagram:image:2026-08-29:09:00:24afbb84-457c-41bb-92c9-24a19725e984";
+    const prior = runtime.engine.start({
+      graphId: "deterministic-social-publication",
+      version: "2.0.0",
+      objective: "Prior terminal Instagram absence stranded by secondary ledger sync",
+      input: {
+        provider: "instagram",
+        accountKey: "instagram:owner",
+        expectedAccountId: "17841453638630920",
+        jobId: "24afbb84-457c-41bb-92c9-24a19725e984",
+        kind: "image",
+        observedAt: "2026-08-29T09:00:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    runtime.store.saveRun({
+      ...prior,
+      status: "blocked",
+      data: { publicationLive: { result: { outboxId } } },
+      externalEffects: [{
+        effectId: "gex_prior_instagram_terminal_absent",
+        runId: prior.runId,
+        nodeId: "publish_provider_object",
+        idempotencyKey: "prior-instagram-terminal-absent",
+        operationType: "production.instagram-publication-live.v2",
+        target,
+        payloadHash: "a".repeat(64),
+        state: "ambiguous",
+        evidenceRefs: [],
+      }],
+    }, prior.revision, []);
+    const runner = {
+      reconcileInstagramOutboxEntry: async () => {
+        throw new Error("Instagram outbox item is not reconciliation-eligible");
+      },
+      diagnoseInstagramOutboxEntry: async (requestedOutboxId: string) => ({
+        id: requestedOutboxId,
+        kind: "image",
+        state: "confirmed_failure",
+        classification: "confirmed_absent",
+        providerResultId: null,
+        permalink: null,
+        generatedMediaUploadCalls: 1,
+        instagramPublishCalls: 1,
+        browserRelayCalls: 0,
+      }),
+      instagramGraphPublicationProjection: async () => {
+        throw new Error("Instagram image projection lacks a valid layout-verification binding");
+      },
+    };
+
+    const reconciled = await reconcilePriorInstagramGraphEffects(runtime.store, runner as any, {
+      target,
+      excludeRunId: "next-run",
+    });
+
+    expect(reconciled).toEqual([{
+      runId: prior.runId,
+      effectId: "gex_prior_instagram_terminal_absent",
+      outboxId,
+      state: "confirmed_absent",
+    }]);
+    expect(runtime.store.externalEffects(prior.runId)[0]).toMatchObject({
+      state: "confirmed_absent",
+    });
+    expect(runtime.store.events(prior.runId).map((event) => event.type)).toContain("external_effect_reconciled");
+  });
+
   it("leaves an unsettled Instagram image effect ambiguous without surfacing layout projection noise", async () => {
     const runtime = await testRuntime();
     const target = "instagram:17841453638630920";

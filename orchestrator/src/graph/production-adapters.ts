@@ -210,7 +210,36 @@ export async function reconcilePriorInstagramGraphEffects(
     if (!priorRun) continue;
     const outboxId = instagramPriorOutboxId(priorRun);
     if (!outboxId) continue;
-    const result = await runner.reconcileInstagramOutboxEntry(outboxId) as { entry?: unknown };
+    let result: { entry?: unknown; classification?: unknown };
+    try {
+      result = await runner.reconcileInstagramOutboxEntry(outboxId) as { entry?: unknown; classification?: unknown };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const canRecoverFromFinalOutboxState =
+        /Instagram outbox item is not reconciliation-eligible|relay_admission_reconciliation_/.test(message) &&
+        typeof runner.diagnoseInstagramOutboxEntry === "function";
+      if (!canRecoverFromFinalOutboxState) throw error;
+      const diagnoseInstagramOutboxEntry = runner.diagnoseInstagramOutboxEntry;
+      if (!diagnoseInstagramOutboxEntry) throw error;
+      const diagnostic = recordFrom(await diagnoseInstagramOutboxEntry(outboxId));
+      // Reconciliation may already have reached canonical outbox truth while an
+      // auxiliary ledger sync failed. Graph should consume that settled truth
+      // instead of preserving an ambiguous effect that blocks every later slot.
+      result = {
+        classification: diagnostic.classification,
+        entry: {
+          id: outboxId,
+          kind: diagnostic.kind,
+          status: diagnostic.state,
+          reconciliationClassification: diagnostic.classification,
+          providerResultId: diagnostic.providerResultId,
+          permalink: diagnostic.permalink,
+          generatedMediaUploadCalls: diagnostic.generatedMediaUploadCalls,
+          instagramPublishCalls: diagnostic.instagramPublishCalls,
+          browserRelayCalls: diagnostic.browserRelayCalls,
+        },
+      };
+    }
     const projection = await instagramPublicationEffectProjectionFromReconciliation(runner, result);
     const state = projection.state;
     if (state === "ambiguous") continue;
