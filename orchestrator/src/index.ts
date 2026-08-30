@@ -171,6 +171,7 @@ import { registerGraphRoutes } from "./graph/routes.js";
 import { runWithGraphConcurrencyDeferral } from "./graph/engine.js";
 import { findEquivalentLiveGraphRun } from "./graph/single-flight.js";
 import { verifyGraphChildTaskAuthority } from "./graph/task-authority.js";
+import { runSocialGraphMaintenanceSweep } from "./graph/production-adapters.js";
 import { KnowledgeRoutingRuntime } from "./knowledge-routing/index.js";
 import { registerKnowledgeRoutingRoutes } from "./knowledge-routing/routes.js";
 import { NON_GRAPH_RECURRING_WORK_REGISTRY } from "./nonGraphRecurringWork.js";
@@ -10801,6 +10802,46 @@ async function bootstrap() {
     }, 5 * 60 * 1000);
   }
 
+  let socialGraphMaintenanceInFlight: Promise<void> | null = null;
+  const runInternalGraphMaintenance = (source: "startup" | "interval") => {
+    const runtime = graphRuntime;
+    if (!runtime) return;
+    if (socialGraphMaintenanceInFlight) {
+      console.log(`[graph-maintenance] skipped ${source}; previous sweep still running`);
+      return;
+    }
+    socialGraphMaintenanceInFlight = (async () => {
+      const actor = `graph-maintenance:${source}`;
+      const expiredCapabilities = runtime.store.expireOneRunLiveCapabilities(new Date(), actor);
+      const recovery = runtime.engine.recover(new Date(), actor);
+      // This sweep is the Claw Sweeper boundary for social publication state:
+      // it may reconcile already-settled internal ambiguity, but it never
+      // retries provider writes or creates a new social effect.
+      const social = await runSocialGraphMaintenanceSweep(runtime.store);
+      const reconciled =
+        social.instagram.length +
+        social.threads.length +
+        social.metaReplies.length;
+      const recovered =
+        recovery.resumed.length +
+        recovery.blocked.length +
+        recovery.failed.length +
+        recovery.stale.length +
+        recovery.releasedLeases +
+        recovery.expiredAttempts.length;
+      if (reconciled > 0 || expiredCapabilities.length > 0 || recovered > 0 || social.errors.length > 0) {
+        console.log(
+          `[graph-maintenance] ${source} reconciled=${reconciled} expiredCapabilities=${expiredCapabilities.length} recovered=${recovered} laneErrors=${social.errors.length} providerWrites=${social.providerWrites} browserRelayCalls=${social.browserRelayCalls}`,
+        );
+        for (const error of social.errors) console.warn(`[graph-maintenance] ${source} lane error: ${error}`);
+      }
+    })().catch((error) => {
+      console.error(`[graph-maintenance] ${source} sweep failed: ${(error as Error).message}`);
+    }).finally(() => {
+      socialGraphMaintenanceInFlight = null;
+    });
+  };
+
   const respondWithCachedJson = async <T>(
     req: express.Request,
     res: express.Response,
@@ -11020,6 +11061,8 @@ async function bootstrap() {
         void refreshGitHubWorkflowMonitor().catch((error) => console.warn(`[orchestrator] GitHub workflow monitor startup check failed: ${(error as Error).message}`));
       }
     }
+    runInternalGraphMaintenance("startup");
+    setInterval(() => runInternalGraphMaintenance("interval"), 5 * 60 * 1000);
 
     // Monitor heartbeat failures (detect if orchestrator is hung)
     setInterval(

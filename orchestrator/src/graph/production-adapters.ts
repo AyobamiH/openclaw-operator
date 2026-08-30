@@ -100,6 +100,7 @@ const SocialReadbackOutputSchema = z.object({ status: z.string(), outboxId: z.st
 type ThreadsRunnerModule = {
   runOpportunity(jobId: string, options: Record<string, unknown>): Promise<{ entry: Record<string, any>; state?: unknown; preparedOnly?: boolean; readinessOnly?: boolean }>;
   reconcileOutboxEntry(outboxId: string): Promise<{ entry: Record<string, any> }>;
+  diagnosePersistedState?(outboxId: string): Promise<Record<string, any>>;
 };
 type MetaReplyRunnerModule = {
   runMonitor(options: Record<string, unknown>): Promise<{ entry: Record<string, any>; preparedOnly?: boolean }>;
@@ -128,6 +129,24 @@ async function loadWorkspaceModule<T>(configured: string | undefined, fallback: 
 const loadThreadsRunner = () => loadWorkspaceModule<ThreadsRunnerModule>(process.env.OPENCLAW_THREADS_RUNNER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/threads-outbox-runner.mjs", ["runOpportunity", "reconcileOutboxEntry"]);
 const loadMetaReplyRunner = () => loadWorkspaceModule<MetaReplyRunnerModule>(process.env.OPENCLAW_META_REPLY_RUNNER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/meta-reply-monitor-outbox-runner.mjs", ["runMonitor", "executePreparedReply", "reconcileReceiptOnly"]);
 const loadThreadsReadiness = () => loadWorkspaceModule<ThreadsReadinessModule>(process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/threads-readiness-preparer.mjs", ["prepareNextThreadsOpportunity"]);
+
+const RECONCILABLE_SOCIAL_EFFECT_STATES = new Set(["request_sent", "provider_accepted", "ambiguous"]);
+
+function priorSocialEffects(
+  graphStore: GraphStore,
+  graphId: string,
+  operationTypes: string[],
+  options: { target?: string; excludeRunId?: string } = {},
+) {
+  return graphStore.listRuns({ graphId, limit: 250 })
+    .filter((run) => run.runId !== options.excludeRunId)
+    .flatMap((run) => graphStore.externalEffects(run.runId))
+    .filter((effect) =>
+      RECONCILABLE_SOCIAL_EFFECT_STATES.has(effect.state) &&
+      operationTypes.includes(effect.operationType) &&
+      (!options.target || effect.target === options.target)
+    );
+}
 
 export async function reconcilePriorMetaReplyGraphEffects(
   graphStore: GraphStore,
@@ -188,22 +207,28 @@ function instagramPriorOutboxId(run: { data?: Record<string, JsonValue> }): stri
   return String(result?.outboxId ?? projection?.outboxId ?? "");
 }
 
+function threadsPriorOutboxId(run: { data?: Record<string, JsonValue> }): string {
+  const socialEffect = run.data?.socialEffect as Record<string, unknown> | undefined;
+  const result = socialEffect?.result as Record<string, unknown> | undefined;
+  return String(result?.outboxId ?? socialEffect?.outboxId ?? "");
+}
+
 export async function reconcilePriorInstagramGraphEffects(
   graphStore: GraphStore,
   runner: Awaited<ReturnType<typeof loadInstagramRunner>>,
   options: { target?: string; excludeRunId?: string } = {},
 ): Promise<Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }>> {
   const reconciled: Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }> = [];
-  const effects = options.target
-    ? graphStore.unresolvedExternalEffectsForTarget(options.target, options.excludeRunId)
-    : graphStore.listRuns({ graphId: "deterministic-social-publication", limit: 250 })
-      .filter((run) => run.runId !== options.excludeRunId)
-      .flatMap((run) => graphStore.externalEffects(run.runId))
-      .filter((effect) => ["ambiguous", "provider_accepted"].includes(effect.state));
+  const effects = priorSocialEffects(
+    graphStore,
+    "deterministic-social-publication",
+    ["production.instagram-publication-live.v2"],
+    options,
+  );
   for (const effect of effects) {
     if (
       effect.operationType !== "production.instagram-publication-live.v2" ||
-      !["provider_accepted", "ambiguous"].includes(effect.state) ||
+      !RECONCILABLE_SOCIAL_EFFECT_STATES.has(effect.state) ||
       (options.target && effect.target !== options.target)
     ) continue;
     const priorRun = graphStore.getRun(effect.runId);
@@ -270,6 +295,112 @@ export async function reconcilePriorInstagramGraphEffects(
     reconciled.push({ runId: priorRun.runId, effectId: effect.effectId, outboxId, state });
   }
   return reconciled;
+}
+
+export async function reconcilePriorThreadsGraphEffects(
+  graphStore: GraphStore,
+  runner: ThreadsRunnerModule,
+  options: { target?: string; excludeRunId?: string } = {},
+): Promise<Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }>> {
+  const reconciled: Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }> = [];
+  const effects = priorSocialEffects(
+    graphStore,
+    "threads-publication",
+    ["threads-publication", "production.threads-publication-live.v1"],
+    options,
+  );
+  for (const effect of effects) {
+    const priorRun = graphStore.getRun(effect.runId);
+    if (!priorRun) continue;
+    const outboxId = threadsPriorOutboxId(priorRun);
+    if (!outboxId) continue;
+    let result: { entry?: Record<string, any> };
+    try {
+      result = await runner.reconcileOutboxEntry(outboxId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/Threads outbox item is not reconciliation-eligible/.test(message) || typeof runner.diagnosePersistedState !== "function") throw error;
+      const diagnostic = await runner.diagnosePersistedState(outboxId);
+      // The maintainer may observe a final canonical Threads state after the
+      // original Graph write handoff stalled. Consume only terminal evidence;
+      // unresolved live attempts stay ambiguous and continue blocking retries.
+      result = {
+        entry: {
+          id: outboxId,
+          status: diagnostic.mirrorState ?? diagnostic.state,
+          providerResultId: diagnostic.providerResultId,
+          permalink: diagnostic.permalink,
+          externalWriteCount: diagnostic.writeEvidence ?? diagnostic.externalWriteCount,
+          browserRelayCalls: diagnostic.browserRelayCalls ?? 0,
+        },
+      };
+    }
+    const entry = recordFrom(result.entry);
+    const status = String(entry.status ?? "");
+    const providerResultId = entry.providerResultId ? String(entry.providerResultId) : undefined;
+    const permalink = entry.permalink ? String(entry.permalink) : undefined;
+    const providerWrites = Number(entry.externalWriteCount ?? entry.writeEvidence ?? 0);
+    const browserRelayCalls = Number(entry.browserRelayCalls ?? 0);
+    let state: "effect_verified" | "confirmed_absent" | null = null;
+    if (["published_verified", "verified"].includes(status) && providerWrites === 1 && providerResultId && permalink && browserRelayCalls === 0) {
+      state = "effect_verified";
+    }
+    if (["confirmed_absent", "confirmed_failure", "failed_permanent"].includes(status) && providerWrites === 0 && browserRelayCalls === 0) {
+      state = "confirmed_absent";
+    }
+    if (!state) continue;
+    const evidenceRefs = [
+      permalink,
+      `graph://${priorRun.runId}/threads/local-state`,
+      `threads-outbox:${outboxId}`,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0);
+    graphStore.reconcileEffect(priorRun.runId, effect.effectId, state, providerResultId, evidenceRefs);
+    const latest = graphStore.getRun(priorRun.runId);
+    if (!latest) throw new Error(`threads_prior_graph_run_missing:${priorRun.runId}`);
+    graphStore.saveRun({
+      ...latest,
+      externalEffects: graphStore.externalEffects(priorRun.runId),
+      updatedAt: new Date().toISOString(),
+    }, latest.revision, [{
+      type: state === "effect_verified" ? "external_effect_verified" : "external_effect_reconciled",
+      nodeId: effect.nodeId,
+      actor: "adapter:production.threads-publication-live.v1",
+      payload: { effectId: effect.effectId, state, providerOperationId: providerResultId ?? null, evidenceRefs },
+    }]);
+    reconciled.push({ runId: priorRun.runId, effectId: effect.effectId, outboxId, state });
+  }
+  return reconciled;
+}
+
+export async function runSocialGraphMaintenanceSweep(
+  graphStore: GraphStore,
+): Promise<{
+  instagram: Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }>;
+  threads: Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }>;
+  metaReplies: Array<{ runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" }>;
+  errors: string[];
+  providerWrites: 0;
+  browserRelayCalls: 0;
+}> {
+  type SocialReconciliation = { runId: string; effectId: string; outboxId: string; state: "effect_verified" | "confirmed_absent" };
+  const errors: string[] = [];
+  const runLane = async (
+    lane: string,
+    reconcile: () => Promise<SocialReconciliation[]>,
+  ): Promise<SocialReconciliation[]> => {
+    try {
+      return await reconcile();
+    } catch (error) {
+      errors.push(`${lane}:${error instanceof Error ? error.message : String(error)}`);
+      return [];
+    }
+  };
+  const [instagram, threads, metaReplies] = await Promise.all([
+    runLane("instagram", async () => reconcilePriorInstagramGraphEffects(graphStore, await loadInstagramRunner())),
+    runLane("threads", async () => reconcilePriorThreadsGraphEffects(graphStore, await loadThreadsRunner())),
+    runLane("meta-replies", async () => reconcilePriorMetaReplyGraphEffects(graphStore, await loadMetaReplyRunner())),
+  ]);
+  return { instagram, threads, metaReplies, errors, providerWrites: 0, browserRelayCalls: 0 };
 }
 
 async function instagramPublicationEffectProjectionFromReconciliation(

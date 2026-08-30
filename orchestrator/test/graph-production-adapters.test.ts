@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
-import { classifyInstagramPublicationEffect, instagramPublicationNodeOutcome, legitimateThreadsPrecommitExclusion, reconcilePriorInstagramGraphEffects, reconcilePriorMetaReplyGraphEffects } from "../src/graph/production-adapters.js";
+import { classifyInstagramPublicationEffect, instagramPublicationNodeOutcome, legitimateThreadsPrecommitExclusion, reconcilePriorInstagramGraphEffects, reconcilePriorMetaReplyGraphEffects, reconcilePriorThreadsGraphEffects } from "../src/graph/production-adapters.js";
 import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
 import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../src/graph/workflows.js";
 import { compareShadowDecisions, prepareProductionPublishingShadowDecision, type ShadowDecisionEnvelope } from "../src/publishing/shadow-equivalence.js";
@@ -791,6 +791,63 @@ describe("production adapter registry", () => {
     expect(reconciled).toEqual([]);
     expect(runtime.store.externalEffects(prior.runId)[0]).toMatchObject({
       state: "ambiguous",
+    });
+  });
+
+  it("reconciles prior Threads ambiguity from canonical zero-write terminal state", async () => {
+    const runtime = await testRuntime();
+    const outboxId = "threads:2026-08-30:05:00:68b10c5c-f604-4567-9213-d0d1eab08106";
+    const prior = runtime.engine.start({
+      graphId: "threads-publication",
+      version: "1.0.0",
+      objective: "Prior Threads ambiguity settled locally",
+      input: {
+        provider: "threads",
+        accountKey: "threads:owner",
+        jobId: "68b10c5c-f604-4567-9213-d0d1eab08106",
+        observedAt: "2026-08-30T05:00:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    runtime.store.saveRun({
+      ...prior,
+      data: { socialEffect: { outboxId, action: "publish" } },
+      externalEffects: [{
+        effectId: "gex_prior_threads_absent",
+        runId: prior.runId,
+        nodeId: "perform_exact_effect",
+        idempotencyKey: "prior-threads-absent",
+        operationType: "threads-publication",
+        target: outboxId,
+        payloadHash: "a".repeat(64),
+        state: "ambiguous",
+        evidenceRefs: [],
+      }],
+    }, prior.revision, []);
+
+    const reconciled = await reconcilePriorThreadsGraphEffects(runtime.store, {
+      runOpportunity: async () => ({ entry: {} }),
+      reconcileOutboxEntry: async () => ({
+        entry: {
+          id: outboxId,
+          status: "confirmed_absent",
+          externalWriteCount: 0,
+          browserRelayCalls: 0,
+        },
+      }),
+    });
+
+    expect(reconciled).toEqual([{
+      runId: prior.runId,
+      effectId: "gex_prior_threads_absent",
+      outboxId,
+      state: "confirmed_absent",
+    }]);
+    expect(runtime.store.externalEffects(prior.runId)[0]).toMatchObject({
+      state: "confirmed_absent",
+      evidenceRefs: [`graph://${prior.runId}/threads/local-state`, `threads-outbox:${outboxId}`],
     });
   });
 
