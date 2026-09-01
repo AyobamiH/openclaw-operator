@@ -75,13 +75,67 @@ jobs:
           }
           BASH
 
+      - name: Normalize ClawSweeper app key
+        id: clawsweeper_app_key
+        if: ${{ env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true' }}
+        env:
+          RAW_PRIVATE_KEY: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('fs');
+
+          function wrapPemBody(body) {
+            return body.match(/.{1,64}/g)?.join('\n') || body;
+          }
+
+          function normalizePrivateKey(value) {
+            let key = String(value || '').trim();
+            if (
+              (key.startsWith('"') && key.endsWith('"')) ||
+              (key.startsWith("'") && key.endsWith("'"))
+            ) {
+              key = key.slice(1, -1).trim();
+            }
+            key = key.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
+
+            if (!key.includes('-----BEGIN ')) {
+              const compact = key.replace(/\s+/g, '');
+              if (/^[A-Za-z0-9+/=]+$/.test(compact) && compact.length > 0) {
+                const decoded = Buffer.from(compact, 'base64').toString('utf8').trim();
+                if (decoded.includes('-----BEGIN ')) {
+                  key = decoded.replace(/\r/g, '');
+                }
+              }
+            }
+
+            const match = key.match(/-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/);
+            if (match) {
+              const body = match[2].replace(/[^A-Za-z0-9+/=]/g, '');
+              key = `-----BEGIN ${match[1]}-----\n${wrapPemBody(body)}\n-----END ${match[1]}-----`;
+            }
+            return key;
+          }
+
+          const privateKey = normalizePrivateKey(process.env.RAW_PRIVATE_KEY);
+          if (!privateKey.includes('-----BEGIN ') || !privateKey.includes('-----END ')) {
+            console.log('::warning::CLAWSWEEPER_APP_PRIVATE_KEY is not shaped like a PEM private key after normalization.');
+          }
+          console.log(`::add-mask::${privateKey}`);
+          for (const line of privateKey.split('\n')) {
+            if (line) console.log(`::add-mask::${line}`);
+          }
+          const delimiter = `CLAWSWEEPER_KEY_${Date.now()}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `private_key<<${delimiter}\n${privateKey}\n${delimiter}\n`);
+          NODE
+
       - name: Create ClawSweeper dispatch token
         id: token
         if: ${{ env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true' }}
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           client-id: ${{ env.CLAWSWEEPER_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.clawsweeper_app_key.outputs.private_key }}
           owner: ${{ env.CLAWSWEEPER_APP_OWNER }}
           repositories: ${{ env.CLAWSWEEPER_APP_REPOSITORY }}
           permission-contents: write
@@ -110,7 +164,7 @@ jobs:
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           client-id: ${{ env.CLAWSWEEPER_APP_CLIENT_ID }}
-          private-key: ${{ secrets.CLAWSWEEPER_APP_PRIVATE_KEY }}
+          private-key: ${{ steps.clawsweeper_app_key.outputs.private_key }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
           permission-issues: write
