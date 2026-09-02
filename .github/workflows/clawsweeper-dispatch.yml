@@ -84,12 +84,13 @@ jobs:
           set -euo pipefail
           node <<'NODE'
           const fs = require('fs');
+          const crypto = require('crypto');
 
           function wrapPemBody(body) {
             return body.match(/.{1,64}/g)?.join('\n') || body;
           }
 
-          function normalizePrivateKey(value) {
+          function canonicalizePem(value) {
             let key = String(value || '').trim();
             if (
               (key.startsWith('"') && key.endsWith('"')) ||
@@ -98,40 +99,60 @@ jobs:
               key = key.slice(1, -1).trim();
             }
             key = key.replace(/\\r\\n/g, '\n').replace(/\\n/g, '\n').replace(/\r/g, '');
+            const match = key.match(/-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/);
+            if (!match) return key;
+            const body = match[2].replace(/[^A-Za-z0-9+/=]/g, '');
+            return `-----BEGIN ${match[1]}-----\n${wrapPemBody(body)}\n-----END ${match[1]}-----`;
+          }
 
-            if (!key.includes('-----BEGIN ')) {
-              const compact = key.replace(/\s+/g, '');
+          function isParseablePrivateKey(value) {
+            try {
+              crypto.createPrivateKey(String(value || ''));
+              return true;
+            } catch {
+              return false;
+            }
+          }
+
+          function privateKeyCandidates(value) {
+            const direct = canonicalizePem(value);
+            const candidates = [direct];
+
+            if (!direct.includes('-----BEGIN ')) {
+              const compact = direct.replace(/\s+/g, '');
               if (/^[A-Za-z0-9+/=]+$/.test(compact) && compact.length > 0) {
                 const decoded = Buffer.from(compact, 'base64').toString('utf8').trim();
                 if (decoded.includes('-----BEGIN ')) {
-                  key = decoded.replace(/\r/g, '');
+                  candidates.push(canonicalizePem(decoded));
+                }
+                if (compact.length >= 256) {
+                  candidates.push(`-----BEGIN RSA PRIVATE KEY-----\n${wrapPemBody(compact)}\n-----END RSA PRIVATE KEY-----`);
+                  candidates.push(`-----BEGIN PRIVATE KEY-----\n${wrapPemBody(compact)}\n-----END PRIVATE KEY-----`);
                 }
               }
             }
 
-            const match = key.match(/-----BEGIN ([A-Z ]*PRIVATE KEY)-----([\s\S]*?)-----END \1-----/);
-            if (match) {
-              const body = match[2].replace(/[^A-Za-z0-9+/=]/g, '');
-              key = `-----BEGIN ${match[1]}-----\n${wrapPemBody(body)}\n-----END ${match[1]}-----`;
-            }
-            return key;
+            return [...new Set(candidates)];
           }
 
-          const privateKey = normalizePrivateKey(process.env.RAW_PRIVATE_KEY);
-          if (!privateKey.includes('-----BEGIN ') || !privateKey.includes('-----END ')) {
-            console.log('::warning::CLAWSWEEPER_APP_PRIVATE_KEY is not shaped like a PEM private key after normalization.');
+          const privateKey = privateKeyCandidates(process.env.RAW_PRIVATE_KEY).find(isParseablePrivateKey) || '';
+          if (!privateKey) {
+            console.log('::warning::CLAWSWEEPER_APP_PRIVATE_KEY is not a parseable PEM private key after normalization; ClawSweeper dispatch will be skipped.');
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'valid=false\n');
+            process.exit(0);
           }
           console.log(`::add-mask::${privateKey}`);
           for (const line of privateKey.split('\n')) {
             if (line) console.log(`::add-mask::${line}`);
           }
           const delimiter = `CLAWSWEEPER_KEY_${Date.now()}`;
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'valid=true\n');
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `private_key<<${delimiter}\n${privateKey}\n${delimiter}\n`);
           NODE
 
       - name: Create ClawSweeper dispatch token
         id: token
-        if: ${{ env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true' }}
+        if: ${{ env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true' && steps.clawsweeper_app_key.outputs.valid == 'true' }}
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
           client-id: ${{ env.CLAWSWEEPER_APP_CLIENT_ID }}
@@ -159,7 +180,8 @@ jobs:
           ${{
             github.event_name == 'issue_comment' &&
             steps.comment_filter.outputs.is_command == 'true' &&
-            env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true'
+            env.HAS_CLAWSWEEPER_APP_CREDENTIALS == 'true' &&
+            steps.clawsweeper_app_key.outputs.valid == 'true'
           }}
         uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 # v3.1.1
         with:
