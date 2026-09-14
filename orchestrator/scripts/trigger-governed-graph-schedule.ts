@@ -199,6 +199,24 @@ export class GraphSchedulerHttpError extends Error {
   }
 }
 
+export class GraphSchedulerConnectivityError extends Error {
+  readonly route: string;
+  readonly method: string;
+  readonly code: string;
+  readonly attempts: number;
+  readonly cause?: unknown;
+
+  constructor(args: { route: string; method: string; code: string; attempts: number; cause?: unknown }) {
+    super(`graph_scheduler_runtime_unavailable:${args.code}:${args.method} ${args.route}`);
+    this.name = "GraphSchedulerConnectivityError";
+    this.route = args.route;
+    this.method = args.method;
+    this.code = args.code;
+    this.attempts = args.attempts;
+    this.cause = args.cause;
+  }
+}
+
 export async function requestGraphSchedulerJson(args: {
   route: string;
   init?: RequestInit;
@@ -223,6 +241,15 @@ export async function requestGraphSchedulerJson(args: {
         await (args.sleepFn ?? sleep)(resolveGraphSchedulerConnectivityRetryDelayMs(args.route, attempt));
         continue;
       }
+      if (retryableConnectivityFault) {
+        throw new GraphSchedulerConnectivityError({
+          route: args.route,
+          method,
+          code: graphSchedulerConnectivityErrorCode(error) ?? "UNKNOWN_CONNECTIVITY_ERROR",
+          attempts: attempt + 1,
+          cause: error,
+        });
+      }
       throw error;
     }
     let body: any = null;
@@ -237,6 +264,15 @@ export async function requestGraphSchedulerJson(args: {
     }
     throw new GraphSchedulerHttpError(response.status, `graph_scheduler_http_${response.status}:${body?.error ?? "unknown"}`, retryAfterMs);
   }
+}
+
+function graphSchedulerConnectivityErrorCode(error: unknown): string | null {
+  const value = error as { cause?: { code?: unknown }; code?: unknown; message?: unknown };
+  const code = value?.cause?.code ?? value?.code;
+  if (typeof code === "string" && code.length > 0) return code;
+  const message = String(value?.message ?? "");
+  const match = message.match(/\b(ECONNREFUSED|ECONNRESET|ETIMEDOUT|EPIPE|UND_ERR_SOCKET)\b/i);
+  return match?.[1]?.toUpperCase() ?? null;
 }
 
 function isGraphSchedulerConnectionRefused(error: unknown): boolean {
@@ -365,6 +401,10 @@ function isOutsideNaturalSlotWindow(error: unknown): boolean {
   return error instanceof Error && error.message === "graph_scheduler_trigger_outside_natural_slot_window";
 }
 
+function isGraphSchedulerRuntimeUnavailable(error: unknown): error is GraphSchedulerConnectivityError {
+  return error instanceof GraphSchedulerConnectivityError;
+}
+
 function syntheticSkipTrigger(migrationId: string, now: Date, reason: string): Record<string, unknown> {
   const compactTimestamp = now.toISOString().replace(/[^0-9TZ]/g, "");
   return {
@@ -372,6 +412,38 @@ function syntheticSkipTrigger(migrationId: string, now: Date, reason: string): R
     migrationId,
     status: "skipped",
     failureReason: reason,
+  };
+}
+
+function deferredScheduleResult(args: {
+  migrationId: string;
+  now: Date;
+  reason: string;
+  migration: NonNullable<ReturnType<GraphSchedulerStore["migration"]>>;
+  portfolio: NonNullable<ReturnType<typeof governedSchedulerPortfolioEntry>>;
+  eventChainValid: boolean;
+  recoveryResult?: string;
+}): Record<string, unknown> {
+  return {
+    outcome: "deferred",
+    reason: args.reason,
+    migrationId: args.migrationId,
+    graph: `${args.migration.graphId}@${args.migration.graphVersion}`,
+    definitionHash: args.migration.graphDefinitionHash,
+    trigger: syntheticSkipTrigger(args.migrationId, args.now, args.reason),
+    providerWrites: 0,
+    publicationReport: buildPublicationReport({
+      detail: { run: { status: "deferred" }, childReceiptChainValid: true },
+      outcome: "deferred",
+      providerWrites: 0,
+      maximumExternalWrites: args.portfolio.maximumExternalWrites,
+      eventChainValid: args.eventChainValid,
+      childReceiptChainValid: true,
+      deferredReason: args.reason,
+      recoveryResult: args.recoveryResult,
+    }),
+    eventChainValid: args.eventChainValid,
+    childReceiptChainValid: true,
   };
 }
 
@@ -584,10 +656,24 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
   let runId: string | undefined;
   let executionAcceptance: ExecutionAcceptance | undefined;
   try {
-    const health = await request("/api/graphs/health");
-    if (health?.status !== "healthy" || health?.zeroWriteOnly !== true) throw new Error("graph_scheduler_runtime_health_gate_failed");
     const migration = store.migration(args.migrationId);
     if (!migration || migration.status !== "graph_owned" || migration.graphDefinitionHash !== portfolio.declaration.graphDefinitionHash) throw new Error("graph_scheduler_migration_not_active_or_exact");
+    const eventChainValid = store.eventChainValid(args.migrationId);
+    try {
+      const health = await request("/api/graphs/health");
+      if (health?.status !== "healthy" || health?.zeroWriteOnly !== true) throw new Error("graph_scheduler_runtime_health_gate_failed");
+    } catch (error) {
+      if (!isGraphSchedulerRuntimeUnavailable(error)) throw error;
+      return deferredScheduleResult({
+        migrationId: args.migrationId,
+        now: observedNow,
+        reason: `runtime_unavailable:${error.code}:${error.route}`,
+        migration,
+        portfolio,
+        eventChainValid,
+        recoveryResult: "retry_next_scheduler_invocation_no_replay",
+      });
+    }
     const recoveryTrigger = args.recoveryTriggerId ? store.trigger(args.recoveryTriggerId) : null;
     if (args.recoveryTriggerId && (!recoveryTrigger || recoveryTrigger.migrationId !== args.migrationId)) throw new Error("graph_scheduler_recovery_trigger_not_found_or_mismatched");
     if (recoveryTrigger && !["failed_safe", "completed", "ambiguous"].includes(recoveryTrigger.status)) throw new Error(`graph_scheduler_recovery_trigger_not_terminal_or_failed_safe:${recoveryTrigger.status}`);
@@ -600,33 +686,27 @@ export async function executeGovernedSchedule(args: GovernedScheduleExecutionArg
       } catch (error) {
         if (!isOutsideNaturalSlotWindow(error)) throw error;
         const reason = "outside_natural_slot_window";
-        return {
-          outcome: "deferred",
-          reason,
-          migrationId: args.migrationId,
-          graph: `${migration.graphId}@${migration.graphVersion}`,
-          definitionHash: migration.graphDefinitionHash,
-          trigger: syntheticSkipTrigger(args.migrationId, observedNow, reason),
-          providerWrites: 0,
-          publicationReport: buildPublicationReport({
-            detail: { run: { status: "completed" }, childReceiptChainValid: true },
-            outcome: "deferred",
-            providerWrites: 0,
-            maximumExternalWrites: portfolio.maximumExternalWrites,
-            eventChainValid: store.eventChainValid(args.migrationId),
-            childReceiptChainValid: true,
-            deferredReason: reason,
-          }),
-          eventChainValid: store.eventChainValid(args.migrationId),
-          childReceiptChainValid: true,
-        };
+        return deferredScheduleResult({ migrationId: args.migrationId, now: observedNow, reason, migration, portfolio, eventChainValid });
       }
     }
     if (!recoveryTrigger && slot.waitUntil) {
       const waitMs = Math.max(0, Date.parse(slot.waitUntil) - (args.now?.getTime() ?? Date.now()));
       await (args.preSlotSleep ?? sleep)(waitMs);
-      const postWaitHealth = await request("/api/graphs/health");
-      if (postWaitHealth?.status !== "healthy" || postWaitHealth?.zeroWriteOnly !== true) throw new Error("graph_scheduler_runtime_health_gate_failed_after_slot_wait");
+      try {
+        const postWaitHealth = await request("/api/graphs/health");
+        if (postWaitHealth?.status !== "healthy" || postWaitHealth?.zeroWriteOnly !== true) throw new Error("graph_scheduler_runtime_health_gate_failed_after_slot_wait");
+      } catch (error) {
+        if (!isGraphSchedulerRuntimeUnavailable(error)) throw error;
+        return deferredScheduleResult({
+          migrationId: args.migrationId,
+          now: observedNow,
+          reason: `runtime_unavailable_after_slot_wait:${error.code}:${error.route}`,
+          migration,
+          portfolio,
+          eventChainValid,
+          recoveryResult: "retry_next_scheduler_invocation_no_replay",
+        });
+      }
     }
     const reservation = recoveryTrigger
       ? { trigger: recoveryTrigger, created: false }
@@ -1012,4 +1092,19 @@ async function main(): Promise<void> {
   process.stdout.write(formatGovernedScheduleOutput(result, process.argv[3]!));
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
+function formatGraphSchedulerCommandError(error: unknown): string {
+  if (error instanceof GraphSchedulerConnectivityError) {
+    return `${error.message}:attempts=${error.attempts}`;
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return `graph_scheduler_command_failed:${message}`;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    await main();
+  } catch (error) {
+    process.stderr.write(`${formatGraphSchedulerCommandError(error)}\n`);
+    process.exitCode = 1;
+  }
+}

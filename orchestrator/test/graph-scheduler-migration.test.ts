@@ -18,6 +18,7 @@ import {
   GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS,
   GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS,
   GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS,
+  GraphSchedulerConnectivityError,
   GraphSchedulerHttpError,
   PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH,
   requestGraphSchedulerJson,
@@ -222,6 +223,39 @@ describe("graph scheduler migration registry", () => {
     expect(slept).toHaveLength(2);
   });
 
+  it("raises a sanitized scheduler connectivity error after bounded startup retries are exhausted", async () => {
+    let attempts = 0;
+    const slept: number[] = [];
+    let caught: unknown;
+    try {
+      await requestGraphSchedulerJson({
+        route: "/api/graphs/health",
+        maxConnectivityRetries: 2,
+        sleepFn: async (ms) => { slept.push(ms); },
+        dispatch: async () => {
+          attempts += 1;
+          const error = new TypeError("fetch failed") as TypeError & { cause: { code: string } };
+          error.cause = { code: "ECONNREFUSED" };
+          throw error;
+        },
+      });
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(GraphSchedulerConnectivityError);
+    expect(caught).toMatchObject({
+      code: "ECONNREFUSED",
+      method: "GET",
+      route: "/api/graphs/health",
+      attempts: 3,
+    });
+    expect((caught as Error).message).toBe("graph_scheduler_runtime_unavailable:ECONNREFUSED:GET /api/graphs/health");
+    expect((caught as Error).message).not.toContain("fetch failed");
+    expect(attempts).toBe(3);
+    expect(slept).toHaveLength(2);
+  });
+
   it("retries transient graph scheduler read resets without retrying unsafe writes", async () => {
     let readAttempts = 0;
     const slept: number[] = [];
@@ -377,6 +411,45 @@ describe("graph scheduler migration registry", () => {
         policyOrSkipReason: "deferred:outside_natural_slot_window",
       },
     });
+    expect(seenRoutes).toEqual(["GET /api/graphs/health"]);
+    const reopened = new GraphSchedulerStore(value.path);
+    expect(reopened.triggers(binding.item.declaration.migrationId)).toEqual([]);
+    reopened.close();
+  });
+
+  it("defers restart-time scheduler unavailability before reserving a graph trigger", async () => {
+    const binding = governedJobs("threads-readiness-v1");
+    const value = await fixture();
+    value.store.prepareBoundedMigration({ legacyJob: binding.legacyJob, graphJob: binding.graphJob, declaration: binding.item.declaration, actor: "test" });
+    value.store.activateMigration(binding.item.declaration.migrationId, "test");
+    value.store.close();
+    const seenRoutes: string[] = [];
+
+    const result = await executeGovernedSchedule({
+      migrationId: binding.item.declaration.migrationId,
+      now: new Date("2026-08-04T03:30:00.000Z"),
+      schedulerPath: value.path,
+      request: async (route) => {
+        seenRoutes.push(`GET ${route}`);
+        throw new GraphSchedulerConnectivityError({ route, method: "GET", code: "ECONNREFUSED", attempts: 7 });
+      },
+    });
+
+    expect(result).toMatchObject({
+      outcome: "deferred",
+      reason: "runtime_unavailable:ECONNREFUSED:/api/graphs/health",
+      providerWrites: 0,
+      publicationReport: {
+        finalClassification: "deferred",
+        policyOrSkipReason: "deferred:runtime_unavailable:ECONNREFUSED:/api/graphs/health",
+        recoveryRequired: false,
+        recoveryResult: "retry_next_scheduler_invocation_no_replay",
+      },
+    });
+    const output = formatGovernedScheduleOutput(result, binding.item.declaration.migrationId);
+    expect(output).toContain(`Graph-owned ${binding.item.declaration.migrationId} deferred`);
+    expect(output).toContain("Provider writes: 0; Browser Relay calls: 0");
+    expect(output).not.toContain("fetch failed");
     expect(seenRoutes).toEqual(["GET /api/graphs/health"]);
     const reopened = new GraphSchedulerStore(value.path);
     expect(reopened.triggers(binding.item.declaration.migrationId)).toEqual([]);
