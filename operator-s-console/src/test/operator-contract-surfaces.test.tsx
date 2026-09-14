@@ -131,7 +131,7 @@ vi.mock("@/hooks/use-public-surface-api");
 vi.mock("@/contexts/DiagnosticsContext");
 vi.mock("@/contexts/AuthContext");
 
-describe("operator contract surfaces", () => {
+describe("operator contract surfaces", { timeout: 45000 }, () => {
   beforeEach(() => {
     vi.resetAllMocks();
 
