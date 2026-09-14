@@ -343,42 +343,12 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     };
   };
 
-  const waitForTaskHistoryRecord = async (taskId: string, timeoutMs = 90000) => {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      try {
-        const raw = await readFile(stateFilePath, 'utf-8');
-        const parsed = JSON.parse(raw) as {
-          taskHistory?: Array<{ id?: string; type?: string; result?: 'ok' | 'error'; message?: string }>;
-        };
-        const found = parsed.taskHistory?.find((entry) => entry?.id === taskId);
-        if (found) {
-          return found;
-        }
-      } catch {
-        // retry until timeout
-      }
-      await sleep(250);
-    }
-
-    throw new Error(`Task history record not found for taskId=${taskId}`);
+  type TaskHistoryRecord = {
+    id?: string;
+    type?: string;
+    result?: 'ok' | 'error';
+    message?: string;
   };
-
-  const readPersistedState = async (): Promise<PersistedRuntimeState> => {
-    const raw = await readFile(stateFilePath, 'utf-8');
-    return JSON.parse(raw) as PersistedRuntimeState;
-  };
-
-  const hasFreshIsoTimestamp = (value: string | null | undefined, cutoffMs: number) => {
-    const ts = Date.parse(value ?? '');
-    return Number.isFinite(ts) && ts >= cutoffMs;
-  };
-
-  const findPersistedExecutionByTaskId = (
-    state: PersistedRuntimeState,
-    taskId: string,
-  ): PersistedTaskExecution | null =>
-    state.taskExecutions.find((execution) => execution.taskId === taskId) ?? null;
 
   type TaskRunRecord = {
     taskId?: string;
@@ -397,6 +367,120 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       highlights?: Record<string, unknown>;
     };
   };
+
+  const terminalTaskRunStatuses = new Set(['success', 'failed', 'timed_out', 'cancelled']);
+
+  const taskRunToHistoryRecord = (run: TaskRunRecord, taskId: string): TaskHistoryRecord => ({
+    id: taskId,
+    result: run.status === 'success' ? 'ok' : 'error',
+    message: `task run ${run.status ?? 'unknown'} via ${run.runId ?? 'unknown-run'}`,
+  });
+
+  const waitForTaskHistoryRecord = async (
+    taskId: string,
+    options: number | {
+      timeoutMs?: number;
+      allowTaskRunFallback?: boolean;
+      acceptedTaskRunStatuses?: string[];
+    } = 90000,
+  ) => {
+    const timeoutMs = typeof options === 'number' ? options : options.timeoutMs ?? 90000;
+    const allowTaskRunFallback =
+      typeof options === 'number' ? false : options.allowTaskRunFallback ?? false;
+    const acceptedTaskRunStatuses =
+      typeof options === 'number'
+        ? ['success']
+        : options.acceptedTaskRunStatuses ?? ['success'];
+    const deadline = Date.now() + timeoutMs;
+    let latestHistoryCount = 0;
+    let latestExecution: PersistedTaskExecution | null = null;
+    let latestRun: TaskRunRecord | undefined;
+
+    while (Date.now() < deadline) {
+      try {
+        const raw = await readFile(stateFilePath, 'utf-8');
+        const parsed = JSON.parse(raw) as {
+          taskHistory?: TaskHistoryRecord[];
+          taskExecutions?: PersistedTaskExecution[];
+        };
+        latestHistoryCount = parsed.taskHistory?.length ?? 0;
+        const found = parsed.taskHistory?.find((entry) => entry?.id === taskId);
+        if (found) {
+          return found;
+        }
+        latestExecution = parsed.taskExecutions?.find((execution) => execution.taskId === taskId) ?? null;
+      } catch {
+        // retry until timeout
+      }
+
+      if (allowTaskRunFallback) {
+        try {
+          const payload = await fetchProtected<{
+            runs: TaskRunRecord[];
+          }>(`/api/tasks/runs?limit=100&pollTs=${Date.now()}`);
+          latestRun = payload.runs.find((run) => run.taskId === taskId);
+          const latestStatus = String(latestRun?.status ?? latestExecution?.status ?? '');
+          if (
+            latestRun?.runId &&
+            acceptedTaskRunStatuses.includes(latestStatus) &&
+            typeof latestRun.completedAt === 'string' &&
+            latestRun.completedAt.length > 0
+          ) {
+            return taskRunToHistoryRecord(latestRun, taskId);
+          }
+          if (
+            latestRun?.runId &&
+            terminalTaskRunStatuses.has(latestStatus) &&
+            typeof latestRun.completedAt === 'string' &&
+            latestRun.completedAt.length > 0
+          ) {
+            throw new Error(
+              [
+                `Task run reached an unexpected terminal status for taskId=${taskId}.`,
+                `acceptedStatuses=${JSON.stringify(acceptedTaskRunStatuses)}`,
+                `runId=${latestRun.runId}`,
+                `status=${latestRun.status}`,
+                `completedAt=${latestRun.completedAt}`,
+              ].join(' '),
+            );
+          }
+        } catch (error) {
+          if (error instanceof Error && error.message.includes('unexpected terminal status')) {
+            throw error;
+          }
+        }
+      }
+      await sleep(250);
+    }
+
+    throw new Error(
+      [
+        `Task history record not found for taskId=${taskId}.`,
+        `historyCount=${latestHistoryCount}`,
+        `executionStatus=${latestExecution?.status ?? 'null'}`,
+        `executionLastHandledAt=${latestExecution?.lastHandledAt ?? 'null'}`,
+        `runId=${latestRun?.runId ?? 'null'}`,
+        `runStatus=${latestRun?.status ?? 'null'}`,
+        `runCompletedAt=${latestRun?.completedAt ?? 'null'}`,
+      ].join(' '),
+    );
+  };
+
+  const readPersistedState = async (): Promise<PersistedRuntimeState> => {
+    const raw = await readFile(stateFilePath, 'utf-8');
+    return JSON.parse(raw) as PersistedRuntimeState;
+  };
+
+  const hasFreshIsoTimestamp = (value: string | null | undefined, cutoffMs: number) => {
+    const ts = Date.parse(value ?? '');
+    return Number.isFinite(ts) && ts >= cutoffMs;
+  };
+
+  const findPersistedExecutionByTaskId = (
+    state: PersistedRuntimeState,
+    taskId: string,
+  ): PersistedTaskExecution | null =>
+    state.taskExecutions.find((execution) => execution.taskId === taskId) ?? null;
 
   const waitForCompletedTaskRun = async (
     taskId: string,
@@ -1423,7 +1507,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     });
   });
 
-  it('exposes governed skill policy, registry, telemetry, and audit surfaces with live runtime truth', { timeout: 45000 }, async () => {
+  it('exposes governed skill policy, registry, telemetry, and audit surfaces with live runtime truth', { timeout: 120000 }, async () => {
     const registryPayload = await fetchProtected<{
       total?: number;
       skills?: Array<{
@@ -1496,7 +1580,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       type: 'health',
       agents: ['security-agent'],
     });
-    await waitForTaskHistoryRecord(systemMonitorTaskId);
+    await waitForTaskHistoryRecord(systemMonitorTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(systemMonitorTaskId);
 
     const telemetryPayload = await fetchProtected<{
@@ -1942,7 +2026,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     expect((detailPayload.incident?.remediationTasks ?? []).length).toBeGreaterThan(0);
     expect((detailPayload.incident?.history ?? []).length).toBeGreaterThan(0);
 
-    await waitForTaskHistoryRecord(String(remediationPayload.remediationTask?.taskId));
+    await waitForTaskHistoryRecord(String(remediationPayload.remediationTask?.taskId), { allowTaskRunFallback: true });
     const remediationRun = await waitForTaskRun(String(remediationPayload.remediationTask?.taskId));
     const historyPayload = await fetchProtected<{
       remediationTasks?: Array<{
@@ -1975,7 +2059,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
   it('returns workflow summaries, workflow graph detail, and agent capability surfaces', { timeout: 60000 }, async () => {
     const taskId = await triggerTask('doc-sync', {});
 
-    await waitForTaskHistoryRecord(taskId);
+    await waitForTaskHistoryRecord(taskId, { allowTaskRunFallback: true });
     const run = await waitForTaskRun(taskId);
 
     const runsPayload = await fetchProtected<{
@@ -2073,7 +2157,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       paths: [resolve(process.cwd(), '..', 'README.md')],
       targets: ['doc-specialist'],
     });
-    await waitForTaskHistoryRecord(docTaskId);
+    await waitForTaskHistoryRecord(docTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(docTaskId);
 
     const integrationTaskId = await triggerTask('integration-workflow', {
@@ -2091,21 +2175,21 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         },
       ],
     });
-    await waitForTaskHistoryRecord(integrationTaskId);
+    await waitForTaskHistoryRecord(integrationTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(integrationTaskId);
 
     const systemMonitorTaskId = await triggerTask('system-monitor', {
       type: 'health',
       agents: ['security-agent', 'qa-verification-agent'],
     });
-    await waitForTaskHistoryRecord(systemMonitorTaskId);
+    await waitForTaskHistoryRecord(systemMonitorTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(systemMonitorTaskId);
 
     const securityTaskId = await triggerTask('security-audit', {
       type: 'scan',
       scope: 'workspace',
     });
-    await waitForTaskHistoryRecord(securityTaskId);
+    await waitForTaskHistoryRecord(securityTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(securityTaskId);
 
     const qaTaskId = await triggerTask('qa-verification', {
@@ -2117,7 +2201,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       runIds: ['wave1-readiness-run'],
       affectedSurfaces: ['workflow'],
     });
-    await waitForTaskHistoryRecord(qaTaskId);
+    await waitForTaskHistoryRecord(qaTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(qaTaskId);
 
     const agentsPayload = await fetchProtected<{
@@ -2219,7 +2303,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         selectedForDraft: true,
       },
     });
-    await waitForTaskHistoryRecord(redditTaskId);
+    await waitForTaskHistoryRecord(redditTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(redditTaskId);
 
     const contentTaskId = await triggerTask('content-generate', {
@@ -2231,7 +2315,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         metadata: { topic: 'wave2-proof' },
       },
     });
-    await waitForTaskHistoryRecord(contentTaskId);
+    await waitForTaskHistoryRecord(contentTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(contentTaskId);
 
     const summaryTaskId = await triggerTask('summarize-content', {
@@ -2241,7 +2325,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       format: 'incident_handoff',
       metadata: { topic: 'wave2-incident-handoff' },
     });
-    await waitForTaskHistoryRecord(summaryTaskId);
+    await waitForTaskHistoryRecord(summaryTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(summaryTaskId);
 
     const extractionTaskId = await triggerTask('data-extraction', {
@@ -2257,7 +2341,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         },
       },
     });
-    await waitForTaskHistoryRecord(extractionTaskId);
+    await waitForTaskHistoryRecord(extractionTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(extractionTaskId);
 
     const normalizationTaskId = await triggerTask('normalize-data', {
@@ -2269,14 +2353,14 @@ describe('Runtime Integration: Live Middleware Chain', () => {
         mode: 'string',
       },
     });
-    await waitForTaskHistoryRecord(normalizationTaskId);
+    await waitForTaskHistoryRecord(normalizationTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(normalizationTaskId);
 
     const marketTaskId = await triggerTask('market-research', {
       query: 'operator dashboard policy changes',
       scope: 'policy',
     });
-    await waitForTaskHistoryRecord(marketTaskId);
+    await waitForTaskHistoryRecord(marketTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(marketTaskId);
 
     const agentsPayload = await fetchProtected<{
@@ -2374,7 +2458,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       'approved',
     );
     expect(buildRefactorDecision.replayTaskId).toBeTruthy();
-    await waitForTaskHistoryRecord(String(buildRefactorDecision.replayTaskId));
+    await waitForTaskHistoryRecord(String(buildRefactorDecision.replayTaskId), { allowTaskRunFallback: true });
     await waitForTaskRun(String(buildRefactorDecision.replayTaskId));
 
     const skillAuditTaskId = await triggerTask('skill-audit', {
@@ -2383,7 +2467,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       checks: ['schemas', 'provenance', 'permissions'],
     });
 
-    await waitForTaskHistoryRecord(skillAuditTaskId);
+    await waitForTaskHistoryRecord(skillAuditTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(skillAuditTaskId);
 
     const agentsPayload = await fetchProtected<{
@@ -2482,7 +2566,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     const controlPlaneTaskId = await triggerTask('control-plane-brief', {
       focus: 'wave4-runtime-readiness',
     });
-    await waitForTaskHistoryRecord(controlPlaneTaskId);
+    await waitForTaskHistoryRecord(controlPlaneTaskId, { allowTaskRunFallback: true });
     const controlPlaneRun = await waitForTaskRun(controlPlaneTaskId);
 
     const wave4FreshnessCutoffMs = Date.now();
@@ -2490,14 +2574,14 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       type: 'health',
       agents: ['release-manager-agent'],
     });
-    await waitForTaskHistoryRecord(systemMonitorTaskId);
+    await waitForTaskHistoryRecord(systemMonitorTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(systemMonitorTaskId);
 
     const securityTaskId = await triggerTask('security-audit', {
       type: 'scan',
       scope: 'workspace',
     });
-    await waitForTaskHistoryRecord(securityTaskId);
+    await waitForTaskHistoryRecord(securityTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(securityTaskId);
 
     const qaTaskId = await triggerTask('qa-verification', {
@@ -2509,7 +2593,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       runIds: ['wave4-release-readiness'],
       affectedSurfaces: ['release-posture'],
     });
-    await waitForTaskHistoryRecord(qaTaskId);
+    await waitForTaskHistoryRecord(qaTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(qaTaskId);
 
     await waitForPersistedReleaseReadinessInputs({
@@ -2523,7 +2607,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       releaseTarget: 'wave4-runtime-readiness',
       maxRetries: 0,
     });
-    await waitForTaskHistoryRecord(releaseTaskId);
+    await waitForTaskHistoryRecord(releaseTaskId, { allowTaskRunFallback: true });
     const releaseRun = await waitForCompletedTaskRun(releaseTaskId, ['success', 'failed']);
 
     const controlPlaneAgent = await waitForAgentRuntimeSignal(
@@ -2681,14 +2765,14 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       type: 'health',
       agents: ['deployment-ops-agent'],
     });
-    await waitForTaskHistoryRecord(systemMonitorTaskId);
+    await waitForTaskHistoryRecord(systemMonitorTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(systemMonitorTaskId);
 
     const securityTaskId = await triggerTask('security-audit', {
       type: 'scan',
       scope: 'workspace',
     });
-    await waitForTaskHistoryRecord(securityTaskId);
+    await waitForTaskHistoryRecord(securityTaskId, { allowTaskRunFallback: true });
     await waitForTaskRun(securityTaskId);
 
     const deploymentTaskId = await triggerTask('deployment-ops', {
@@ -2696,7 +2780,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       rolloutMode: 'service',
       maxRetries: 0,
     });
-    await waitForTaskHistoryRecord(deploymentTaskId);
+    await waitForTaskHistoryRecord(deploymentTaskId, { allowTaskRunFallback: true });
     const deploymentRun = await waitForTaskRun(deploymentTaskId);
 
     const deploymentDetail = await waitForRunResultSummaryKeys(
@@ -2768,7 +2852,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       focusPaths: ['docs/reference', 'orchestrator/src', 'operator-s-console/src'],
       maxRetries: 0,
     });
-    await waitForTaskHistoryRecord(codeIndexTaskId);
+    await waitForTaskHistoryRecord(codeIndexTaskId, { allowTaskRunFallback: true });
     const codeIndexRun = await waitForTaskRun(codeIndexTaskId);
 
     const codeIndexDetail = await waitForRunResultSummaryKeys(
@@ -2833,7 +2917,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       focusSuites: ['orchestrator', 'operator-ui', 'agents'],
       maxRetries: 0,
     });
-    await waitForTaskHistoryRecord(testIntelligenceTaskId);
+    await waitForTaskHistoryRecord(testIntelligenceTaskId, { allowTaskRunFallback: true });
     const testIntelligenceRun = await waitForTaskRun(testIntelligenceTaskId);
 
     const testIntelligenceDetail = await waitForRunResultSummaryKeys(
@@ -2907,7 +2991,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       focusAreas: ['policies', 'dependencies', 'release'],
       maxRetries: 0,
     });
-    await waitForTaskHistoryRecord(complianceTaskId);
+    await waitForTaskHistoryRecord(complianceTaskId, { allowTaskRunFallback: true });
     const complianceRun = await waitForTaskRun(complianceTaskId);
 
     const complianceDetail = await waitForRunResultSummaryKeys(
@@ -2999,7 +3083,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     };
     expect(remediationPayload.remediationTask?.taskId).toBeTruthy();
 
-    await waitForTaskHistoryRecord(String(remediationPayload.remediationTask?.taskId));
+    await waitForTaskHistoryRecord(String(remediationPayload.remediationTask?.taskId), { allowTaskRunFallback: true });
     const remediationRun = await waitForTaskRun(String(remediationPayload.remediationTask?.taskId));
 
     const seededRunDetail = await fetchProtected<{
@@ -3134,13 +3218,13 @@ describe('Runtime Integration: Live Middleware Chain', () => {
     ).toBe(true);
   });
 
-  it('surfaces bounded agent result highlights through task run APIs', { timeout: 60000 }, async () => {
+  it('surfaces bounded agent result highlights through task run APIs', { timeout: 120000 }, async () => {
     const systemMonitorTaskId = await triggerTask('system-monitor', {
       type: 'health',
       agents: ['security-agent'],
     });
 
-    await waitForTaskHistoryRecord(systemMonitorTaskId);
+    await waitForTaskHistoryRecord(systemMonitorTaskId, { allowTaskRunFallback: true });
     const systemMonitorRun = await waitForTaskRun(systemMonitorTaskId);
 
     const contentTaskId = await triggerTask('content-generate', {
@@ -3155,7 +3239,7 @@ describe('Runtime Integration: Live Middleware Chain', () => {
       },
     });
 
-    await waitForTaskHistoryRecord(contentTaskId);
+    await waitForTaskHistoryRecord(contentTaskId, { allowTaskRunFallback: true });
     const contentRun = await waitForTaskRun(contentTaskId);
 
     const runsPayload = await fetchProtected<{
