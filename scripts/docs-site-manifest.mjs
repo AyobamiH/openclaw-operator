@@ -38,6 +38,7 @@ const identicalTargets = [
   "docs/operations/KNOWLEDGE_MIRROR_POLICY.md",
   "docs/operations/backup-recovery.md",
   "docs/operations/deployment.md",
+  "docs/operations/runtime-repair-proof-chain-2026-09-14.md",
   "docs/reference/api.md",
   "docs/reference/state-schema.md",
   "docs/reference/task-types.md",

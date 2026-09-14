@@ -92,6 +92,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md](./operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md) | deterministic campaign-factory shadow activation, completed governed graph-runtime source contract, and remaining live-activation authority boundary |
 | [operations/campaign-feedback-loop-2026-08-11.md](./operations/campaign-feedback-loop-2026-08-11.md) | Graph publication, provider measurement, exact conversation attribution, reconciliation and truthful reporting contract |
 | [operations/document-drift-repair-single-flight-2026-08-11.md](./operations/document-drift-repair-single-flight-2026-08-11.md) | Single-flight document-repair admission, coalesced path recovery, immutable terminal truth and retention cleanup evidence |
+| [operations/runtime-repair-proof-chain-2026-09-14.md](./operations/runtime-repair-proof-chain-2026-09-14.md) | September 14 Graph repair proof chain, strict-hook evidence, restart-disconnect handling and remaining social publication blockers |
 | [operations/graph-native-migration-registry.md](./operations/graph-native-migration-registry.md) | active workflow classification, graph targets, risks and next migration steps |
 | [operations/worktree-integrity-and-execution-attribution.md](./operations/worktree-integrity-and-execution-attribution.md) | deterministic worktree damage detection, controlled execution receipts, destructive guards, and bounded attribution |
 
