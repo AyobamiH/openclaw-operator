@@ -74,6 +74,7 @@ taking on broader exposure work.
 1. [troubleshooting/common-issues.md](./troubleshooting/common-issues.md)
 2. [troubleshooting/debugging.md](./troubleshooting/debugging.md)
 3. [operations/backup-recovery.md](./operations/backup-recovery.md)
+4. [operations/runtime-repair-proof-chain-2026-09-14.md](./operations/runtime-repair-proof-chain-2026-09-14.md)
 
 ## I Found An Older "Complete" Or "Phase" Doc
 

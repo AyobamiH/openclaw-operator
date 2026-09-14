@@ -57,6 +57,7 @@ Public monitoring/read-only:
 - `GET /health`
 - `GET /api/persistence/health`
 - `GET /api/knowledge/summary`
+- `GET /api/knowledge-routing/summary`
 - `GET /api/openapi.json`
 
 Public proof/read-only:
@@ -113,6 +114,12 @@ Protected operator routes (bearer token):
 - `GET /api/skills/audit`
 - `GET /api/skills/registry` now reflects live governed-skill runtime truth, including executability, executor binding, persistence mode, and provenance snapshot for each intake record.
 - `GET /api/memory/recall`
+- `GET /api/knowledge-routing/route`
+- `GET /api/knowledge-routing/graph`
+- `GET /api/knowledge-routing/maps`
+- `GET /api/knowledge-routing/evaluation`
+- `POST /api/knowledge-routing/refresh`
+- `POST /api/knowledge-routing/shadow`
 - `GET /api/health/extended`
 - `POST /api/knowledge/query`
 - `GET /api/knowledge/export`
@@ -181,8 +188,43 @@ Specialist operator-console contract truth:
   read surfaces; do not scrape operator-only payloads to recreate the same
   summary layer.
 - `GET /health`: shallow public liveness only. It returns helper URLs for
-  metrics, knowledge summary, and persistence health using the request host;
-  the metrics helper uses the configured Prometheus port.
+  metrics, knowledge summary, knowledge-routing summary, and persistence health
+  using the request host; the metrics helper uses the configured Prometheus
+  port.
+- `GET /api/knowledge-routing/summary`: public route-metadata count and
+  stale-route status. This is the health/readiness surface for the routing
+  graph, not a source-content endpoint.
+- `GET /api/knowledge-routing/route`: protected resolver for an information
+  need. It returns recommended nodes, authoritative source locators,
+  relationship paths, freshness guidance, retrieval methods and verification
+  targets. It must not return complete documents, logs, transcripts, metrics
+  histories or source bodies.
+- `GET /api/knowledge-routing/graph` and `GET /api/knowledge-routing/maps`:
+  protected graph metadata and generated human/agent-readable projections from
+  the same canonical route data.
+- `GET /api/knowledge-routing/evaluation`: protected fixed-suite evaluation
+  for route quality. It records route classifications, authority accuracy and
+  routing accuracy over representative OpenClaw information needs.
+- `POST /api/knowledge-routing/refresh`: operator-only deterministic refresh.
+  It reruns source discovery and rewrites the generated routing artifact; it
+  does not mutate Telegram, gateway runtime, schedules, state rows, provider
+  integrations or source content.
+- `POST /api/knowledge-routing/shadow`: operator-only shadow comparison for a
+  proposed information need. It compares the graph route with an existing
+  retrieval source, stores a hash and redacted preview, and must not change the
+  Telegram answer/tool path. Optional request IDs are bounded before storage;
+  optional session IDs are stored only as hashes. The JSONL shadow log has
+  bounded records, size-based rollover, and a per-response recording status so
+  log-write failure remains visible without making the graph authoritative.
+  Responses may include `agreementReason`, `resultClassification`, and
+  `matchedSourceIdentity`; those fields are derived from graph/source identity
+  matching across selected nodes, relationship paths and retrieval sources, not
+  from raw prompt or body storage.
+- Knowledge-routing refreshes may also write
+  `logs/knowledge-routing/rollout-checkpoint.json`. That checkpoint is a small
+  machine-readable rollout state record with graph/evaluation/shadow counters
+  and evidence locators. It is not an API response body and does not copy
+  documents, source files, logs or Telegram messages into routing metadata.
 - `GET /api/command-center/overview`: public proof overview surface sourced
   directly from orchestrator runtime state.
 - `GET /api/command-center/control`: public proof control-cluster surface for

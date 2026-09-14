@@ -60,6 +60,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [OPERATOR_GUIDE.md](./OPERATOR_GUIDE.md) | operator-facing runtime behavior |
 | [GOVERNANCE_REPO_HYGIENE.md](./GOVERNANCE_REPO_HYGIENE.md) | cleanup and protection policy |
 | [operations/KNOWLEDGE_MIRROR_POLICY.md](./operations/KNOWLEDGE_MIRROR_POLICY.md) | policy for mirrored upstream knowledge sources |
+| [operations/knowledge-routing-foundation.md](./operations/knowledge-routing-foundation.md) | graph-backed route metadata, source discovery adapters, resolver API, authority rules and refresh workflow |
 | [operations/public-release.md](./operations/public-release.md) | sanitized public mirror workflow |
 | [operations/SPRINT_TO_COMPLETION.md](./operations/SPRINT_TO_COMPLETION.md) | Orchestrator-first Sprint To Completion subordinate execution tracker for the root anchor |
 | [operations/deployment.md](./operations/deployment.md) | production operations checklist |
@@ -91,6 +92,7 @@ If a supporting or historical document conflicts with runtime code, it is not ca
 | [operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md](./operations/campaign-content-factory-and-full-graph-runtime-audit-2026-08-03.md) | deterministic campaign-factory shadow activation, completed governed graph-runtime source contract, and remaining live-activation authority boundary |
 | [operations/campaign-feedback-loop-2026-08-11.md](./operations/campaign-feedback-loop-2026-08-11.md) | Graph publication, provider measurement, exact conversation attribution, reconciliation and truthful reporting contract |
 | [operations/document-drift-repair-single-flight-2026-08-11.md](./operations/document-drift-repair-single-flight-2026-08-11.md) | Single-flight document-repair admission, coalesced path recovery, immutable terminal truth and retention cleanup evidence |
+| [operations/runtime-repair-proof-chain-2026-09-14.md](./operations/runtime-repair-proof-chain-2026-09-14.md) | September 14 Graph repair proof chain, strict-hook evidence, restart-disconnect handling and remaining social publication blockers |
 | [operations/graph-native-migration-registry.md](./operations/graph-native-migration-registry.md) | active workflow classification, graph targets, risks and next migration steps |
 | [operations/worktree-integrity-and-execution-attribution.md](./operations/worktree-integrity-and-execution-attribution.md) | deterministic worktree damage detection, controlled execution receipts, destructive guards, and bounded attribution |
 
