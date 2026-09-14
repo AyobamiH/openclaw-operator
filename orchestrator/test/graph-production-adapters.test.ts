@@ -656,6 +656,121 @@ describe("production adapter registry", () => {
     expect(runtime.store.events(prior.runId).map((event) => event.type)).toContain("external_effect_reconciled");
   });
 
+  it("lets terminal Instagram absence outrank a parseable publication projection", async () => {
+    const runtime = await testRuntime();
+    const target = "instagram:17841453638630920";
+    const outboxId = "instagram:reel:2026-09-08:21:00:2c7071ff-35dd-40d0-bf77-b1ed53de256e";
+    const prior = runtime.engine.start({
+      graphId: "deterministic-social-publication",
+      version: "2.0.0",
+      objective: "Prior settled absent Instagram reel publication",
+      input: {
+        provider: "instagram",
+        accountKey: "instagram:owner",
+        expectedAccountId: "17841453638630920",
+        jobId: "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+        kind: "reel",
+        observedAt: "2026-09-08T21:00:00+01:00",
+        shadowMode: false,
+        maximumProviderMutations: 1,
+      },
+      authority: { maximum: "external_public", grantedBy: "fixture" },
+    });
+    runtime.store.saveRun({
+      ...prior,
+      status: "blocked",
+      data: { publicationLive: { projection: { outboxId } } },
+      externalEffects: [{
+        effectId: "gex_prior_instagram_terminal_projection",
+        runId: prior.runId,
+        nodeId: "publish_provider_object",
+        idempotencyKey: "prior-instagram-terminal-projection",
+        operationType: "production.instagram-publication-live.v2",
+        target,
+        payloadHash: "a".repeat(64),
+        state: "ambiguous",
+        evidenceRefs: [],
+      }],
+    }, prior.revision, []);
+    let projectionCalls = 0;
+    const runner = {
+      reconcileInstagramOutboxEntry: async (requestedOutboxId: string) => {
+        expect(requestedOutboxId).toBe(outboxId);
+        return {
+          classification: "confirmed_absent",
+          entry: {
+            id: requestedOutboxId,
+            kind: "reel",
+            status: "confirmed_failure",
+            reconciliationClassification: "confirmed_absent",
+            generatedMediaUploadCalls: 1,
+            instagramPublishCalls: 1,
+            browserRelayCalls: 0,
+          },
+        };
+      },
+      instagramGraphPublicationProjection: async () => {
+        projectionCalls += 1;
+        return {
+          outboxId,
+          provider: "instagram",
+          accountKey: "instagram:owner",
+          representedAccountId: "17841453638630920",
+          jobId: "2c7071ff-35dd-40d0-bf77-b1ed53de256e",
+          kind: "reel",
+          publicationType: "REELS",
+          localDate: "2026-09-08",
+          slot: "21:00",
+          candidateId: "fixture-candidate",
+          campaignId: "market-authority",
+          sequenceId: "fixture-sequence",
+          policyVersion: "2.0.0",
+          caption: "Fixture caption",
+          payloadSha256: "b".repeat(64),
+          mediaPath: "/tmp/fixture.mp4",
+          mediaSha256: "c".repeat(64),
+          mediaSizeBytes: 123,
+          mimeType: "video/mp4",
+          contentSpecSha256: "d".repeat(64),
+          materialContentSha256: "e".repeat(64),
+          storyboardSha256: null,
+          creativeFingerprint: null,
+          rendererVersion: null,
+          layoutVerification: null,
+          layoutVerificationSha256: null,
+          layoutAudit: null,
+          layoutAuditSha256: null,
+          readingTimeVerification: null,
+          readingTimeVerificationSha256: null,
+          claim: null,
+          providerResultId: null,
+          permalink: null,
+          status: "confirmed_failure",
+          verification: null,
+          generatedMediaUploadCalls: 1,
+          instagramPublishCalls: 1,
+          browserRelayCalls: 0,
+        };
+      },
+    };
+
+    const reconciled = await reconcilePriorInstagramGraphEffects(runtime.store, runner as any, {
+      target,
+      excludeRunId: "next-run",
+    });
+
+    expect(reconciled).toEqual([{
+      runId: prior.runId,
+      effectId: "gex_prior_instagram_terminal_projection",
+      outboxId,
+      state: "confirmed_absent",
+    }]);
+    expect(runtime.store.externalEffects(prior.runId)[0]).toMatchObject({
+      state: "confirmed_absent",
+    });
+    expect(projectionCalls).toBe(0);
+  });
+
   it("reconciles a prior Instagram effect from terminal outbox diagnostics after canonical sync already completed", async () => {
     const runtime = await testRuntime();
     const target = "instagram:17841453638630920";
