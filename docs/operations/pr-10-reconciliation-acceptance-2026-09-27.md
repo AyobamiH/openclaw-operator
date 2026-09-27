@@ -20,6 +20,15 @@ owner stop instruction, or launch another automated repair. Neither finding is
 a false positive or closed by this document. Final review remains pending these
 external gates; no merge-readiness claim is made.
 
+The pinned checkout's `.github/workflows/clawsweeper-dispatch.yml` routes work
+to a separately configured ClawSweeper repository. Its `ubuntu-latest` dispatch
+job and GitHub-token fallback guard do not attest the repair worker's compute,
+model authentication, API fallback policy, or shared quota/cooldown enforcement.
+Changing this repository's adapter or tests cannot supply those external
+receipts. The current request supplies no owner disposition of that stop gate.
+The owner or runner operator must provide the evidence identified above; an
+authorized PR editor must then publish the packet and retain its artifacts.
+
 ## PR-body evidence packet — local draft, unpublished
 
 Source/contributor context: <https://github.com/AyobamiH/openclaw-operator/pull/10>.
@@ -29,9 +38,14 @@ are retained. This follow-up changes only this evidence document.
 
 - Pinned comparison base: `bde909ea422f22713e3cd4ca0b45ca018f2c1150`, verified
   as the merge base of the tested checkout.
-- Current tested HEAD: `56e298bb2d54489fa03edcb82c797a1193a214bf`; committed tree:
-  `d7058b22a84a3de01769f63f8d71465109b9a48b`. The evidence document is an
+- Current tested/reviewed HEAD: `8d82e50f094e27d827c402805292b83f71c15b20`;
+  committed tree: `8e0c806bae1c715c6e5b2ec078da251bccc9c4c4`.
+  The supplied Codex review binds this same HEAD and tree to the pinned base
+  and reports both owner gates blocked. The evidence document is an
   uncommitted follow-up; no new commit or exact-head external review is claimed.
+- Source, test, and lockfile hashes were recomputed at this HEAD and match the
+  historical tested-input table below. There is no working-tree change under
+  `orchestrator`, so this follow-up retains the reviewed runtime/test inputs.
 - Current local validation environment: Linux x86_64, Node `v24.18.1`, npm
   `11.16.0`, Vitest `1.6.1`. Installed dependencies are available. Source, test,
   and lockfile SHA-256 values match the historical tested-input table below.
@@ -40,7 +54,7 @@ are retained. This follow-up changes only this evidence document.
 Run from the repository root after the evidence edit:
 
 ```sh
-npm --prefix orchestrator run test:run -- test/graph-production-adapters.test.ts -t 'Instagram' --reporter=verbose --reporter=json --outputFile.json=/tmp/pr10-review-56e298b/instagram.json
+npm --prefix orchestrator run test:run -- test/graph-production-adapters.test.ts -t 'Instagram' --reporter=verbose --reporter=json --outputFile.json=/tmp/pr10-review-8d82e50/instagram.json
 git diff --check bde909ea422f22713e3cd4ca0b45ca018f2c1150
 ```
 
@@ -49,8 +63,8 @@ including all four durable-state cases in the matrix below. Each identifier
 case retained `ambiguous` in the reopened effect table and run snapshot and
 retained `gex_prior_instagram_absent` in the later-slot blocking query. The
 no-identifier control persisted `confirmed_absent` and cleared that query.
-Raw artifacts are `/tmp/pr10-review-56e298b/instagram.json` and
-`/tmp/pr10-review-56e298b/instagram.log`; they are local and must be attached or
+Raw artifacts are `/tmp/pr10-review-8d82e50/instagram.json` and
+`/tmp/pr10-review-8d82e50/instagram.log`; they are local and must be attached or
 retained by the publishing actor, not treated as remotely accessible PR artifacts.
 Pinned-base whitespace validation: **PASS**, exit 0. Test counts use the console
 summary and individual assertion statuses; this Vitest JSON report's aggregate
