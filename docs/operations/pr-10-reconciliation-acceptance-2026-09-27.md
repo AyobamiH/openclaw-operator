@@ -38,8 +38,8 @@ are retained. This follow-up changes only this evidence document.
 
 - Pinned comparison base: `bde909ea422f22713e3cd4ca0b45ca018f2c1150`, verified
   as the merge base of the tested checkout.
-- Current tested/reviewed HEAD: `8d82e50f094e27d827c402805292b83f71c15b20`;
-  committed tree: `8e0c806bae1c715c6e5b2ec078da251bccc9c4c4`.
+- Current tested/reviewed HEAD: `06a630b82e297124ad34b1f2906b696d71a86b66`;
+  committed tree: `5183a70ab1aed1f4593362700a54ea7b526bdec7`.
   The supplied Codex review binds this same HEAD and tree to the pinned base
   and reports both owner gates blocked. The evidence document is an
   uncommitted follow-up; no new commit or exact-head external review is claimed.
@@ -54,7 +54,7 @@ are retained. This follow-up changes only this evidence document.
 Run from the repository root after the evidence edit:
 
 ```sh
-npm --prefix orchestrator run test:run -- test/graph-production-adapters.test.ts -t 'Instagram' --reporter=verbose --reporter=json --outputFile.json=/tmp/pr10-review-8d82e50/instagram.json
+npm --prefix orchestrator run test:run -- test/graph-production-adapters.test.ts -t 'Instagram' --reporter=verbose --reporter=json --outputFile.json=/tmp/pr10-review-06a630b/instagram.json
 git diff --check bde909ea422f22713e3cd4ca0b45ca018f2c1150
 ```
 
@@ -63,8 +63,8 @@ including all four durable-state cases in the matrix below. Each identifier
 case retained `ambiguous` in the reopened effect table and run snapshot and
 retained `gex_prior_instagram_absent` in the later-slot blocking query. The
 no-identifier control persisted `confirmed_absent` and cleared that query.
-Raw artifacts are `/tmp/pr10-review-8d82e50/instagram.json` and
-`/tmp/pr10-review-8d82e50/instagram.log`; they are local and must be attached or
+Raw artifacts are `/tmp/pr10-review-06a630b/instagram.json` and
+`/tmp/pr10-review-06a630b/instagram.log`; they are local and must be attached or
 retained by the publishing actor, not treated as remotely accessible PR artifacts.
 Pinned-base whitespace validation: **PASS**, exit 0. Test counts use the console
 summary and individual assertion statuses; this Vitest JSON report's aggregate
