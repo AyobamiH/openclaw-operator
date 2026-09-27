@@ -481,6 +481,8 @@ function instagramTerminalReconciliationProjection(
   if (
     classification === "confirmed_absent" &&
     String(entry.status ?? "") === "confirmed_failure" &&
+    !providerResultId &&
+    !permalink &&
     instagramPublishCalls === 1 &&
     browserRelayCalls === 0
   ) {

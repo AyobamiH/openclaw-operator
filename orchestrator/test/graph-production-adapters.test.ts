@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
+import { GraphStore } from "../src/graph/store.js";
 import { classifyInstagramPublicationEffect, instagramPublicationNodeOutcome, legitimateThreadsPrecommitExclusion, reconcilePriorInstagramGraphEffects, reconcilePriorMetaReplyGraphEffects, reconcilePriorThreadsGraphEffects } from "../src/graph/production-adapters.js";
 import { issueOneRunLiveCapability } from "../src/graph/live-capability.js";
 import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../src/graph/workflows.js";
@@ -582,7 +583,12 @@ describe("production adapter registry", () => {
     expect(runtime.store.events(prior.runId).map((event) => event.type)).toContain("external_effect_verified");
   });
 
-  it("reconciles a settled absent Instagram image effect without requiring a fresh layout projection", async () => {
+  it.each([
+    { providerResultId: null, permalink: null, expectedState: "confirmed_absent" },
+    { providerResultId: "provider-object", permalink: null, expectedState: "ambiguous" },
+    { providerResultId: null, permalink: "https://www.instagram.com/p/provider-object/", expectedState: "ambiguous" },
+    { providerResultId: "provider-object", permalink: "https://www.instagram.com/p/provider-object/", expectedState: "ambiguous" },
+  ])("reconciles terminal Instagram absence without layout projection only for consistent evidence: $providerResultId / $permalink", async ({ providerResultId, permalink, expectedState }) => {
     const runtime = await testRuntime();
     const target = "instagram:17841453638630920";
     const outboxId = "instagram:image:2026-08-29:09:00:24afbb84-457c-41bb-92c9-24a19725e984";
@@ -628,6 +634,8 @@ describe("production adapter registry", () => {
             kind: "image",
             status: "confirmed_failure",
             reconciliationClassification: "confirmed_absent",
+            providerResultId,
+            permalink,
             generatedMediaUploadCalls: 1,
             instagramPublishCalls: 1,
             browserRelayCalls: 0,
@@ -644,16 +652,24 @@ describe("production adapter registry", () => {
       excludeRunId: "next-run",
     });
 
-    expect(reconciled).toEqual([{
+    expect(reconciled).toEqual(expectedState === "ambiguous" ? [] : [{
       runId: prior.runId,
       effectId: "gex_prior_instagram_absent",
       outboxId,
       state: "confirmed_absent",
     }]);
-    expect(runtime.store.externalEffects(prior.runId)[0]).toMatchObject({
-      state: "confirmed_absent",
-    });
-    expect(runtime.store.events(prior.runId).map((event) => event.type)).toContain("external_effect_reconciled");
+    // Reopen the durable store: the same target query gates later-slot preparation.
+    const persisted = new GraphStore(runtime.store.path);
+    try {
+      expect(persisted.externalEffects(prior.runId)[0]).toMatchObject({ state: expectedState });
+      expect(persisted.getRun(prior.runId)?.externalEffects[0]).toMatchObject({ state: expectedState });
+      expect(persisted.unresolvedExternalEffectsForTarget(target, "next-run").map((effect) => effect.effectId))
+        .toEqual(expectedState === "ambiguous" ? ["gex_prior_instagram_absent"] : []);
+      expect(persisted.events(prior.runId).some((event) => event.type === "external_effect_reconciled"))
+        .toBe(expectedState === "confirmed_absent");
+    } finally {
+      persisted.close();
+    }
   });
 
   it("lets terminal Instagram absence outrank a parseable publication projection", async () => {
