@@ -4,7 +4,71 @@ Local evidence / PR-body supplement for
 <https://github.com/AyobamiH/openclaw-operator/pull/10>. This file does not claim
 that the PR body was published or that merge approval was granted.
 
-## Binding and environment
+## Review follow-up disposition
+
+**Acceptance: BLOCKED. Both owner gates remain open.** Passing adapter tests
+do not establish approval of the execution path or satisfy PR-body publication.
+
+| Finding | Evidence and disposition | Required closure evidence |
+| --- | --- | --- |
+| Approved execution path | The supplied owner instruction says: “Blacksmith compute is not authorised. Do not restart this repair until its execution path has been configured and verified for the owner's approved compute.” The earlier configuration observations below do not verify that condition. No subsequent owner disposition is supplied. | Owner approval tied to the actual compute/run identity, effective subscription-only authentication and disabled API fallback, plus shared allowance admission and cooldown-denial receipts for that execution path; or an explicit owner disposition of the missing evidence. |
+| Evidence in PR body | The supplied PR body contains no acceptance packet. This local document is prepared for the PR body, but publication has not occurred. The current repair instructions prohibit `gh` and PR operations. | An authorized actor publishes this evidence with the validation artifacts and records the updated body/revision before final review. |
+
+This follow-up performs only the requested local evidence edits and controlled
+validation. It does not configure or certify runner infrastructure, lift the
+owner stop instruction, or launch another automated repair. Neither finding is
+a false positive or closed by this document. Final review remains pending these
+external gates; no merge-readiness claim is made.
+
+## PR-body evidence packet — local draft, unpublished
+
+Source/contributor context: <https://github.com/AyobamiH/openclaw-operator/pull/10>.
+The narrow fix preserves ambiguity when either provider identifier contradicts
+terminal absence; main's terminal-first reconciliation and maintenance behavior
+are retained. This follow-up changes only this evidence document.
+
+- Pinned comparison base: `bde909ea422f22713e3cd4ca0b45ca018f2c1150`, verified
+  as the merge base of the tested checkout.
+- Current tested HEAD: `56e298bb2d54489fa03edcb82c797a1193a214bf`; committed tree:
+  `d7058b22a84a3de01769f63f8d71465109b9a48b`. The evidence document is an
+  uncommitted follow-up; no new commit or exact-head external review is claimed.
+- Current local validation environment: Linux x86_64, Node `v24.18.1`, npm
+  `11.16.0`, Vitest `1.6.1`. Installed dependencies are available. Source, test,
+  and lockfile SHA-256 values match the historical tested-input table below.
+  Runner approval and enforcement have not been independently verified here.
+
+Run from the repository root after the evidence edit:
+
+```sh
+npm --prefix orchestrator run test:run -- test/graph-production-adapters.test.ts -t 'Instagram' --reporter=verbose --reporter=json --outputFile.json=/tmp/pr10-review-56e298b/instagram.json
+git diff --check bde909ea422f22713e3cd4ca0b45ca018f2c1150
+```
+
+Fresh validation result: **PASS**, 11 tests passed, 33 skipped, exit 0,
+including all four durable-state cases in the matrix below. Each identifier
+case retained `ambiguous` in the reopened effect table and run snapshot and
+retained `gex_prior_instagram_absent` in the later-slot blocking query. The
+no-identifier control persisted `confirmed_absent` and cleared that query.
+Raw artifacts are `/tmp/pr10-review-56e298b/instagram.json` and
+`/tmp/pr10-review-56e298b/instagram.log`; they are local and must be attached or
+retained by the publishing actor, not treated as remotely accessible PR artifacts.
+Pinned-base whitespace validation: **PASS**, exit 0. Test counts use the console
+summary and individual assertion statuses; this Vitest JSON report's aggregate
+counters include skipped cases as passes.
+
+`pnpm check:changed` is unavailable: `pnpm` is absent and the root, orchestrator,
+and specialist-console manifests define no `check:changed` script. The focused
+command above is the changed-surface validation. The prior broader-suite failure
+below is historical evidence, not a fresh full-suite result. Controlled provider
+responses and reopened SQLite assertions establish the persisted block; they
+do not prove live provider behavior or runner authorization. No live social
+publication, commit, push, PR operation, or `gh` invocation is part of this pass.
+
+The persisted-state matrix, hashes, historical broader-suite limits, and owner
+gate disposition in this document are part of the proposed PR-body packet.
+Publication and an independently recorded final review remain outstanding.
+
+## Historical binding and environment
 
 - Pinned base: `bde909ea422f22713e3cd4ca0b45ca018f2c1150`.
 - Tested HEAD: `e93b72f1864307d788308cdbf0c265077e85557f`, whose direct parent
