@@ -174,6 +174,12 @@ content rows have database update and delete triggers. A provider response that
 is missing, ambiguous or lost moves to reconciliation. Reconciliation uses
 provider readback or duplicate discovery and never calls publish again.
 
+Instagram Graph reconciliation consumes consistent terminal outbox evidence
+before media projection. A `confirmed_absent` / `confirmed_failure` result with
+one publish call must have neither `providerResultId` nor `permalink` to clear
+the effect. Either identifier contradicts absence; an unresolved effect remains
+ambiguous and continues blocking later slots for that account.
+
 ## Provider Adapter Boundary
 
 An active platform policy names the only approved `connectorId`. The runtime
