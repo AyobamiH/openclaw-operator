@@ -1,0 +1,14 @@
+interface:
+  display_name: Secure API Delivery
+  short_description: Plan evidence-based DevSecOps and API security reviews
+  default_prompt: Use $secure-api-delivery to review this API and delivery pipeline,
+    prioritize risks, and propose scoped security checks.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true

@@ -1,0 +1,27 @@
+# API security checks
+
+Use these original test-planning prompts with the linked OWASP 2023 guidance. Run only within established authorization and safe limits. The Top 10 is an awareness framework, not an exhaustive verification standard.
+
+## Identity and access
+
+- **Object authorization (API1):** Check permission for the specific action on every accessed object, including nested/bulk operations. Test an owned object and another synthetic user's or tenant's object. Ensure writes/deletes cause no unauthorized state change. Random IDs reduce guessing; they do not replace authorization. [OWASP API1](https://api-security.owasp.org/editions/2023/en/0xa1-broken-object-level-authorization/)
+- **Authentication (API2):** Map login, recovery, machine identity, and sensitive account-change paths. Check token authenticity and expiration, approved algorithm/issuer/audience rules for the chosen standard, and treatment of revoked sessions. Distinguish client API keys from end-user identity. Use synthetic invalid/expired credentials and low-volume recovery tests; inspect brute-force controls without trying real passwords. [OWASP API2](https://api-security.owasp.org/editions/2023/en/0xa2-broken-authentication/)
+- **Property authorization (API3):** Inspect both readable and writable fields. Test that a normal profile update cannot alter tenant, role, billing, or moderation properties, and that response serialization omits fields the caller may not read. Verify persistent state, not merely the response JSON. Prefer explicit input/output field sets and schemas. [OWASP API3](https://api-security.owasp.org/editions/2023/en/0xa3-broken-object-property-level-authorization/)
+- **Function authorization (API5):** Map roles to actions, not URL naming conventions. Test ordinary callers against privileged operations and alternative methods using safe fixtures. Check deny-by-default behavior and consistent enforcement on mixed-purpose controllers. [OWASP API5](https://api-security.owasp.org/editions/2023/en/0xa5-broken-function-level-authorization/)
+
+## Resource and business abuse
+
+- **Resource consumption (API4):** Inspect limits for payloads, pagination, batching, runtime, memory, concurrent work, and third-party costs. A per-request limit may miss hundreds of operations inside one request. Test boundaries with a deliberately tiny local quota or mocked paid provider, not a production load spike. Record per-user/tenant behavior and expected failure before expensive work. Billing alerts detect costs; they do not enforce a hard ceiling. [OWASP API4](https://api-security.owasp.org/editions/2023/en/0xa4-unrestricted-resource-consumption/)
+- **Sensitive flows (API6):** Ask which legitimate actions can harm the business when repeated or automated: reservations, incentives, inventory allocation, notifications. Agree business invariants and use fake inventory/accounts to test replay, ordering, and bounded concurrency. Distinguish compute protection from business protection; a global rate limit alone may not enforce a per-person entitlement. Do not execute real financial or communication side effects. [OWASP API6](https://api-security.owasp.org/editions/2023/en/0xa6-unrestricted-access-to-sensitive-business-flows/)
+
+## Integration and exposure
+
+- **SSRF (API7):** Trace user-controlled URLs through fetchers, redirects, and outbound destinations. Review parsed scheme/host/port restrictions and network isolation. Prefer disabled redirects or revalidated allowed destinations; account for resolved addresses and DNS changes. Use mocked forbidden destinations or an owned test receiver. Never probe unrelated internal networks or credential endpoints. [OWASP API7](https://api-security.owasp.org/editions/2023/en/0xa7-server-side-request-forgery/)
+- **Configuration (API8):** Review effective deployment settings: TLS, CORS, methods, debug endpoints, defaults, errors, and infrastructure permissions. Separate browser CORS restrictions from server-side authorization. Compare environments and ensure error paths do not expose secrets or traces. Propose a repeatable configuration check rather than assuming a one-off setting persists. [OWASP API8](https://api-security.owasp.org/editions/2023/en/0xa8-security-misconfiguration/)
+- **Inventory (API9):** Reconcile routes, versions, hosts, owners, exposed environments, and integration data flows. Find retirement plans for old versions and check whether protections apply there too. Avoid real production data in non-production fixtures. Limit discovery to supplied or authorized assets. [OWASP API9](https://api-security.owasp.org/editions/2023/en/0xa9-improper-inventory-management/)
+  A corrected v2 does not fix a reachable vulnerable v1. Verify the retired version is actually unreachable or separately remediated, not merely unlinked.
+- **Third-party APIs (API10):** Treat upstream responses as untrusted input. Review schemas, size limits, TLS, redirect handling, timeouts, failure behavior, and propagation into database/shell/template sinks. Mock malformed, oversized, delayed, and unexpected responses. A trusted vendor name does not establish safe data. [OWASP API10](https://api-security.owasp.org/editions/2023/en/0xaa-unsafe-consumption-of-apis/)
+
+## Test record
+
+Record: operation and version; control/risk; permitted test environment; synthetic caller/tenant; prerequisite fixture; expected response and state; actual response and state; evidence path; status; cleanup; remaining uncertainty. Redact tokens, cookies, personal data, and sensitive request bodies.

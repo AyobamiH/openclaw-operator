@@ -448,3 +448,9 @@ For a first repo-native specialist workflow, use:
 - [docs/operations/deployment.md](./docs/operations/deployment.md)
 - [docs/guides/monitoring.md](./docs/guides/monitoring.md)
 - [docs/reference/task-types.md](./docs/reference/task-types.md)
+
+## Agent development entry point
+
+Start with [AGENTS.md](AGENTS.md), the [project knowledge map](.agents/knowledge/README.md),
+and the repository-owned [Secure API Delivery skill](.agents/skills/secure-api-delivery/SKILL.md).
+These files travel with a source checkout; no personal skill installation is required.
