@@ -13,7 +13,13 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-08-20`
+Last updated: `2026-11-12`
+
+## Pending source-only Pages evidence integration — 12 November 2026
+
+- The existing source-bound docs receipt change belongs to its own owner and PR #13.
+- A separate child change adds exact live-receipt verification and a new authenticated production deployment-status record after manual Pages deployment. It honours default-branch SHA and GitHub CI admission and never edits historical statuses.
+- This is development source only. Protected CI, source-owner integration, explicitly permitted Pages deployment, and real site/status readback are still required. The current live site does not serve `__release.json`.
 
 ## Current Headline
 

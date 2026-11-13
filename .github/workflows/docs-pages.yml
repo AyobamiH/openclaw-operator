@@ -43,6 +43,9 @@ jobs:
       - name: Verify release receipt safety
         run: node --test scripts/write-pages-release-receipt.test.mjs
 
+      - name: Verify exact production deployment proof (offline mocks only)
+        run: node --test scripts/record-pages-production-deployment.test.mjs
+
       - name: Upload private docs artifact
         uses: actions/upload-artifact@v4
         with:
@@ -73,14 +76,36 @@ jobs:
           fi
 
   deploy:
-    if: github.repository == 'AyobamiH/openclaw-operator' && vars.ENABLE_GITHUB_PAGES == 'true'
+    if: github.repository == 'AyobamiH/openclaw-operator' && github.ref == 'refs/heads/main' && vars.ENABLE_GITHUB_PAGES == 'true'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+      deployments: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Record new authenticated production deployment proof
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          PAGE_URL: ${{ steps.deployment.outputs.page_url }}
+        run: node scripts/record-pages-production-deployment.mjs

@@ -102,6 +102,18 @@ and lets you publish a separate public repo with fresh history.
 The operational guide lives at
 [docs/operations/public-release.md](./docs/operations/public-release.md).
 
+### GitHub Pages source evidence
+
+The manually dispatched docs workflow has a separate, source-only release-proof
+extension. After a successful Pages deployment from protected `main`, it must
+read the public `__release.json` for the **same commit and repository**, confirm
+the official Pages configuration and unchanged default branch, then create a
+**new** GitHub `production` deployment with the authenticated Pages URL. The
+status is independently read back; the workflow never rewrites old deployment
+statuses, bypasses repository CI requirements or publishes merely because a
+site returns HTTP 200. This extension is not live until separately merged and
+the owner-authorised docs workflow actually runs.
+
 ## Canonical Public Home
 
 This repository is now the canonical home for public product work.
