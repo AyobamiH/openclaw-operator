@@ -34,6 +34,15 @@ jobs:
       - name: Run canonical protected-branch verification
         run: npm run verify:main
 
+      - name: Write source-bound public release receipt
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: node scripts/write-pages-release-receipt.mjs site/.vitepress/dist
+
+      - name: Verify release receipt safety
+        run: node --test scripts/write-pages-release-receipt.test.mjs
+
       - name: Upload private docs artifact
         uses: actions/upload-artifact@v4
         with:
