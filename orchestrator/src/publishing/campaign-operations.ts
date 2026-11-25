@@ -1,3 +1,4 @@
+import { datePartInLondon } from "./calendar.js";
 import { createHash } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -33,15 +34,6 @@ type MetricRefreshSummary = {
   externalWrites: 0;
 };
 
-function londonDate(at: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(at);
-}
-
 function londonOffsetMilliseconds(at: Date): number {
   const name = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/London",
@@ -65,12 +57,12 @@ function londonWallClock(date: string, time: string): string {
 }
 
 function dailyPeriod(observedAt: Date): Period {
-  const id = londonDate(observedAt);
+  const id = datePartInLondon(observedAt);
   return { id, startsAt: londonWallClock(id, "00:00:00:000"), endsAt: londonWallClock(id, "23:59:59:999") };
 }
 
 function weeklyPeriod(observedAt: Date): Period {
-  const localDate = londonDate(observedAt);
+  const localDate = datePartInLondon(observedAt);
   const noon = new Date(`${localDate}T12:00:00.000Z`);
   const weekdayName = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/London",
@@ -81,8 +73,8 @@ function weeklyPeriod(observedAt: Date): Period {
   monday.setUTCDate(monday.getUTCDate() - (weekday - 1));
   const sunday = new Date(monday);
   sunday.setUTCDate(sunday.getUTCDate() + 6);
-  const starts = londonDate(monday);
-  const ends = londonDate(sunday);
+  const starts = datePartInLondon(monday);
+  const ends = datePartInLondon(sunday);
   return { id: `${starts}_${ends}`, startsAt: londonWallClock(starts, "00:00:00:000"), endsAt: londonWallClock(ends, "23:59:59:999") };
 }
 

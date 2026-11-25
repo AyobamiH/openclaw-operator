@@ -5,7 +5,7 @@ import { WorkflowGraphRail } from "@/components/console/WorkflowGraphRail";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle, ArrowRight } from "lucide-react";
 import type { RunHandoffContextVM } from "@/lib/run-handoff";
-import { str, toArray, toNullableString } from "@/lib/safe-render";
+import { asRecord, str, toArray, toNullableString } from "@/lib/safe-render";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
 
@@ -121,12 +121,6 @@ function buildKnowledgeFreshnessVM(runResult?: unknown) {
     packAgeHours:
       typeof freshness.packAgeHours === "number" ? freshness.packAgeHours : null,
   };
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function buildFollowThroughRailVM({

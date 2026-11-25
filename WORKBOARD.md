@@ -13,7 +13,50 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-11-12`
+Last updated: `2026-11-25`
+
+## Architectural rationalisation — 25 November 2026
+
+Baseline: `5b6e472d05d1dd4332fbb667dbc9058b6ec53928`. This is a bounded
+source-only consolidation, not production acceptance or whole-estate closure.
+
+- Inventory: 1,956 tracked files; 412 first-party JavaScript/TypeScript files;
+  43 exact duplicate-blob groups; 8 unresolved non-literal dynamic load sites.
+  Generated documentation, intentional knowledge mirrors and configured entry
+  points are not dead code. Keep the repository hygiene policy authoritative.
+- Console: retire 37 unbundled scaffold files and 4 superseded toast modules;
+  migrate all review-session notifications to the existing Sonner owner. Remove
+  31 direct dependencies and 71 lockfile entries without upgrading retained
+  dependencies. App/test import graph, lazy routes, production sourcemaps, 22
+  config files and 47 trigger/script files checked for this removal scope.
+- Console input projection: the existing `lib/safe-render.ts` owns record
+  conversion rather than duplicate helpers in task-run rendering.
+- Publishing calendar: one date-part function in `publishing/calendar.ts`
+  owns London date identity for slots, campaign operations, shadow cycles and
+  CLI defaults; offset and wall-clock calculation retain their distinct roles.
+- Shared agent evidence: `runtime-evidence.ts` is authoritative. Its portable
+  JavaScript artifact was stale after the localhost Mongo fallback correction.
+  Regenerate with `npm run agents:runtime-evidence:sync`; canonical verification
+  checks exact generated output. Explicit DATABASE_URL still wins, including
+  the Docker service configuration. Preserve JS consumers and package layout.
+- Verification: 35 console tests and 55 focused backend tests passed; both
+  TypeScript checks and the builds passed locally. The focused tests include
+  notification success/refusal, record conversion, London DST/date boundaries
+  and Mongo fallback/override. Complete runtime and release acceptance remain
+  required. No production service or external provider mutation is authorised
+  by this source change.
+
+Remaining ownership decisions and required proof:
+
+| Area | Authority | Disposition |
+| --- | --- | --- |
+| Incident ranking duplicate | Orchestrator incident policy; agent read-side projection | Consolidate after shared-package/build layout and partial-record contract tests; do not make agents depend on an unavailable build path. |
+| Large orchestrator entry point | Admission, dispatch, persistence, scheduling and route subsystems | Extract by explicit contracts, not by file size. Inventory runtime registration and handler ownership before moving code. |
+| Review-session state defaults | Runtime review state schema and bootstrap | Trace shared defaults and bootstrap's independent startup contract before consolidation. |
+| Graph vs legacy execution | Accepted graph migration/rollback contracts | Keep both until each migration equivalence, restart and rollback evidence is complete. |
+| Agent runtime dynamic adapters, publishing CLI/barrel | Configured entry points and external contracts | No deletion on static reachability alone; trace install/runtime consumers. |
+| Documentation and knowledge mirrors | Canonical documentation, generated site manifest, knowledge mirror policy | Preserve managed copies and verify generation; no raw duplicate deletion. |
+| Host runtime | Private host operations/configuration repository | Preserve host authority; verify real deployed operation independently after protected integration. |
 
 ## Pending source-only Pages evidence integration — 12 November 2026
 

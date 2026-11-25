@@ -1,4 +1,4 @@
-import { num, str, toArray, toNullableString } from "@/lib/safe-render";
+import { asRecord, num, str, toArray, toNullableString } from "@/lib/safe-render";
 
 export interface RunRowVM {
   runId: string;
@@ -88,12 +88,6 @@ export interface RunTimelineEvent {
   detail: string;
   timestamp: string | null;
   tone: "healthy" | "warning" | "error" | "info" | "neutral";
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
 }
 
 function buildQueueAttempts(value: unknown): RunRowVM["queueAttempts"] {

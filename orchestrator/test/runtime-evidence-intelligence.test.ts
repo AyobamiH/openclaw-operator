@@ -260,6 +260,27 @@ describe("runtime intelligence helpers", () => {
     }
   });
 
+  it("uses the portable Mongo fallback and honours explicit deployment configuration", async () => {
+    const factory = vi.fn(async (_url: string) => ({
+      connect: vi.fn().mockResolvedValue(undefined),
+      close: vi.fn().mockResolvedValue(undefined),
+      db: vi.fn(() => ({ collection: vi.fn(() => ({ findOne: vi.fn().mockResolvedValue(null) })) })),
+    }));
+    const previous = process.env.DATABASE_URL;
+    setRuntimeStateMongoClientFactoryForTest(factory);
+    try {
+      delete process.env.DATABASE_URL;
+      await loadRuntimeStateTarget("mongo:runtime-truth", {});
+      expect(factory).toHaveBeenLastCalledWith("mongodb://127.0.0.1:27017/orchestrator");
+      process.env.DATABASE_URL = "mongodb://mongo:27017/orchestrator";
+      await loadRuntimeStateTarget("mongo:runtime-truth", {});
+      expect(factory).toHaveBeenLastCalledWith("mongodb://mongo:27017/orchestrator");
+    } finally {
+      if (previous === undefined) delete process.env.DATABASE_URL;
+      else process.env.DATABASE_URL = previous;
+    }
+  });
+
   it("reads and writes mongo runtime-state targets through system_state", async () => {
     const encoded = gzipSync(
       Buffer.from(

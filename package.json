@@ -51,8 +51,10 @@
     "clean:dry-run:builds": "node scripts/clean-workspace.mjs --dry-run --include-builds",
     "clean:builds": "node scripts/clean-workspace.mjs --include-builds",
     "ci:actions": "node scripts/check-ci-action-runtime.mjs",
-    "verify": "npm run ci:actions && npm run build && npm run docs:drift && npm run docs:links && npm run test:unit && npm run test:integration && npm run test:operator-ui && npm run typecheck",
-    "verify:main": "npm run verify && npm run docs:site:build"
+    "verify": "npm run ci:actions && npm run agents:runtime-evidence:check && npm run build && npm run docs:drift && npm run docs:links && npm run test:unit && npm run test:integration && npm run test:operator-ui && npm run typecheck",
+    "verify:main": "npm run verify && npm run docs:site:build",
+    "agents:runtime-evidence:sync": "node scripts/sync-agent-runtime-evidence.mjs --write",
+    "agents:runtime-evidence:check": "node scripts/sync-agent-runtime-evidence.mjs"
   },
   "dependencies": {
     "tsx": "^4.21.0"

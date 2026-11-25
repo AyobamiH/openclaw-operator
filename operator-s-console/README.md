@@ -41,6 +41,12 @@ npm test
 npm run dev
 ```
 
+## Frontend ownership
+
+- The private console has one notification owner: Sonner, configured by `src/components/ui/sonner.tsx` and mounted once in `src/App.tsx`. Pages report their own operation outcomes through that existing API; they do not own a separate toast store.
+- UI primitives are maintained only when consumed by the console or its tests. Add a new primitive and its dependencies together with a real consumer; do not restore the unused scaffold wholesale.
+- Preserve explicit lazy-route entry points, Tailwind configuration dependencies and the built `/operator` integration contract when pruning.
+
 ## Notes
 
 - `/api/health/extended` is the authoritative health surface.

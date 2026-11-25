@@ -8,6 +8,7 @@ import IncidentsPage from "@/pages/IncidentsPage";
 import KnowledgePage from "@/pages/KnowledgePage";
 import PublicProofPage from "@/pages/PublicProofPage";
 import ReviewSessionsPage from "@/pages/ReviewSessionsPage";
+import { Toaster } from "@/components/ui/sonner";
 import SystemHealthPage from "@/pages/SystemHealthPage";
 import TasksPage from "@/pages/TasksPage";
 import GovernancePage from "@/pages/GovernancePage";
@@ -547,7 +548,7 @@ describe("operator contract surfaces", { timeout: 45000 }, () => {
     expect(screen.getByText(/13 approvals are waiting, but they are downstream of the larger incident story right now/i)).toBeInTheDocument();
   });
 
-  it("renders legacy review sessions that do not yet have cumulative soak totals", () => {
+  it("renders legacy review sessions that do not yet have cumulative soak totals", async () => {
     vi.mocked(consoleHooks.useReviewSessions).mockReturnValue({
       data: {
         sessions: [
@@ -704,8 +705,9 @@ describe("operator contract surfaces", { timeout: 45000 }, () => {
       isPending: false,
     } as unknown as ReturnType<typeof consoleHooks.useReviewSessionNote>);
 
+    const linkRun = vi.fn().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Review link refused"));
     vi.mocked(consoleHooks.useReviewSessionLinkRun).mockReturnValue({
-      mutateAsync: vi.fn(),
+      mutateAsync: linkRun,
       isPending: false,
     } as unknown as ReturnType<typeof consoleHooks.useReviewSessionLinkRun>);
 
@@ -722,11 +724,26 @@ describe("operator contract surfaces", { timeout: 45000 }, () => {
     render(
       <MemoryRouter>
         <ReviewSessionsPage />
+        <Toaster />
       </MemoryRouter>,
     );
 
     expect(screen.getByText(/legacy session fallback: showing retained window totals/i)).toBeInTheDocument();
     expect(screen.getByText(/completed of 14 accepted runs/i)).toBeInTheDocument();
+
+    const runId = screen.getByPlaceholderText("run id or task id");
+    fireEvent.change(runId, { target: { value: "run-proof" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Link$/ }));
+    expect(await screen.findByText("Run linked")).toBeInTheDocument();
+    expect(screen.getByText("Execution evidence attached to this review session.")).toBeInTheDocument();
+    expect(linkRun).toHaveBeenNthCalledWith(1, { id: "review-legacy", runId: "run-proof" });
+    expect(runId).toHaveValue("");
+    fireEvent.change(runId, { target: { value: "run-refused" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Link$/ }));
+    expect(await screen.findByText("Failed to link run")).toBeInTheDocument();
+    expect(screen.getByText("Review link refused")).toBeInTheDocument();
+    expect(linkRun).toHaveBeenNthCalledWith(2, { id: "review-legacy", runId: "run-refused" });
+    expect(runId).toHaveValue("run-refused");
   });
 
   it("renders agent capability readiness and gap evidence", () => {

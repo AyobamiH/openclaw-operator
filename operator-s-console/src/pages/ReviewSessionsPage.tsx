@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import type {
   ReviewSessionBucket,
   ReviewSessionCumulativeWorkloadSummary,
@@ -333,13 +333,9 @@ export default function ReviewSessionsPage() {
         note: bucketNote.trim() || undefined,
       });
       setBucketNote("");
-      toast({ title: "Bucket updated", description: `Active bucket is now ${formatBucket(nextBucket)}.` });
+      toast.success("Bucket updated", { description: `Active bucket is now ${formatBucket(nextBucket)}.` });
     } catch (mutationError) {
-      toast({
-        title: "Bucket update failed",
-        description: mutationError instanceof Error ? mutationError.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Bucket update failed", { description: mutationError instanceof Error ? mutationError.message : "Unknown error" });
     }
   }
 
@@ -348,13 +344,9 @@ export default function ReviewSessionsPage() {
     try {
       await noteMutation.mutateAsync({ id: session.id, bucket: noteBucket, text: noteText.trim() });
       setNoteText("");
-      toast({ title: "Note added", description: "Scenario evidence recorded." });
+      toast.success("Note added", { description: "Scenario evidence recorded." });
     } catch (mutationError) {
-      toast({
-        title: "Failed to add note",
-        description: mutationError instanceof Error ? mutationError.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Failed to add note", { description: mutationError instanceof Error ? mutationError.message : "Unknown error" });
     }
   }
 
@@ -363,13 +355,9 @@ export default function ReviewSessionsPage() {
     try {
       await linkRunMutation.mutateAsync({ id: session.id, runId: runId.trim() });
       setRunId("");
-      toast({ title: "Run linked", description: "Execution evidence attached to this review session." });
+      toast.success("Run linked", { description: "Execution evidence attached to this review session." });
     } catch (mutationError) {
-      toast({
-        title: "Failed to link run",
-        description: mutationError instanceof Error ? mutationError.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Failed to link run", { description: mutationError instanceof Error ? mutationError.message : "Unknown error" });
     }
   }
 
@@ -377,13 +365,9 @@ export default function ReviewSessionsPage() {
     if (!session) return;
     try {
       await stopMutation.mutateAsync(session.id);
-      toast({ title: "Session completed", description: "Review session is now closed." });
+      toast.success("Session completed", { description: "Review session is now closed." });
     } catch (mutationError) {
-      toast({
-        title: "Failed to stop session",
-        description: mutationError instanceof Error ? mutationError.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Failed to stop session", { description: mutationError instanceof Error ? mutationError.message : "Unknown error" });
     }
   }
 
@@ -396,13 +380,9 @@ export default function ReviewSessionsPage() {
       } else {
         downloadPayload(`${session.id}.json`, payload, "application/json;charset=utf-8");
       }
-      toast({ title: "Export ready", description: `${format.toUpperCase()} export downloaded.` });
+      toast.success("Export ready", { description: `${format.toUpperCase()} export downloaded.` });
     } catch (mutationError) {
-      toast({
-        title: "Export failed",
-        description: mutationError instanceof Error ? mutationError.message : "Unknown error",
-        variant: "destructive",
-      });
+      toast.error("Export failed", { description: mutationError instanceof Error ? mutationError.message : "Unknown error" });
     }
   }
 

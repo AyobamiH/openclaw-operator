@@ -1,3 +1,4 @@
+// Generated from runtime-evidence.ts; run npm run agents:runtime-evidence:sync.
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, resolve } from "node:path";
@@ -113,7 +114,7 @@ async function writeMongoSystemState(targetPath, value) {
     }
 }
 async function createRuntimeStateMongoClient() {
-    const databaseUrl = process.env.DATABASE_URL || "mongodb://mongo:27017/orchestrator";
+    const databaseUrl = process.env.DATABASE_URL || "mongodb://127.0.0.1:27017/orchestrator";
     if (runtimeStateMongoClientFactory) {
         return await runtimeStateMongoClientFactory(databaseUrl);
     }

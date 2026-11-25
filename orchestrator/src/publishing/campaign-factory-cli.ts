@@ -1,3 +1,4 @@
+import { datePartInLondon } from "./calendar.js";
 import { readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -9,12 +10,7 @@ function argument(name: string, fallback: string): string {
   return index >= 0 && process.argv[index + 1] ? process.argv[index + 1]! : fallback;
 }
 
-const londonDate = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/London",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-}).format(new Date());
+const londonDate = datePartInLondon(new Date());
 
 async function loadArtifacts(artifactRoot: string | null, localDate: string) {
   if (!artifactRoot) return [];

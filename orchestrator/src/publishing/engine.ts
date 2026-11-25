@@ -1,3 +1,4 @@
+import { datePartInLondon } from "./calendar.js";
 import { randomUUID } from "node:crypto";
 import { buildContentSpec, validateContentSpec } from "./content.js";
 import { buildEligibleCandidates, type SelectionHistory } from "./selection.js";
@@ -12,17 +13,6 @@ import type {
   SlotPlan,
 } from "./types.js";
 import { PublishingStore } from "./store.js";
-
-function datePartInLondon(date: Date): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const value = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${value.year}-${value.month}-${value.day}`;
-}
 
 function timePartInLondon(date: Date): string {
   return new Intl.DateTimeFormat("en-GB", {

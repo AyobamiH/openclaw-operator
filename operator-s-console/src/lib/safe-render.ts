@@ -42,3 +42,10 @@ export function toArray<T = any>(v: unknown): T[] {
 export function display(v: unknown, suffix: string): string {
   return `${num(v)} ${suffix}`;
 }
+
+/** Extract an object record without treating arrays or primitives as records. */
+export function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}

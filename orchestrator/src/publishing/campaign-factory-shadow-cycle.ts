@@ -1,3 +1,4 @@
+import { datePartInLondon } from "./calendar.js";
 import { access, readdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -28,15 +29,6 @@ export type CampaignFactoryMediaResult = {
   mediaSha256: string | null;
   externalWrites: 0;
 };
-
-function londonDate(at: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/London",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(at);
-}
 
 async function existingArtifact(input: {
   outputDir: string;
@@ -194,7 +186,7 @@ export async function runCampaignFactoryScheduledCycle(input: {
     return runCampaignFactoryShadowCycle(input);
   }
 
-  const localDate = londonDate(observedAt);
+  const localDate = datePartInLondon(observedAt);
   const uniqueness = decideProductionOpportunity(integration, input.opportunityId ?? "auto", observedAt);
   if (uniqueness.outcome === "completed_no_eligible_opportunity") {
     const opportunity = await runProductionOpportunity({
@@ -326,7 +318,7 @@ export async function runCampaignFactoryShadowCycle(input: {
   toolInvoker?: ProductionToolInvoker;
 }): Promise<Record<string, unknown>> {
   const observedAt = input.observedAt ?? new Date();
-  const localDate = londonDate(observedAt);
+  const localDate = datePartInLondon(observedAt);
   const registry = await loadRegistryBundle(resolve(input.registryPath));
   const integration = await loadProductionIntegration(resolve(input.integrationPath), registry);
   const uniqueness = decideProductionOpportunity(integration, input.opportunityId ?? "auto", observedAt);

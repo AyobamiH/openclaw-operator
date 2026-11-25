@@ -30,3 +30,11 @@ describe("API normalization contract", () => {
     expect(Object.keys(normalized.bands as object)).toEqual(["fresh", "stale"]);
   });
 });
+
+import { asRecord } from "@/lib/safe-render";
+
+it("extracts records without treating arrays or primitives as records", () => {
+  const value = { runId: "run-1" };
+  expect(asRecord(value)).toBe(value);
+  for (const invalid of [null, undefined, [], 0, "", true]) expect(asRecord(invalid)).toBeNull();
+});
