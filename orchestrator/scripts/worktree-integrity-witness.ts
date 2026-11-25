@@ -1,3 +1,4 @@
+import { LEGACY_DEPLOYMENT_PATHS } from "../src/deployment-paths.js";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { correlateDamage } from "../src/executionCorrelation.js";
@@ -20,8 +21,8 @@ function output(payload: unknown): void {
   else process.stdout.write(body);
 }
 
-const stateDir = resolve(value("--state-dir") ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/worktree-integrity");
-const root = value("--root") ?? "/home/oneclickwebsitedesignfactory/.openclaw";
+const stateDir = resolve(value("--state-dir") ?? LEGACY_DEPLOYMENT_PATHS.witnessStateRoot);
+const root = value("--root") ?? LEGACY_DEPLOYMENT_PATHS.openclawHome;
 const repoRoots = values("--repo");
 const repos = repoRoots.length > 0 ? repoRoots : discoverRelevantRepositories(root);
 const action = process.argv[2] ?? "check";

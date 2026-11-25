@@ -1,12 +1,14 @@
 import { mkdtemp, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { tmpdir } from "node:os";
 import { buildContinuousMarketingDigest } from "../src/business/continuousMarketingDigest.js";
 
 describe("continuous marketing digest", () => {
+  afterEach(() => vi.unstubAllEnvs());
   it("creates a deterministic evidence-only digest without inventing unavailable metrics", async () => {
-    const workspace = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
-    const root = await mkdtemp(join(workspace, ".tmp-graph-digest-"));
+    const root = await mkdtemp(join(tmpdir(), "graph-digest-"));
+    vi.stubEnv("OPENCLAW_WORKSPACE_ROOT", root);
     const sourceRoot = join(root, "source"), outputRoot = join(root, "output"), missionPath = join(root, "mission.md");
     await mkdir(sourceRoot, { recursive: true });
     await writeFile(missionPath, "# Mission\n", "utf8");
@@ -20,8 +22,8 @@ describe("continuous marketing digest", () => {
   });
 
   it("keeps Threads visible when Instagram has enough links to fill the old flat list", async () => {
-    const workspace = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
-    const root = await mkdtemp(join(workspace, ".tmp-graph-digest-"));
+    const root = await mkdtemp(join(tmpdir(), "graph-digest-"));
+    vi.stubEnv("OPENCLAW_WORKSPACE_ROOT", root);
     const sourceRoot = join(root, "source"), outputRoot = join(root, "output"), missionPath = join(root, "mission.md");
     await mkdir(sourceRoot, { recursive: true });
     await writeFile(missionPath, "# Mission\n", "utf8");
@@ -55,8 +57,8 @@ describe("continuous marketing digest", () => {
   });
 
   it("does not surface historical render failures after the same slot has a successful local receipt", async () => {
-    const workspace = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
-    const root = await mkdtemp(join(workspace, ".tmp-graph-digest-"));
+    const root = await mkdtemp(join(tmpdir(), "graph-digest-"));
+    vi.stubEnv("OPENCLAW_WORKSPACE_ROOT", root);
     const sourceRoot = join(root, "source"), outputRoot = join(root, "output"), missionPath = join(root, "mission.md");
     await mkdir(sourceRoot, { recursive: true });
     await writeFile(missionPath, "# Mission\n", "utf8");
@@ -86,8 +88,8 @@ describe("continuous marketing digest", () => {
   });
 
   it("keeps render failures when no later successful slot receipt is evidenced", async () => {
-    const workspace = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
-    const root = await mkdtemp(join(workspace, ".tmp-graph-digest-"));
+    const root = await mkdtemp(join(tmpdir(), "graph-digest-"));
+    vi.stubEnv("OPENCLAW_WORKSPACE_ROOT", root);
     const sourceRoot = join(root, "source"), outputRoot = join(root, "output"), missionPath = join(root, "mission.md");
     await mkdir(sourceRoot, { recursive: true });
     await writeFile(missionPath, "# Mission\n", "utf8");

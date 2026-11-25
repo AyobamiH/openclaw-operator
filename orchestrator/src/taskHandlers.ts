@@ -1,3 +1,4 @@
+import { resolveDeploymentPaths } from "./deployment-paths.js";
 import { randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
 import {
@@ -4404,7 +4405,7 @@ export async function executeGovernedCodingTool(tool: string, args: Record<strin
   if (!command) return { handled: false, status: "unavailable", changedState: false, safety: { readOnly: true }, summary: `Unsupported governed coding tool: ${tool}` };
   const projectRoot = String(args.projectRoot ?? process.cwd());
   const cliArgs = command === "validate-pack" ? [command, "--json"] : [command, projectRoot, "--json"];
-  const stateDir = join(process.env.OPENCLAW_OPERATOR_STATE_DIR ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator", "worktree-integrity");
+  const stateDir = resolveDeploymentPaths().operatorIntegrityRoot;
   const controlled = await executeControlledCommand({
     executable: "coding-agent-skills",
     argv: cliArgs,

@@ -1,9 +1,10 @@
+import { LEGACY_DEPLOYMENT_PATHS } from "../src/deployment-paths.js";
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { chmod, cp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
-const ALLOWED_RUNTIME_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/runtime/deterministic-self-identification-publishing-engine";
+const ALLOWED_RUNTIME_ROOT = LEGACY_DEPLOYMENT_PATHS.campaignRuntimeRoot;
 
 function argument(name: string): string {
   const index = process.argv.indexOf(name);

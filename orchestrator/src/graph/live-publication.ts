@@ -1,3 +1,4 @@
+import { resolveDeploymentPaths } from "../deployment-paths.js";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -124,7 +125,7 @@ type InstagramRunnerModule = {
 export async function loadInstagramRunner(): Promise<InstagramRunnerModule> {
   const path = resolve(
     process.env.OPENCLAW_INSTAGRAM_PUBLISHER_RUNNER_PATH ||
-      "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/instagram-publisher-outbox-runner.mjs",
+      resolve(resolveDeploymentPaths().workspaceRoot, "scripts", "instagram-publisher-outbox-runner.mjs"),
   );
   if (!existsSync(path)) throw new Error("canonical_instagram_runner_missing");
   const module = await import(pathToFileURL(path).href) as Partial<InstagramRunnerModule>;

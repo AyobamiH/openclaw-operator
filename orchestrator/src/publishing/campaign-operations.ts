@@ -1,3 +1,4 @@
+import { resolveDeploymentPaths } from "../deployment-paths.js";
 import { datePartInLondon } from "./calendar.js";
 import { createHash } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
@@ -139,7 +140,7 @@ async function refreshOfficialProviderMetrics(input: {
 }): Promise<MetricRefreshSummary> {
   const integration = await loadProductionIntegration(resolve(input.integrationPath), input.registry);
   const invoker = input.toolInvoker ?? gatewayToolInvoker({
-    openclawBin: input.openclawBin ?? "/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.18.0/bin/openclaw",
+    openclawBin: input.openclawBin ?? resolveDeploymentPaths().openclawBin,
     workspace: input.workspace ?? process.cwd(),
     agentId: integration.workerAgentId,
   });
@@ -441,7 +442,7 @@ export async function runCampaignOperationsCycle(input: {
       : null;
     const invoker = integration
       ? input.toolInvoker ?? gatewayToolInvoker({
-          openclawBin: input.openclawBin ?? "/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.18.0/bin/openclaw",
+          openclawBin: input.openclawBin ?? resolveDeploymentPaths().openclawBin,
           workspace: input.workspace ?? process.cwd(),
           agentId: integration.workerAgentId,
         })

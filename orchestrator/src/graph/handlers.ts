@@ -1,3 +1,4 @@
+import { resolveDeploymentPaths } from "../deployment-paths.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { join, resolve, sep } from "node:path";
@@ -144,7 +145,7 @@ export function createCommandEvidenceLegacyHandler(args: {
   if (cwd !== allowedRoot && !cwd.startsWith(`${allowedRoot}${sep}`)) throw new Error("legacy_command_cwd_outside_allowed_root");
   return async (context): Promise<NodeExecutionResult> => {
     try {
-      const stateDir = join(process.env.OPENCLAW_OPERATOR_STATE_DIR ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator", "worktree-integrity");
+      const stateDir = resolveDeploymentPaths().operatorIntegrityRoot;
       const result = await executeControlledCommand({
         executable: args.executable,
         argv: args.argv,

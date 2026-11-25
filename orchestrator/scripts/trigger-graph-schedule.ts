@@ -1,3 +1,4 @@
+import { LEGACY_DEPLOYMENT_PATHS } from "../src/deployment-paths.js";
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,7 +9,7 @@ import {
 } from "./trigger-governed-graph-schedule.js";
 import { PHASE_G_MIGRATION_ID } from "../src/graph/scheduler-store.js";
 
-const EVIDENCE_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/state/activation/graph-phase-g-instagram-image-20260802/triggers";
+const EVIDENCE_ROOT = join(LEGACY_DEPLOYMENT_PATHS.openclawHome, "state", "activation", "graph-phase-g-instagram-image-20260802", "triggers");
 
 export type PhaseGScheduleExecutionArgs = Omit<GovernedScheduleExecutionArgs, "migrationId"> & {
   migrationId?: typeof PHASE_G_MIGRATION_ID;

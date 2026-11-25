@@ -1,3 +1,4 @@
+import { resolveDeploymentPaths } from "../deployment-paths.js";
 import { resolve } from "node:path";
 
 import { PublishingConnectorRegistry, WorkerBackedPublishingConnector } from "./connectors.js";
@@ -259,7 +260,7 @@ export async function runProductionOpportunity(input: {
     }
     const invoker = input.toolInvoker ?? gatewayToolInvoker({
       openclawBin: input.openclawBin ||
-        "/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.18.0/bin/openclaw",
+        resolveDeploymentPaths().openclawBin,
       workspace: input.workspace || process.cwd(),
       agentId: integration.workerAgentId,
     });

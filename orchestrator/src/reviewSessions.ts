@@ -1,3 +1,4 @@
+import { createEmptyCumulativeWorkload } from "./review-session-defaults.js";
 import { readFile } from "node:fs/promises";
 import { loadavg } from "node:os";
 import {
@@ -113,24 +114,6 @@ function resolveCapturePlan(session: Pick<ReviewSessionRecord, "capturePlan">): 
       Number.isFinite(session.capturePlan.targetTaskCount)
         ? session.capturePlan.targetTaskCount
         : null,
-  };
-}
-
-function createEmptyCumulativeWorkload(): ReviewSessionCumulativeWorkload {
-  return {
-    acceptedRuns: 0,
-    completedRuns: 0,
-    successfulRuns: 0,
-    failedRuns: 0,
-    retriedRuns: 0,
-    pendingRuns: 0,
-    totalCostUsd: 0,
-    latencySampleCount: 0,
-    latencySumMs: 0,
-    peakLatencyMs: null,
-    taskTypeCounts: {},
-    lastAcceptedAt: null,
-    lastCompletedAt: null,
   };
 }
 

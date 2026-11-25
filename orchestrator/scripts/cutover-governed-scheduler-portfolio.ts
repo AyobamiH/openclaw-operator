@@ -1,3 +1,4 @@
+import { resolveDeploymentPaths } from "../src/deployment-paths.js";
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
@@ -28,7 +29,7 @@ const action = args.get("--action");
 const selectedMigrationId = args.get("--migration-id");
 const backupDirectory = args.get("--backup-directory");
 const schedulerDatabasePath = process.env.OPENCLAW_GRAPH_SCHEDULER_DATABASE_PATH?.trim();
-const openclawBin = process.env.OPENCLAW_BIN?.trim() || "/home/oneclickwebsitedesignfactory/.nvm/versions/node/v24.18.0/bin/openclaw";
+const openclawBin = resolveDeploymentPaths().openclawBin;
 const triggerScript = new URL("./trigger-governed-graph-schedule.ts", import.meta.url).pathname;
 
 if (!action || !["prepare", "cutover", "verify", "rollback"].includes(action)) throw new Error("graph_scheduler_cutover_action_invalid");

@@ -46,17 +46,34 @@ source-only consolidation, not production acceptance or whole-estate closure.
   required. No production service or external provider mutation is authorised
   by this source change.
 
-Remaining ownership decisions and required proof:
+Follow-up consolidation:
 
-| Area | Authority | Disposition |
-| --- | --- | --- |
-| Incident ranking duplicate | Orchestrator incident policy; agent read-side projection | Consolidate after shared-package/build layout and partial-record contract tests; do not make agents depend on an unavailable build path. |
-| Large orchestrator entry point | Admission, dispatch, persistence, scheduling and route subsystems | Extract by explicit contracts, not by file size. Inventory runtime registration and handler ownership before moving code. |
-| Review-session state defaults | Runtime review state schema and bootstrap | Trace shared defaults and bootstrap's independent startup contract before consolidation. |
-| Graph vs legacy execution | Accepted graph migration/rollback contracts | Keep both until each migration equivalence, restart and rollback evidence is complete. |
-| Agent runtime dynamic adapters, publishing CLI/barrel | Configured entry points and external contracts | No deletion on static reachability alone; trace install/runtime consumers. |
-| Documentation and knowledge mirrors | Canonical documentation, generated site manifest, knowledge mirror policy | Preserve managed copies and verify generation; no raw duplicate deletion. |
-| Host runtime | Private host operations/configuration repository | Preserve host authority; verify real deployed operation independently after protected integration. |
+- Incident ranking and the companion control-plane projection have one
+  authoritative TypeScript owner each, with checked portable agent artifacts.
+  Review-session defaults are shared with standalone bootstrap through a
+  generated module. The existing generator/check command owns all four
+  artifact families.
+- Eight agent entry points reuse the governed skill loader. Code-index and
+  test-intelligence share logical evidence-path matching; this is not a
+  filesystem authorization mechanism.
+- One deployment-path resolver replaces repeated host literals. The historical
+  deployment profile and all eleven existing scheduler definitions/inputs
+  are preserved exactly. Workspace/state overrides are trusted absolute
+  process configuration, not task payload authority.
+- Graph tests use repository-owned configuration and isolated Git/renderer
+  byte fixtures. The security-agent child fixture binds its own state target
+  rather than inheriting a caller's state configuration.
+
+Remaining acceptance and intentionally retained responsibilities:
+
+| Area | Disposition |
+| --- | --- |
+| Large orchestrator entry point | Extracted the shared companion projection; further route splitting is a separate behavior-bound change, not arbitrary file-size reduction. |
+| Graph vs legacy execution | Preserve accepted migration and rollback contracts; no deletion without live equivalence, restart and rollback evidence. |
+| Dynamic agent adapters, publishing CLI/barrel, package contracts | Preserve configured and externally consumable entry points until their runtime use or safe retirement is proven. |
+| Documentation and knowledge mirrors | Preserve managed copies and generation policy. |
+| Protected-main integration | Run the canonical full gate against the exact integrated source; do not bypass required checks. |
+| Production activation and acceptance | Separate from source integration. Require the private host checkout, rollback evidence, loaded-byte/process provenance and independent readback. |
 
 ## Pending source-only Pages evidence integration — 12 November 2026
 

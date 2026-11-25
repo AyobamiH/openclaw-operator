@@ -98,6 +98,23 @@ REDIS_URL=...
 ORCHESTRATOR_FAST_START=true|false
 ```
 
+## Specialist deployment paths
+
+The shared deployment-path resolver in `orchestrator/src/deployment-paths.ts`
+owns trusted process configuration for host-specific specialist paths.
+
+- `OPENCLAW_WORKSPACE_ROOT`: absolute workspace root for derived project and
+  renderer paths.
+- `OPENCLAW_OPERATOR_STATE_DIR`: absolute operator state root, distinct from
+  the historical workspace integrity-witness state.
+- `OPENCLAW_BIN`: explicitly configured OpenClaw executable.
+
+The existing historical deployment profile is the fallback. Persisted Graph
+scheduler definitions and authority-bearing inputs retain their exact historical
+bindings; changing the process configuration does not migrate those definitions.
+A host migration still requires the owning cutover and runtime verification
+procedure. Task payloads must not select trusted deployment roots.
+
 ## OpenClaw Gateway Companion Config
 
 The workspace also ships a local OpenClaw bridge plugin at:

@@ -1,3 +1,4 @@
+import { LEGACY_DEPLOYMENT_PATHS } from "../src/deployment-paths.js";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
@@ -7,10 +8,10 @@ import { GraphSchedulerStore } from "../src/graph/scheduler-store.js";
 import { governedSchedulerPortfolioEntry } from "../src/graph/scheduler-portfolio.js";
 
 const BASE_URL = "http://127.0.0.1:3312";
-const CREDENTIAL_FILE = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/credentials/orchestrator.env";
-export const PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/database/graph-scheduler.sqlite";
-const EVIDENCE_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator/evidence/graph-scheduler-triggers";
-const CONTINUOUS_MARKETING_DIGEST_OUTPUT_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/artifacts/business-value/marketing";
+const CREDENTIAL_FILE = join(LEGACY_DEPLOYMENT_PATHS.operatorStateRoot, "credentials", "orchestrator.env");
+export const PRODUCTION_GRAPH_SCHEDULER_DATABASE_PATH = join(LEGACY_DEPLOYMENT_PATHS.operatorStateRoot, "database", "graph-scheduler.sqlite");
+const EVIDENCE_ROOT = join(LEGACY_DEPLOYMENT_PATHS.operatorStateRoot, "evidence", "graph-scheduler-triggers");
+const CONTINUOUS_MARKETING_DIGEST_OUTPUT_ROOT = join(LEGACY_DEPLOYMENT_PATHS.workspaceRoot, "artifacts", "business-value", "marketing");
 export const GRAPH_SCHEDULER_READ_POLL_INTERVAL_MS = 10_000;
 export const GRAPH_SCHEDULER_APPROVAL_POLL_ATTEMPTS = 60;
 export const GRAPH_SCHEDULER_COMPLETION_POLL_ATTEMPTS = 180;

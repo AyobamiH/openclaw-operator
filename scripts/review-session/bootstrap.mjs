@@ -1,3 +1,4 @@
+import { createEmptyCumulativeWorkload } from "./workload-defaults.mjs";
 import { randomUUID } from "node:crypto";
 import { openSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -559,24 +560,6 @@ function appendScenarioNote(session, bucket, capturedAt, text) {
   const scenarioNotes = Array.isArray(session.scenarioNotes) ? session.scenarioNotes : [];
   scenarioNotes.push({ capturedAt, bucket, text });
   session.scenarioNotes = scenarioNotes;
-}
-
-function createEmptyCumulativeWorkload() {
-  return {
-    acceptedRuns: 0,
-    completedRuns: 0,
-    successfulRuns: 0,
-    failedRuns: 0,
-    retriedRuns: 0,
-    pendingRuns: 0,
-    totalCostUsd: 0,
-    latencySampleCount: 0,
-    latencySumMs: 0,
-    peakLatencyMs: null,
-    taskTypeCounts: {},
-    lastAcceptedAt: null,
-    lastCompletedAt: null,
-  };
 }
 
 export function reconcileStaleReviewSessionsState(state, options = {}) {

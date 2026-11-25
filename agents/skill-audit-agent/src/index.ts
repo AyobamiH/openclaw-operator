@@ -1,3 +1,4 @@
+import { getExecuteSkill, resolveTaskExecuteSkill } from "../../shared/governed-readers.js";
 import * as path from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { pathToFileURL } from 'url';
@@ -11,7 +12,6 @@ interface AgentConfig {
   };
 }
 
-type ExecuteSkillFn = (skillId: string, input: any, requestingAgent?: string) => Promise<any>;
 
 interface Task {
   id: string;
@@ -128,7 +128,6 @@ type SkillRuntimeModule = {
   listSkills: () => Array<{ id: string }>;
 };
 
-let executeSkillFn: ExecuteSkillFn | null = null;
 
 function normalizeCheckName(value: string): string {
   return value.trim().toLowerCase().replace(/[\s_]+/g, '-');
@@ -147,27 +146,6 @@ async function loadAgentConfig(): Promise<AgentConfig> {
   const configPath = path.join(__dirname, '../agent.config.json');
   const raw = await readFile(configPath, 'utf-8');
   return JSON.parse(raw) as AgentConfig;
-}
-
-async function getExecuteSkill(): Promise<ExecuteSkillFn> {
-  if (executeSkillFn) {
-    return executeSkillFn;
-  }
-
-  const skillsModule = await import('../../../skills/index.ts');
-  const candidate = (skillsModule as any).executeSkill ?? (skillsModule as any).default?.executeSkill;
-
-  if (typeof candidate !== 'function') {
-    throw new Error('skills registry executeSkill export unavailable');
-  }
-
-  executeSkillFn = candidate as ExecuteSkillFn;
-  return executeSkillFn;
-}
-
-function resolveTaskExecuteSkill(task: Task): ExecuteSkillFn | null {
-  const candidate = (task as any).__executeSkill ?? (task as any).executeSkill;
-  return typeof candidate === 'function' ? candidate as ExecuteSkillFn : null;
 }
 
 function selectVerificationHarnessCommand(task: Task): 'lint' | 'build-verify' | 'security-audit' {

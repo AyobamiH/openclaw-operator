@@ -40,7 +40,7 @@ export interface GovernedDirectoryEntry {
 
 let executeSkillFn: ExecuteSkillFn | null = null;
 
-async function getExecuteSkill(): Promise<ExecuteSkillFn> {
+export async function getExecuteSkill(): Promise<ExecuteSkillFn> {
   if (executeSkillFn) {
     return executeSkillFn;
   }
@@ -56,6 +56,15 @@ async function getExecuteSkill(): Promise<ExecuteSkillFn> {
 
   executeSkillFn = candidate as ExecuteSkillFn;
   return executeSkillFn;
+}
+
+/** Existing in-process task injection; JSON payloads cannot supply a function.
+ * The orchestrator/ToolGate remains responsible for authorising skill effects. */
+export function resolveTaskExecuteSkill(task: unknown): ExecuteSkillFn | null {
+  if (task == null) return null;
+  const value = task as { __executeSkill?: unknown; executeSkill?: unknown };
+  const candidate = value.__executeSkill ?? value.executeSkill;
+  return typeof candidate === "function" ? candidate as ExecuteSkillFn : null;
 }
 
 async function executeRequiredSkill<T>(

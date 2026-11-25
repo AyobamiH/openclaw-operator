@@ -1,3 +1,4 @@
+import { LEGACY_DEPLOYMENT_PATHS } from "../src/deployment-paths.js";
 import { ExecutionReceiptStore, executeControlledCommand } from "../src/executionReceipts.js";
 import { loadBaselines } from "../src/worktreeIntegrity.js";
 
@@ -8,7 +9,7 @@ function value(flag: string): string | undefined {
 
 const executable = process.argv[2];
 if (!executable) throw new Error("usage: execute-controlled-command <executable> [argv...] --state-dir path");
-const stateDir = value("--state-dir") ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/worktree-integrity";
+const stateDir = value("--state-dir") ?? LEGACY_DEPLOYMENT_PATHS.witnessStateRoot;
 const separator = process.argv.indexOf("--");
 const argv = (separator >= 0 ? process.argv.slice(separator + 1) : process.argv.slice(3)).filter((item) => item !== "--state-dir" && item !== stateDir);
 const cwd = value("--cwd") ?? process.cwd();

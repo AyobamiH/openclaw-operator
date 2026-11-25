@@ -1,8 +1,8 @@
+import { getExecuteSkill, resolveTaskExecuteSkill } from "../../shared/governed-readers.js";
 import * as fs from 'fs';
 import * as path from 'path';
 import { buildSpecialistOperatorFields } from '../../shared/runtime-evidence.js';
 
-type ExecuteSkillFn = (skillId: string, input: any, requestingAgent?: string) => Promise<any>;
 
 /**
  * SUMMARIZATION AGENT
@@ -104,7 +104,6 @@ interface SummarizationResult {
   executionTime: number;
 }
 
-let executeSkillFn: ExecuteSkillFn | null = null;
 
 // Load agent configuration
 function loadConfig(): AgentConfig {
@@ -118,27 +117,6 @@ function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
   const skillPerms = config.permissions.skills[skillId];
   return skillPerms?.allowed === true;
-}
-
-async function getExecuteSkill(): Promise<ExecuteSkillFn> {
-  if (executeSkillFn) {
-    return executeSkillFn;
-  }
-
-  const skillsModule = await import('../../../skills/index.ts');
-  const candidate = (skillsModule as any).executeSkill ?? (skillsModule as any).default?.executeSkill;
-
-  if (typeof candidate !== 'function') {
-    throw new Error('skills registry executeSkill export unavailable');
-  }
-
-  executeSkillFn = candidate as ExecuteSkillFn;
-  return executeSkillFn;
-}
-
-function resolveTaskExecuteSkill(task: SummarizationTask): ExecuteSkillFn | null {
-  const candidate = (task as any).__executeSkill ?? (task as any).executeSkill;
-  return typeof candidate === 'function' ? candidate as ExecuteSkillFn : null;
 }
 
 function extractEvidenceAnchors(source: SummarizationTask['source']): string[] {

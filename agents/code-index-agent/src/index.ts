@@ -1,6 +1,7 @@
+import { normalizeLogicalPath as normalizeBoundaryPath, logicalPathMatchesBoundary as pathMatchesBoundary } from "../../../skills/readerUtils.js";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, extname, posix, relative, resolve } from "node:path";
+import { dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildSpecialistOperatorFields,
@@ -189,36 +190,6 @@ function loadConfig(): AgentConfig {
 function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
   return hasAllowedSkills(config, [skillId]);
-}
-
-function normalizeBoundaryPath(value: string) {
-  const sanitizedValue = value.replace(/\\/g, "/").trim();
-  if (!sanitizedValue) {
-    return "";
-  }
-
-  const normalizedValue = posix.normalize(sanitizedValue)
-    .replace(/^\.\//, "")
-    .replace(/^\/+/, "")
-    .replace(/\/$/, "");
-
-  return normalizedValue === "." ? "" : normalizedValue;
-}
-
-function pathMatchesBoundary(targetPath: string, boundary: string) {
-  const normalizedTarget = normalizeBoundaryPath(targetPath);
-  const normalizedBoundary = normalizeBoundaryPath(boundary);
-
-  if (!normalizedTarget || !normalizedBoundary) {
-    return false;
-  }
-
-  return (
-    normalizedTarget === normalizedBoundary ||
-    normalizedTarget.startsWith(`${normalizedBoundary}/`) ||
-    normalizedTarget.endsWith(`/${normalizedBoundary}`) ||
-    normalizedTarget.includes(`/${normalizedBoundary}/`)
-  );
 }
 
 function normalizeTarget(value: string | undefined) {

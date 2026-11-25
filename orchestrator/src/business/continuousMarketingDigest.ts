@@ -1,13 +1,13 @@
+import { resolveDeploymentPaths } from "../deployment-paths.js";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { basename, join, resolve, sep } from "node:path";
 
-const WORKSPACE = "/home/oneclickwebsitedesignfactory/.openclaw/workspace";
 const URL_PATTERN = /https:\/\/(?:www\.)?(?:instagram\.com|threads\.com)\/[^\s)\]}>"']+/g;
 const DISPLAY_LINK_LIMIT = 12;
 
-function bounded(path: string): string {
+function bounded(path: string, workspaceRoot: string): string {
   const value = resolve(path);
-  if (value !== WORKSPACE && !value.startsWith(`${WORKSPACE}${sep}`)) throw new Error("continuous_marketing_digest_path_outside_workspace");
+  if (value !== workspaceRoot && !value.startsWith(`${workspaceRoot}${sep}`)) throw new Error("continuous_marketing_digest_path_outside_workspace");
   return value;
 }
 
@@ -187,7 +187,8 @@ function formatPlatformLinks(platform: SocialPlatform, links: string[]): string 
 export async function buildContinuousMarketingDigest(input: { observedAt: string; sourceRoot: string; missionPath: string; outputRoot: string }): Promise<ContinuousMarketingDigest> {
   const observedAt = new Date(input.observedAt);
   if (!Number.isFinite(observedAt.getTime())) throw new Error("continuous_marketing_digest_observed_at_invalid");
-  const sourceRoot = bounded(input.sourceRoot), outputRoot = bounded(input.outputRoot), missionPath = bounded(input.missionPath);
+  const workspaceRoot = resolveDeploymentPaths().workspaceRoot;
+  const sourceRoot = bounded(input.sourceRoot, workspaceRoot), outputRoot = bounded(input.outputRoot, workspaceRoot), missionPath = bounded(input.missionPath, workspaceRoot);
   await stat(missionPath);
   const windowStartedAt = new Date(observedAt.getTime() - 24 * 60 * 60_000);
   const entries = await readdir(sourceRoot, { recursive: true, withFileTypes: true });
@@ -196,7 +197,7 @@ export async function buildContinuousMarketingDigest(input: { observedAt: string
     if (!entry.isFile() || !/\.(?:json|md|txt)$/i.test(entry.name)) continue;
     if (entry.name === "graph-owned-daily-growth-digest.md") continue;
     const parent = "parentPath" in entry && typeof entry.parentPath === "string" ? entry.parentPath : sourceRoot;
-    const path = bounded(join(parent, entry.name));
+    const path = bounded(join(parent, entry.name), workspaceRoot);
     const info = await stat(path);
     if (info.mtimeMs < windowStartedAt.getTime() || info.mtimeMs > observedAt.getTime() + 5 * 60_000) continue;
     evidence.push({ path, text: await readFile(path, "utf8"), mtimeMs: info.mtimeMs });
@@ -218,7 +219,7 @@ export async function buildContinuousMarketingDigest(input: { observedAt: string
   const approvals = [...new Set(lines.filter((item) => /\bapproval (?:needed|required|pending)\b/i.test(item.line)).map((item) => item.line))].slice(0, 5);
   const summaryLines = [
     `Daily growth evidence — preceding 24 hours`,
-    `Source boundary: ${sourceRoot === WORKSPACE ? "." : sourceRoot.replace(`${WORKSPACE}${sep}`, "")}`,
+    `Source boundary: ${sourceRoot === workspaceRoot ? "." : sourceRoot.replace(`${workspaceRoot}${sep}`, "")}`,
     `Evidence files: ${evidence.length}`,
     `Verified social objects: ${verifiedLinks.length}`,
     formatPlatformLinks("instagram", verifiedLinksByPlatform.instagram),
@@ -231,9 +232,9 @@ export async function buildContinuousMarketingDigest(input: { observedAt: string
   ];
   const summary = summaryLines.join("\n");
   const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(observedAt);
-  const directory = bounded(join(outputRoot, date));
+  const directory = bounded(join(outputRoot, date), workspaceRoot);
   await mkdir(directory, { recursive: true });
-  const outputPath = bounded(join(directory, "graph-owned-daily-growth-digest.md"));
+  const outputPath = bounded(join(directory, "graph-owned-daily-growth-digest.md"), workspaceRoot);
   const record = { generatedAt: observedAt.toISOString(), windowStartedAt: windowStartedAt.toISOString(), evidenceFiles: evidence.map((item) => basename(item.path)), verifiedLinks, verifiedLinksByPlatform, evidenceCoverage: coverage, blockers, approvals, summary };
   await writeFile(outputPath, `# Graph-owned daily growth digest\n\n${summary}\n\n\`\`\`json\n${JSON.stringify(record, null, 2)}\n\`\`\`\n`, "utf8");
   return { generatedAt: observedAt.toISOString(), windowStartedAt: windowStartedAt.toISOString(), evidenceFiles: evidence.length, verifiedLinks, verifiedLinksByPlatform, evidenceCoverage: coverage, blockers, approvals, summary, outputPath };

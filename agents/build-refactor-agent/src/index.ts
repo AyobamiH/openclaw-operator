@@ -1,3 +1,4 @@
+import { getExecuteSkill } from "../../shared/governed-readers.js";
 import * as fs from 'fs';
 import * as path from 'path';
 import { mkdir, readFile, readdir, stat, writeFile } from 'fs/promises';
@@ -202,7 +203,6 @@ const AUTONOMOUS_TEXT_EXTENSIONS = new Set([
 ]);
 const AUTONOMOUS_SCAN_LIMIT = 48;
 const AUTONOMOUS_PATCH_LIMIT = 12;
-let executeSkillFn: ExecuteSkillFn | null = null;
 
 const PUBLIC_PROOF_ACTIVE_LANES_LEGACY_SNIPPET = `  const activeLanes = dedupeStrings(
     milestones
@@ -942,20 +942,6 @@ function canUseSkill(skillId: string): boolean {
   const config = loadConfig();
   const skillPerms = config.permissions.skills[skillId];
   return skillPerms?.allowed === true;
-}
-
-async function getExecuteSkill(): Promise<ExecuteSkillFn> {
-  if (executeSkillFn) return executeSkillFn;
-
-  const skillsModule = await import('../../../skills/index.ts');
-  const candidate = (skillsModule as any).executeSkill ?? (skillsModule as any).default?.executeSkill;
-
-  if (typeof candidate !== 'function') {
-    throw new Error('skills registry executeSkill export unavailable');
-  }
-
-  executeSkillFn = candidate as ExecuteSkillFn;
-  return executeSkillFn;
 }
 
 function validateExplicitChange(change: RefactoringChange) {

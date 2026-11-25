@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { resolveDeploymentPaths } from "../src/deployment-paths.js";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { z } from "zod";
 import { createGraphRuntime, type GraphRuntime } from "../src/graph/runtime.js";
@@ -12,7 +15,7 @@ import { codingChangeGraph, PRODUCTION_GRAPH_DEFINITION_IDENTITIES } from "../sr
 import { compareShadowDecisions, prepareProductionPublishingShadowDecision, type ShadowDecisionEnvelope } from "../src/publishing/shadow-equivalence.js";
 import type { AuthorityClass, GraphDefinition } from "../src/graph/types.js";
 
-const REPOSITORY = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/projects/openclaw-operator";
+const REPOSITORY = fileURLToPath(new URL("../../", import.meta.url));
 const INTEGRATION = `${REPOSITORY}/config/publishing/production-integration.v1.json`;
 const REGISTRY = `${REPOSITORY}/config/publishing/registry.v1.json`;
 const cleanups: Array<() => Promise<void>> = [];
@@ -20,6 +23,24 @@ const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {
   while (cleanups.length > 0) await cleanups.pop()!();
 });
+
+async function isolatedDeploymentWorkspace(root: string): Promise<void> {
+  const previous = process.env.OPENCLAW_WORKSPACE_ROOT;
+  process.env.OPENCLAW_WORKSPACE_ROOT = root;
+  cleanups.push(async () => {
+    if (previous === undefined) delete process.env.OPENCLAW_WORKSPACE_ROOT;
+    else process.env.OPENCLAW_WORKSPACE_ROOT = previous;
+  });
+}
+
+async function rendererIdentityFixture(root: string): Promise<void> {
+  await isolatedDeploymentWorkspace(root);
+  const file = resolveDeploymentPaths().mediaRenderer;
+  await mkdir(dirname(file), { recursive: true });
+  // Only the exact source bytes are consumed by this authority-binding test.
+  // This does not stand in for rendering or provider acceptance.
+  await writeFile(file, "export const fixtureRendererIdentity = 'thread-image-proof-v1';\n");
+}
 
 async function testRuntime(): Promise<GraphRuntime> {
   const root = await mkdtemp(join(tmpdir(), "graph-production-adapters-"));
@@ -1035,6 +1056,7 @@ describe("production adapter registry", () => {
 
   it("binds exact Threads Image media and canonical creative proof into Graph v1 authority", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-threads-image-capability-"));
+    await rendererIdentityFixture(root);
     const mediaPath = join(root, "threads-image.png");
     const media = Buffer.from("exact-frozen-threads-image-bytes");
     await writeFile(mediaPath, media);
@@ -1097,6 +1119,7 @@ describe("production adapter registry", () => {
 
   it("can issue a fresh Threads Image recovery capability after an earlier prepared capability expired without dispatch", async () => {
     const root = await mkdtemp(join(tmpdir(), "graph-threads-image-recovery-capability-"));
+    await rendererIdentityFixture(root);
     const mediaPath = join(root, "threads-image.png");
     const media = Buffer.from("exact-frozen-threads-image-recovery-bytes");
     await writeFile(mediaPath, media);
@@ -1250,14 +1273,28 @@ describe("production-bound graph decisions", () => {
   });
 
   it("runs bounded canonical Git inspection without changing the repository", async () => {
+    const root = await mkdtemp(join(tmpdir(), "graph-repository-fixture-"));
+    cleanups.push(async () => rm(root, { recursive: true, force: true }));
+    await isolatedDeploymentWorkspace(root);
+    const repositoryPath = join(resolveDeploymentPaths().projectsRoot, "operator-fixture");
+    await mkdir(repositoryPath, { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", ["-C", repositoryPath, ...args], { encoding: "utf8" }).trim();
+    git("init", "--quiet");
+    await writeFile(join(repositoryPath, "README.md"), "# Repository inspection fixture\n");
+    git("add", "README.md");
+    git("-c", "commit.gpgsign=false", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "--quiet", "-m", "fixture");
+    const head = git("rev-parse", "HEAD");
+    const before = git("status", "--porcelain");
     const runtime = await testRuntime();
     const definition = singleAdapterGraph("production.repo-inspect.v1");
     runtime.engine.register(definition);
-    const created = runtime.engine.start(request(definition.graphId, definition.version, { repositoryPath: REPOSITORY, shadowMode: true }));
+    const created = runtime.engine.start(request(definition.graphId, definition.version, { repositoryPath, shadowMode: true }));
     const completed = await runtime.engine.runUntilSettled(created.runId);
     expect(completed.status).toBe("completed");
     expect(completed.externalEffects).toHaveLength(0);
     expect(completed.evidence[0]?.kind).toBe("repository-truth");
+    expect(git("rev-parse", "HEAD")).toBe(head);
+    expect(git("status", "--porcelain")).toBe(before);
   });
 
   it("matches legacy and graph payload hashes for the same natural publication input", async () => {

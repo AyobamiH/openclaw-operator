@@ -1,4 +1,20 @@
-import type { IncidentLedgerRecord } from "./types.js";
+/** Structural read contract shared by persisted ledgers and partial agent evidence. */
+export interface IncidentPriorityInput {
+  incidentId?: string;
+  classification?: string;
+  severity?: string;
+  status?: string;
+  owner?: string | null;
+  summary?: string;
+  recommendedSteps?: string[];
+  affectedSurfaces?: string[];
+  linkedServiceIds?: string[];
+  policy?: { preferredOwner?: string; remediationTaskType?: string };
+  escalation?: { level?: string };
+  verification?: { status?: string };
+  remediation?: { nextAction?: string; blockers?: string[] };
+  remediationTasks?: Array<{ status?: string; blockers?: string[] }>;
+}
 
 export interface IncidentPriorityRecord {
   incidentId: string;
@@ -51,7 +67,7 @@ function uniqueStrings(values: Array<string | null | undefined>) {
 }
 
 export function buildIncidentPriorityQueue(
-  incidents: IncidentLedgerRecord[],
+  incidents: IncidentPriorityInput[],
 ): IncidentPriorityRecord[] {
   return incidents
     .filter((incident) => incident.status !== "resolved")

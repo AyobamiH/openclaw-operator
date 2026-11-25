@@ -75,3 +75,20 @@ export function joinLogicalPath(
 
   return `${normalizedBase}/${normalizedChild}`;
 }
+
+/** Match logical evidence paths, not a filesystem authorisation boundary. */
+export function logicalPathMatchesBoundary(targetPath: string, boundary: string) {
+  const normalizedTarget = normalizeLogicalPath(targetPath);
+  const normalizedBoundary = normalizeLogicalPath(boundary);
+
+  if (!normalizedTarget || !normalizedBoundary) {
+    return false;
+  }
+
+  return (
+    normalizedTarget === normalizedBoundary ||
+    normalizedTarget.startsWith(`${normalizedBoundary}/`) ||
+    normalizedTarget.endsWith(`/${normalizedBoundary}`) ||
+    normalizedTarget.includes(`/${normalizedBoundary}/`)
+  );
+}

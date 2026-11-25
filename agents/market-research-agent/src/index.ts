@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { getExecuteSkill, resolveTaskExecuteSkill } from "../../shared/governed-readers.js";
 
 /**
  * Market Research Agent - Entry Point
@@ -11,7 +12,6 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { buildSpecialistOperatorFields } from '../../shared/runtime-evidence.js';
 
-type ExecuteSkillFn = (skillId: string, input: any, requestingAgent?: string) => Promise<any>;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.join(__dirname, '../agent.config.json');
@@ -80,21 +80,6 @@ const AUTO_SOURCE_LIBRARY: Array<PlannedResearchSource & { keywords: string[] }>
 ];
 
 let agentConfig: AgentConfig;
-let executeSkillFn: ExecuteSkillFn | null = null;
-
-async function getExecuteSkill(): Promise<ExecuteSkillFn> {
-  if (executeSkillFn) return executeSkillFn;
-
-  const skillsModule = await import('../../../skills/index.ts');
-  const candidate = (skillsModule as any).executeSkill ?? (skillsModule as any).default?.executeSkill;
-
-  if (typeof candidate !== 'function') {
-    throw new Error('skills registry executeSkill export unavailable');
-  }
-
-  executeSkillFn = candidate as ExecuteSkillFn;
-  return executeSkillFn;
-}
 
 async function loadConfig(): Promise<void> {
   try {
@@ -256,11 +241,6 @@ function buildDeltaCapture(changeIntelligence: Array<{ classification: string }>
     degradedCount,
     unreachableCount,
   };
-}
-
-function resolveTaskExecuteSkill(task: any): ExecuteSkillFn | null {
-  const candidate = task?.__executeSkill ?? task?.executeSkill;
-  return typeof candidate === 'function' ? candidate as ExecuteSkillFn : null;
 }
 
 function buildMarketResearchSpecialistFields(args: {

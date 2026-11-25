@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { getExecuteSkill } from "../../shared/governed-readers.js";
 
 /**
  * QA Verification Agent - Entry Point
@@ -229,23 +230,6 @@ interface ReproducibilityProfile {
 }
 
 let agentConfig: AgentConfig;
-let executeSkillFn: ExecuteSkillFn | null = null;
-
-async function getExecuteSkill(): Promise<ExecuteSkillFn> {
-  if (executeSkillFn) return executeSkillFn;
-
-  const skillsModule = await import('../../../skills/index.ts');
-  const candidate =
-    (skillsModule as any).executeSkill ??
-    (skillsModule as any).default?.executeSkill;
-
-  if (typeof candidate !== 'function') {
-    throw new Error('skills registry executeSkill export unavailable');
-  }
-
-  executeSkillFn = candidate as ExecuteSkillFn;
-  return executeSkillFn;
-}
 
 async function loadConfig(): Promise<void> {
   const configContent = await fs.readFile(configPath, 'utf-8');

@@ -1,3 +1,4 @@
+import { resolveDeploymentPaths } from "../deployment-paths.js";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promisify } from "node:util";
@@ -31,9 +32,9 @@ import { ExecutionReceiptStore, executeControlledCommand } from "../executionRec
 import { loadBaselines } from "../worktreeIntegrity.js";
 
 const execFileAsync = promisify(execFile);
-const PROJECT_ROOT = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/projects";
 
 function boundedRepositoryPath(candidate: string): string {
+  const PROJECT_ROOT = resolveDeploymentPaths().projectsRoot;
   const path = resolve(candidate);
   if (path !== PROJECT_ROOT && !path.startsWith(`${PROJECT_ROOT}${sep}`)) throw new Error("production_repository_path_outside_workspace_projects");
   return path;
@@ -126,9 +127,9 @@ async function loadWorkspaceModule<T>(configured: string | undefined, fallback: 
   for (const symbol of symbols) if (typeof module[symbol] !== "function") throw new Error(`canonical_social_runner_contract_missing:${symbol}`);
   return module as T;
 }
-const loadThreadsRunner = () => loadWorkspaceModule<ThreadsRunnerModule>(process.env.OPENCLAW_THREADS_RUNNER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/threads-outbox-runner.mjs", ["runOpportunity", "reconcileOutboxEntry"]);
-const loadMetaReplyRunner = () => loadWorkspaceModule<MetaReplyRunnerModule>(process.env.OPENCLAW_META_REPLY_RUNNER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/meta-reply-monitor-outbox-runner.mjs", ["runMonitor", "executePreparedReply", "reconcileReceiptOnly"]);
-const loadThreadsReadiness = () => loadWorkspaceModule<ThreadsReadinessModule>(process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH, "/home/oneclickwebsitedesignfactory/.openclaw/workspace/scripts/threads-readiness-preparer.mjs", ["prepareNextThreadsOpportunity"]);
+const loadThreadsRunner = () => loadWorkspaceModule<ThreadsRunnerModule>(process.env.OPENCLAW_THREADS_RUNNER_PATH, join(resolveDeploymentPaths().workspaceRoot, "scripts", "threads-outbox-runner.mjs"), ["runOpportunity", "reconcileOutboxEntry"]);
+const loadMetaReplyRunner = () => loadWorkspaceModule<MetaReplyRunnerModule>(process.env.OPENCLAW_META_REPLY_RUNNER_PATH, join(resolveDeploymentPaths().workspaceRoot, "scripts", "meta-reply-monitor-outbox-runner.mjs"), ["runMonitor", "executePreparedReply", "reconcileReceiptOnly"]);
+const loadThreadsReadiness = () => loadWorkspaceModule<ThreadsReadinessModule>(process.env.OPENCLAW_THREADS_READINESS_PREPARER_PATH, join(resolveDeploymentPaths().workspaceRoot, "scripts", "threads-readiness-preparer.mjs"), ["prepareNextThreadsOpportunity"]);
 
 const RECONCILABLE_SOCIAL_EFFECT_STATES = new Set(["request_sent", "provider_accepted", "ambiguous"]);
 
@@ -512,7 +513,6 @@ function socialDispatchGate(graphStore: GraphStore, context: NodeExecutionContex
   };
 }
 
-const CANONICAL_LOCAL_MEDIA_RENDERER = "/home/oneclickwebsitedesignfactory/.openclaw/workspace/projects/relay-live-business-engagement-connector/local-media-renderer/bin/local-media-renderer.mjs";
 
 async function fileSha256(path: string): Promise<string> {
   return createHash("sha256").update(await readFile(path)).digest("hex");
@@ -549,9 +549,10 @@ async function socialPreparation(entry: Record<string, any>, input: { shadowMode
     mediaBytesHash = await fileSha256(mediaPath);
     if (mediaBytesHash !== mediaHash) throw new Error("threads_graph_image_bytes_changed_before_approval");
     layoutReceiptHash = sha256(layoutReceipt);
+    const rendererPath = resolveDeploymentPaths().mediaRenderer;
     rendererIdentity = {
-      source: CANONICAL_LOCAL_MEDIA_RENDERER,
-      sourceSha256: await fileSha256(CANONICAL_LOCAL_MEDIA_RENDERER),
+      source: rendererPath,
+      sourceSha256: await fileSha256(rendererPath),
       version: String((layoutReceipt.renderer as Record<string, unknown> | undefined)?.version ?? layoutReceipt.rendererVersion ?? layoutReceipt.version ?? "canonical-local-media-renderer"),
     };
     rendererIdentityHash = sha256(rendererIdentity);
@@ -812,7 +813,7 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
       const script = scripts[action];
       if (!script) return { outcome: "failed_terminal", output: { action, exitCode: 1, outputHash: sha256("unsupported"), skipped: true }, failure: failure("tool_unavailable", `No allowlisted package command for node ${action}`) };
       try {
-        const stateDir = join(process.env.OPENCLAW_OPERATOR_STATE_DIR ?? "/home/oneclickwebsitedesignfactory/.openclaw/state/openclaw-operator", "worktree-integrity");
+        const stateDir = resolveDeploymentPaths().operatorIntegrityRoot;
         const result = await executeControlledCommand({
           executable: "npm",
           argv: ["run", script],
@@ -1096,7 +1097,8 @@ export function createProductionAdapterRegistry(graphStore?: GraphStore, childRu
         const currentMediaHash = await fileSha256(prepared.mediaPath);
         if (currentMediaHash !== prepared.mediaHash || currentMediaHash !== prepared.mediaBytesHash) throw new Error("threads_graph_image_bytes_changed_before_live_handoff");
         if (sha256(prepared.layoutReceipt) !== prepared.layoutReceiptHash || sha256(prepared.rendererIdentity) !== prepared.rendererIdentityHash) throw new Error("threads_graph_image_proof_changed_before_live_handoff");
-        if (String(prepared.rendererIdentity.source) !== CANONICAL_LOCAL_MEDIA_RENDERER || String(prepared.rendererIdentity.sourceSha256) !== await fileSha256(CANONICAL_LOCAL_MEDIA_RENDERER)) throw new Error("threads_graph_renderer_identity_changed_before_live_handoff");
+        const rendererPath = resolveDeploymentPaths().mediaRenderer;
+        if (String(prepared.rendererIdentity.source) !== rendererPath || String(prepared.rendererIdentity.sourceSha256) !== await fileSha256(rendererPath)) throw new Error("threads_graph_renderer_identity_changed_before_live_handoff");
       }
       if (!graphStore) throw new Error("threads_graph_store_missing");
       const runner = await loadThreadsRunner();

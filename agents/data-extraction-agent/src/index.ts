@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { getExecuteSkill } from "../../shared/governed-readers.js";
 
 /**
  * Data Extraction Agent - Entry Point
@@ -11,7 +12,6 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { buildSpecialistOperatorFields } from '../../shared/runtime-evidence.js';
 
-type ExecuteSkillFn = (skillId: string, input: any, requestingAgent?: string) => Promise<any>;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const configPath = path.join(__dirname, '../agent.config.json');
@@ -23,7 +23,6 @@ interface AgentConfig {
 }
 
 let agentConfig: AgentConfig;
-let executeSkillFn: ExecuteSkillFn | null = null;
 
 function inferFormatFromPath(filePath: string): string {
   const normalized = filePath.toLowerCase();
@@ -197,20 +196,6 @@ function buildDataExtractionSpecialistFields(args: {
     refusalReason: args.refusalReason ?? (status === 'refused' ? 'No governed extraction input was supplied.' : null),
     escalationReason: null,
   });
-}
-
-async function getExecuteSkill(): Promise<ExecuteSkillFn> {
-  if (executeSkillFn) return executeSkillFn;
-
-  const skillsModule = await import('../../../skills/index.ts');
-  const candidate = (skillsModule as any).executeSkill ?? (skillsModule as any).default?.executeSkill;
-
-  if (typeof candidate !== 'function') {
-    throw new Error('skills registry executeSkill export unavailable');
-  }
-
-  executeSkillFn = candidate as ExecuteSkillFn;
-  return executeSkillFn;
 }
 
 async function loadConfig(): Promise<void> {

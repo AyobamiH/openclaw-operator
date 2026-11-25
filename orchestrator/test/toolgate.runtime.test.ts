@@ -974,6 +974,10 @@ async function runSecurityFixture() {
           env: {
             ...process.env,
             ALLOW_ORCHESTRATOR_TASK_RUN: 'true',
+            // Bind the child's evidence to this fixture, not the caller's
+            // inherited state target or an unrelated orchestrator config.
+            ORCHESTRATOR_CONFIG: join(fixtureRoot, 'orchestrator_config.json'),
+            STATE_FILE: statePath,
             SECURITY_AGENT_RESULT_FILE: resultPath,
           },
           stdio: ['ignore', 'ignore', 'pipe'],
