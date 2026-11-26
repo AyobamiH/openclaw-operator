@@ -41,7 +41,12 @@ pre-edit live hash before editing or testing. Activation then requires exact
 tested/source/live hash equality. A later live superset is acceptable only
 after the exact resulting live hash is tested. Resident services require a
 post-activation start or reload, effective unit plus drop-in evidence, matching
-running path/hash, and healthy state. Ephemeral runners remain
+running path/hash, and healthy state. The resident capture command reads the
+precise systemd D-Bus start/active timestamps for the same main PID and
+invocation, rechecks that identity after capture, and fails closed when time
+ordering cannot be distinguished at the verifier's millisecond resolution.
+It does not substitute systemd active state for the separate live HTTP and
+persistence acceptance checks. Ephemeral runners remain
 `ACTIVATED_WAITING_FOR_RUNTIME_WITNESS` until a natural invocation records its
 PID, command line, source hash, and terminal receipt.
 

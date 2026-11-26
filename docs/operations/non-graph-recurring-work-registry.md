@@ -45,8 +45,11 @@ controls.
   An in-flight guard skips a timer tick instead of overlapping sample/flush
   work.
 - Nightly and heartbeat queue entries use deterministic slot keys. Document
-  watcher entries use a path/mtime key. These keys make retries and duplicate
-  events visible without allowing a second live owner.
+  watcher events are deduplicated by path in a bounded 100 ms ingress window
+  and admitted in deterministic batches of at most 200 paths. Overflow drains
+  through further bounded batches. The batch hash keeps retries and duplicate
+  events visible without allowing one filesystem burst to monopolize the
+  shared task queue or create a second live owner.
 
 ## Registered capabilities
 
@@ -57,7 +60,7 @@ controls.
 | Business-value cadence | `17 */6 * * *` | orchestrator business-value controller | Local planning and one safe queue admission | approval-gated downstream | `REGISTERED_IN_PROCESS` |
 | Business-day pulse | `17 8-17 * * 1-5`, Europe/London | same business-value controller | Local planning and one safe queue admission | approval-gated downstream | `REGISTERED_IN_PROCESS` |
 | Nightly batch | `0 23 * * *` | `orchestrator.service` | Local docs/RSS/queue/approval/digest artifacts | read-only fetches; no provider write | `REGISTERED_IN_PROCESS` |
-| Document watching | chokidar add/change/unlink | `orchestrator.service` | Local index, capped pending buffer, repair admission | none beyond local artifacts | `REGISTERED_EVENT_DRIVEN` |
+| Document watching | chokidar add/change/unlink | `orchestrator.service` | Bounded deduplicating ingress, local index, capped pending buffer, repair admission | none beyond local artifacts | `REGISTERED_EVENT_DRIVEN` |
 | Doc-specialist heartbeat | every 60 seconds | `doc-specialist.service` | Service-state observation only | none | `REGISTERED_IN_PROCESS` |
 | Missed-heartbeat detection | every 10 minutes | orchestrator alert manager | Local critical alert | none | `REGISTERED_IN_PROCESS` |
 | Alert retention cleanup | every 6 hours | orchestrator alert manager | Local 48-hour retention | none | `REGISTERED_IN_PROCESS` |

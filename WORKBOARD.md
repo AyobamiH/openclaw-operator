@@ -13,7 +13,24 @@ Use it for one thing:
 - what is next
 - what is intentionally parked
 
-Last updated: `2026-11-25`
+Last updated: `2026-11-26`
+
+## Historical branch reconciliation — 26 November 2026
+
+The recovered August document-ingress implementation was already integrated
+byte-for-byte. Restore its five regression cases in the standard fixture
+suite and correct the recurring-work registry, without changing scheduling.
+The source-provenance CLI now captures precise systemd service timestamps and
+checks invocation stability instead of using second-resolution process dates;
+live HTTP/persistence acceptance remains a separate requirement.
+
+Historical AgentProof RC4 copies belong to standalone AgentProof, not this
+repository. The Instagram publication patch is equivalent to the integrated
+repair; the older Graph hardening and worktree-integrity implementations
+are superseded by the current source and must not overwrite subsequent
+recovery, authority or deployment-path changes. Host-specific heartbeat
+policy belongs to the private host-operations repository. The recovery
+archive is historical evidence, not a release or activation instruction.
 
 ## Architectural rationalisation — 25 November 2026
 

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { readResidentServiceSnapshot, assertStableResidentServiceSnapshot } from "./source-provenance-resident.js";
 import {
   inspectSourceState,
   sha256File,
@@ -40,13 +41,6 @@ function command(program: string, args: string[]): string {
   return execFileSync(program, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function hostTimestamp(value: string): string {
-  const parsed = command("date", ["--date", value, "--iso-8601=seconds"]);
-  const timestamp = new Date(parsed);
-  if (!Number.isFinite(timestamp.getTime())) throw new Error("host_timestamp_invalid");
-  return timestamp.toISOString();
-}
-
 const action = process.argv[2];
 
 if (action === "capture-preedit") {
@@ -83,29 +77,29 @@ if (action === "capture-preedit") {
   const activatedHash = value("--activated-hash");
   const testedHash = value("--tested-hash");
   const activationTime = value("--activation-time");
-  const properties = command("systemctl", ["--user", "show", unit, "-p", "MainPID", "-p", "ActiveEnterTimestamp", "-p", "ExecStart", "-p", "WorkingDirectory", "--no-pager"]);
-  const propertyMap = Object.fromEntries(properties.split("\n").map((line) => line.split(/=(.*)/s).slice(0, 2)));
-  const pid = Number(propertyMap.MainPID);
-  if (!Number.isInteger(pid) || pid <= 0) throw new Error("resident_service_main_pid_invalid");
+  if (!Number.isFinite(Date.parse(activationTime))) throw new Error("activation_timestamp_invalid");
+  const before = readResidentServiceSnapshot(command, unit);
+  const pid = before.pid;
   const cmdline = readFileSync(`/proc/${pid}/cmdline`).toString("utf8").replaceAll("\0", " ").trim();
   const cwd = command("readlink", ["-f", `/proc/${pid}/cwd`]);
   const unitText = command("systemctl", ["--user", "cat", unit, "--no-pager"]);
-  const start = command("ps", ["-p", String(pid), "-o", "lstart="]);
   const runtime: ResidentRuntimeProof = {
     kind: "resident",
     runningPid: pid,
-    processStartTime: hostTimestamp(start),
+    processStartTime: before.processStartTime,
     runningCwd: cwd,
     runningEntrypoint: cmdline,
     runningSourcePath: sourcePath,
     runningFileHash: sha256File(sourcePath),
     serviceUnitAndDropinDigest: createHash("sha256").update(unitText).digest("hex"),
-    startOrReloadEvent: hostTimestamp(propertyMap.ActiveEnterTimestamp),
+    startOrReloadEvent: before.startOrReloadEvent,
     activationTime,
     postActivationHealth: command("systemctl", ["--user", "is-active", unit]) === "active" ? "healthy" : "unhealthy",
   };
+  const after = readResidentServiceSnapshot(command, unit);
+  assertStableResidentServiceSnapshot(before, after);
   const result = verifyRuntimeProof({ expectedSourcePath: sourcePath, activatedHash, testedHash, runtime });
-  emit({ unit, effectiveProperties: propertyMap, runtime, decision: result });
+  emit({ unit, effectiveProperties: before.properties, hostTimestampEvidence: { unitPath: before.unitPath, invocationId: before.invocationId, execMainStartTimestampUs: before.execMainStartTimestampUs, activeEnterTimestampUs: before.activeEnterTimestampUs }, runtime, decision: result });
   if (!result.allowed) process.exitCode = 2;
 } else {
   throw new Error("usage: source-provenance-gate <capture-preedit|verify-preedit|verify-activation|capture-resident> ...");
